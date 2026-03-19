@@ -1,0 +1,16 @@
+project_id = "tzyjfndwmhakjumpivzh"
+
+[functions.issue-credential]
+verify_jwt = false
+
+[functions.verify-credential]
+verify_jwt = false
+
+[functions.resolve-did]
+verify_jwt = false
+
+[functions.oid4vci]
+verify_jwt = false
+
+[functions.oid4vp]
+verify_jwt = false

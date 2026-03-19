@@ -1,0 +1,327 @@
+import { useState, useEffect, useMemo } from "react";
+import { Link2, ArrowLeft, Shield, Hash, Clock, ChevronRight, Search, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import ParticleBackground from "@/components/ui/ParticleBackground";
+import AnimatedCounter from "@/components/ui/AnimatedCounter";
+import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
+
+interface BlockCredential {
+  id: string;
+  credential_hash: string;
+  prev_hash: string | null;
+  blockchain_anchor: string | null;
+  credential_data: any;
+  status: string;
+  issued_at: string;
+  holder_did: string;
+  credential_schemas: { name: string; credential_type: string } | null;
+}
+
+const BlockchainExplorer = () => {
+  const [credentials, setCredentials] = useState<BlockCredential[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBlock, setSelectedBlock] = useState<BlockCredential | null>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchChain = async () => {
+      if (!user) return;
+      setIsLoading(true);
+      const { data } = await supabase
+        .from("credentials")
+        .select("id, credential_hash, prev_hash, blockchain_anchor, credential_data, status, issued_at, holder_did, credential_schemas(name, credential_type)")
+        .order("issued_at", { ascending: true })
+        .limit(200);
+      if (data) setCredentials(data as any);
+      setIsLoading(false);
+    };
+
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    fetchChain();
+  }, [user]);
+
+  const filteredCredentials = useMemo(() => {
+    if (!searchQuery.trim()) return credentials;
+    const q = searchQuery.toLowerCase();
+    return credentials.filter(c =>
+      c.credential_hash.toLowerCase().includes(q) ||
+      c.blockchain_anchor?.toLowerCase().includes(q) ||
+      c.holder_did.toLowerCase().includes(q) ||
+      c.credential_schemas?.name.toLowerCase().includes(q) ||
+      c.credential_data?.blockchain?.txHash?.toLowerCase().includes(q)
+    );
+  }, [credentials, searchQuery]);
+
+  const totalBlocks = credentials.length;
+  const activeBlocks = credentials.filter(c => c.status === "active").length;
+  const chainIntegrity = totalBlocks > 0 ? Math.round((activeBlocks / totalBlocks) * 100) : 100;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background relative overflow-hidden">
+        <ParticleBackground particleCount={30} className="opacity-25" />
+        <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+        <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10">
+          <DashboardSkeleton stats={4} showCharts={false} listItems={6} />
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      <ParticleBackground particleCount={30} className="opacity-25" />
+      <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+
+      <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
+        <div className="container mx-auto flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0, x: -15 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3"
+          >
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-xl">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Link2 className="h-5 w-5 text-primary" />
+                <div className="absolute -inset-1 bg-primary/20 rounded-full blur-md -z-10 animate-glow-pulse" />
+              </div>
+              <span className="font-display text-lg font-semibold tracking-tight">Blockchain Explorer</span>
+            </div>
+          </motion.div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 relative z-10">
+        {/* Stats */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        >
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardContent className="pt-6">
+              <AnimatedCounter
+                value={totalBlocks}
+                label="Total Blocks"
+                icon={<Hash className="h-5 w-5 text-primary" />}
+              />
+            </CardContent>
+          </Card>
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardContent className="pt-6">
+              <AnimatedCounter
+                value={activeBlocks}
+                label="Active"
+                icon={<Shield className="h-5 w-5 text-accent-foreground" />}
+              />
+            </CardContent>
+          </Card>
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardContent className="pt-6">
+              <AnimatedCounter
+                value={chainIntegrity}
+                label="Chain Integrity"
+                suffix="%"
+                icon={<Link2 className="h-5 w-5 text-primary" />}
+              />
+            </CardContent>
+          </Card>
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl glass flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-2xl font-display font-bold text-foreground">
+                    {credentials.length > 0 ? new Date(credentials[credentials.length - 1].issued_at).toLocaleDateString() : "—"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Latest Block</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Search */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative"
+        >
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by hash, tx, DID, or credential name..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-10 rounded-xl glass border-0"
+          />
+        </motion.div>
+
+        {/* Visual Hash Chain */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardHeader>
+              <CardTitle className="font-display text-lg flex items-center gap-2">
+                <Link2 className="h-5 w-5 text-primary" />
+                Credential Hash Chain
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {filteredCredentials.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  {searchQuery ? "No blocks match your search." : "No credentials on-chain yet."}
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {filteredCredentials.map((cred, index) => {
+                    const bc = cred.credential_data?.blockchain;
+                    const isSelected = selectedBlock?.id === cred.id;
+                    return (
+                      <motion.div
+                        key={cred.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                      >
+                        {index > 0 && (
+                          <div className="flex items-center gap-3 py-1">
+                            <div className="w-10 flex justify-center">
+                              <div className="w-0.5 h-6 bg-primary/30" />
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground">
+                              <ChevronRight className="h-3 w-3 text-primary/50" />
+                              prev: {cred.prev_hash?.substring(0, 16)}...
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedBlock(isSelected ? null : cred)}
+                          className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                            isSelected
+                              ? "border-primary/40 bg-primary/5 shadow-lg glow-primary"
+                              : cred.status === "revoked"
+                              ? "border-destructive/30 bg-destructive/5 hover:border-destructive/50"
+                              : cred.status === "expired"
+                              ? "border-muted bg-muted/50 hover:border-muted-foreground/30"
+                              : "border-border/40 hover:border-primary/30 hover:bg-primary/5"
+                          }`}
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-mono font-bold text-primary">#{index + 1}</span>
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-display font-semibold text-foreground">
+                                {cred.credential_schemas?.name || "Credential"}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                cred.status === "active" ? "bg-accent text-accent-foreground" :
+                                cred.status === "expired" ? "bg-muted text-muted-foreground" :
+                                "bg-destructive/10 text-destructive"
+                              }`}>{cred.status}</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                              <p className="font-mono truncate" title={cred.credential_hash}>
+                                Hash: {cred.credential_hash.substring(0, 20)}...
+                              </p>
+                              {cred.blockchain_anchor && (
+                                <p className="font-mono text-primary truncate" title={cred.blockchain_anchor}>
+                                  ⛓ {cred.blockchain_anchor}
+                                </p>
+                              )}
+                              <p className="truncate" title={cred.holder_did}>
+                                Holder: {cred.holder_did.substring(0, 28)}...
+                              </p>
+                              <p>{new Date(cred.issued_at).toLocaleString()}</p>
+                            </div>
+
+                            {isSelected && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                className="mt-3 pt-3 border-t border-border/50 space-y-2"
+                              >
+                                <div className="grid grid-cols-1 gap-2 text-xs">
+                                  <div>
+                                    <span className="text-muted-foreground">Full Hash:</span>
+                                    <p className="font-mono text-foreground break-all">{cred.credential_hash}</p>
+                                  </div>
+                                  {cred.prev_hash && (
+                                    <div>
+                                      <span className="text-muted-foreground">Previous Hash:</span>
+                                      <p className="font-mono text-foreground break-all">{cred.prev_hash}</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="text-muted-foreground">Holder DID:</span>
+                                    <p className="font-mono text-foreground break-all">{cred.holder_did}</p>
+                                  </div>
+                                  {bc && (
+                                    <div className="glass rounded-xl p-3 space-y-1">
+                                      <p className="font-semibold text-foreground flex items-center gap-1">
+                                        <ExternalLink className="h-3 w-3" /> Blockchain Details
+                                      </p>
+                                      <p className="font-mono">Network: {bc.network} {bc.chainId ? `(Chain ID: ${bc.chainId})` : ''}</p>
+                                      <p className="font-mono break-all">Tx Hash: {bc.txHash}</p>
+                                      <p className="font-mono">Block: #{bc.blockNumber}</p>
+                                      {bc.anchorWallet && <p className="font-mono break-all">Anchor Wallet: {bc.anchorWallet}</p>}
+                                      {bc.calldata && <p className="font-mono break-all">Calldata: {bc.calldata}</p>}
+                                      {bc.explorerUrl && (
+                                        <a href={bc.explorerUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                                          View on Amoy PolygonScan ↗
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
+                                  {cred.credential_data?.proof && (
+                                    <div className="glass rounded-xl p-3 space-y-1">
+                                      <p className="font-semibold text-foreground">Cryptographic Proof</p>
+                                      <p className="font-mono">Type: {cred.credential_data.proof.type}</p>
+                                      <p className="font-mono">Purpose: {cred.credential_data.proof.proofPurpose}</p>
+                                      <p className="font-mono break-all">Method: {cred.credential_data.proof.verificationMethod}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
+                        </button>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </main>
+    </div>
+  );
+};
+
+export default BlockchainExplorer;
