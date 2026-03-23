@@ -1,124 +1,171 @@
-# DecentraID — Decentralized Identity for Education
+<div align="center">
+  <img src="public/pwa-192.png" alt="BLOCKID Logo" width="150" />
+  
+  # 🌐 BLOCKID
+  
+  **Blockchain Based Identity Platform**
+  
+  <p align="center">
+    <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react" alt="React" /></a>
+    <a href="https://vitejs.dev/"><img src="https://img.shields.io/badge/Vite-5-purple?style=for-the-badge&logo=vite" alt="Vite" /></a>
+    <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript" alt="TypeScript" /></a>
+    <a href="https://polygon.technology/"><img src="https://img.shields.io/badge/Polygon-Mainnet-8247E5?style=for-the-badge&logo=polygon" alt="Polygon" /></a>
+  </p>
 
-A W3C-compliant Verifiable Credentials platform for issuing, holding, and verifying academic credentials on a decentralized trust framework.
+> _W3C Verifiable Credentials and Blockchain Based Identity platform anchored on the Polygon blockchain. Issue, hold, verify, and share credentials securely._
 
-![Built with React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+</div>
 
 ---
 
-## Overview
+## 🚀 Overview
 
-DecentraID implements the **W3C Verifiable Credentials** and **Decentralized Identifiers (DIDs)** standards to enable a complete credential lifecycle for educational institutions, students, and employers.
+**BLOCKID** is a comprehensive **Web3 identity platform** designed to bring transparency, security, and true ownership to digital credentials. By leveraging the power of the **Polygon blockchain** and **W3C Verifiable Credentials standards**, BLOCKID establishes a trustless ecosystem where actors—Issuers, Holders, and Verifiers—can seamlessly interact with immutable, cryptographically verifiable records.
 
-### The Trust Triangle
+Whether for educational degrees, professional certifications, or IoT firmware registries, BLOCKID provides the decentralized foundation to securely manage digital identity and reputation. 🛡️
 
-| Role         | Description                                                          |
-| ------------ | -------------------------------------------------------------------- |
-| **Issuer**   | Educational institutions that create and sign verifiable credentials |
-| **Holder**   | Students/graduates who store credentials in a digital wallet         |
-| **Verifier** | Employers/institutions that verify credential authenticity           |
+---
 
-## Features
+## ✨ Features
 
-### Core
+BLOCKID provides specialized dashboards and features for all participants in the credential ecosystem:
 
-- **Credential Issuance** — Dynamic schema builder, single & batch (CSV) issuance
-- **Holder Wallet** — Store, manage, and selectively disclose credentials
-- **Verification Engine** — AI-powered analysis with confidence scoring and hash integrity checks
-- **Credential Revocation** — Issuer-controlled revocation with confirmation safeguards
+### 🏢 For Issuers
 
-### Security & Standards
+- 🖨️ **Credential Issuance:** Mint and issue cryptographically signed Verifiable Credentials directly to users.
+- 🎛️ **Issuer Dashboard:** Manage your organization's decentralized identifier (DID) and track issued credentials.
+- 🛑 **Revocation Management:** Securely revoke credentials on-chain when necessary.
 
-- **W3C VC Data Model** — Standards-compliant credential format
-- **DID Resolution** — `did:key` method support with DID document generation
-- **SHA-256 Hashing** — Canonical JSON serialization for tamper-proof integrity
-- **Blockchain Anchoring** — Optional on-chain anchoring (Polygon) for immutable proof
-- **Selective Disclosure** — Share only chosen fields while proving qualifications
-- **Biometric Authentication** — WebAuthn fingerprint/face authentication support
+### 👤 For Holders
 
-### Platform
+- 💼 **Non-Custodial Wallet:** Store credentials securely in your own decentralized wallet interface.
+- 🔐 **Selective Disclosure:** Share only the necessary data points through generated secure share links.
+- 📲 **Seamless Sharing:** Generate QR codes or share links to effortlessly present credentials to verifiers.
 
-- **OID4VCI / OID4VP** — OpenID for Verifiable Credential Issuance & Presentation
-- **QR Code Sharing** — Generate shareable links with expiration and field selection
-- **Trusted Issuer Registry** — Manage and verify trusted credential issuers
-- **Audit Logging** — Full activity trail for compliance and transparency
-- **Privacy Center** — GDPR-aligned consent management and data deletion requests
-- **Real-time Notifications** — Credential status updates via database subscriptions
-- **Dark/Light Mode** — Full theme support with semantic design tokens
-- **PWA Ready** — Installable progressive web app with offline capability
+### ✅ For Verifiers
 
-## Tech Stack
+- 🔍 **Zero-Knowledge Verification:** Instantly verify the authenticity, integrity, and validity of any presented credential without contacting the issuer.
+- 📊 **Verifier Dashboard:** Centralized view to scan, review, and validate provided credentials.
+- 🔒 **Tamper-Proof Assurance:** Cryptographic proof ensures that the data has not been altered since issuance.
 
-| Layer          | Technology                                     |
-| -------------- | ---------------------------------------------- |
-| **Frontend**   | React 18, TypeScript, Vite                     |
-| **Styling**    | Tailwind CSS, shadcn/ui, Framer Motion         |
-| **Backend**    | Lovable Cloud (Edge Functions, Auth, Database) |
-| **Charts**     | Recharts                                       |
-| **PDF Export** | jsPDF                                          |
-| **QR Codes**   | qrcode.react                                   |
-| **Forms**      | React Hook Form + Zod validation               |
+### 🔗 Core Platform Capabilities
 
-## Getting Started
+- 🌐 **Blockchain Explorer:** Dedicated in-app block explorer to monitor on-chain transactions and identity events.
+- 📜 **Audit Log:** Comprehensive, immutable history of credential actions (issuance, sharing, verification) for compliance.
+- 👥 **Role-Based Access Control:** Strict authorization ensuring users can only access their specific domain.
+- 📱 **PWA Support:** Installable as a Progressive Web App for a native-like experience on desktop and mobile.
 
-### Prerequisites
+---
 
-- Node.js 18+ ([install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
+## 🛠️ Technology Stack
 
-### Local Development
+BLOCKID is built using a modern, scalable, and decentralized technology stack:
 
-```sh
-# Clone the repository
-git clone <YOUR_GIT_URL>
-cd <YOUR_PROJECT_NAME>
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <h3>🎨 Frontend</h3>
+        <b>Framework:</b> <a href="https://react.dev/">React 18</a> & <a href="https://vitejs.dev/">Vite</a><br>
+        <b>Language:</b> <a href="https://www.typescriptlang.org/">TypeScript</a><br>
+        <b>Styling:</b> <a href="https://tailwindcss.com/">Tailwind CSS</a><br>
+        <b>UI Components:</b> <a href="https://ui.shadcn.com/">shadcn/ui</a>, <a href="https://www.radix-ui.com/">Radix UI</a>, <a href="https://www.framer.com/motion/">Framer Motion</a><br>
+        <b>State & Data Fetching:</b> <a href="https://tanstack.com/query/v5">React Query</a>, <a href="https://react-hook-form.com/">React Hook Form</a>
+      </td>
+      <td align="center" width="50%">
+        <h3>⚙️ Backend & Blockchain</h3>
+        <b>Backend as a Service:</b> <a href="https://supabase.com/">Supabase</a> (Auth, Database, Storage)<br>
+        <b>Blockchain Layer:</b> Polygon (EVM Compatible)<br>
+        <b>Credential Standard:</b> W3C Verifiable Credentials
+      </td>
+    </tr>
+  </table>
+</div>
 
-# Install dependencies
-npm install
+---
 
-# Start the dev server
-npm run dev
+## 📦 Getting Started
+
+### 📋 Prerequisites
+
+Ensure you have the following installed on your local machine:
+
+- 🟢 [Node.js](https://nodejs.org/) (v18+ recommended)
+- 📦 [npm](https://www.npmjs.com/) or yarn / pnpm
+
+### 🛠️ Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/hoysala1707/block-id.git
+   cd block-id
+   ```
+
+2. **Install dependencies:**
+
+   ```bash
+   npm install
+   ```
+
+3. **Environment Setup:**
+   Create a `.env` file in the root directory and configure the necessary variables (e.g., Supabase credentials, Polygon RPC details).
+
+   ```env
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+
+4. **Start the development server:**
+
+   ```bash
+   npm run dev
+   ```
+
+5. **Build for production:**
+
+   ```bash
+   npm run build
+   ```
+
+---
+
+## 📁 Project Structure
+
+```text
+block-id/
+├── public/              # 🌐 Static assets (icons, manifest)
+├── src/
+│   ├── components/      # 🧩 Reusable UI components & Layouts
+│   ├── hooks/           # 🪝 Custom React hooks (e.g., useAuth)
+│   ├── lib/             # 🛠️ Utility functions
+│   ├── pages/           # 📄 Application views/routes
+│   │   ├── holder/      # 💼 Holder wallet specific pages
+│   │   ├── issuer/      # 🏢 Issuer dashboard pages
+│   │   ├── verifier/    # ✅ Verifier specific pages
+│   │   └── ...          # 🔐 Auth, Landing, Explorer, Audit pages
+│   ├── App.tsx          # 🔀 Main application routing
+│   └── main.tsx         # 🚀 Application entry point
+├── package.json         # 📦 Project dependencies and scripts
+├── tailwind.config.ts   # 🎨 Tailwind CSS configuration
+├── vite.config.ts       # ⚡ Vite bundler configuration
+└── README.md            # 📖 This documentation file
 ```
 
-The app will be available at `http://localhost:5173`.
+---
 
-### Running Tests
+## 🛡️ License
 
-```sh
-npm run test
-```
+This project is licensed under the **MIT License** - see the LICENSE file for details.
 
-## Project Structure
+---
 
-```
-src/
-├── components/          # Reusable UI components
-│   ├── layout/          # Portal layout wrapper
-│   └── ui/              # shadcn/ui primitives
-├── hooks/               # Custom React hooks (auth, web3, notifications)
-├── integrations/        # Supabase client & types (auto-generated)
-├── lib/                 # Utilities (PDF generation, helpers)
-├── pages/
-│   ├── issuer/          # Issuer dashboard & credential management
-│   ├── holder/          # Holder wallet & credential presentation
-│   ├── verifier/        # Verification dashboard & request management
-│   ├── Landing.tsx       # Animated landing page
-│   ├── Auth.tsx          # Authentication (sign up / sign in)
-│   └── SharedCredential.tsx  # Public credential viewer
-└── test/                # Test setup & examples
+## 🤝 Contributing
 
-supabase/
-└── functions/           # Edge functions (issue, verify, DID resolve, OID4VC)
-```
+Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
 
-## Database Schema
+---
 
-Key tables: `credentials`, `credential_schemas`, `profiles`, `user_roles`, `verification_requests`, `credential_shares`, `audit_logs`, `notifications`, `trusted_issuers`, `status_lists`, `consent_records`, `oid4vc_sessions`.
-
-Role-based access is enforced via RLS policies and a `has_role()` security-definer function.
-
-## License
-
-Private — All rights reserved.
+<p align="center">
+  <i>Built with ❤️ for a decentralized future.</i>
+</p>
