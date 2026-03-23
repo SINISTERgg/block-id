@@ -98,7 +98,7 @@ Ensure you have the following installed on your local machine:
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/hoysala1707/block-id.git
+   git clone https://github.com/SINISTERgg/block-id.git
    cd block-id
    ```
 
