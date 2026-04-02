@@ -1,22 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ethers } from "https://esm.sh/ethers@6.13.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Polygon Amoy Testnet config with fallback RPCs
-const AMOY_RPC_ENDPOINTS = [
-  "https://rpc-amoy.polygon.technology",
-  "https://polygon-amoy.drpc.org",
-  "https://polygon-amoy-bor-rpc.publicnode.com",
-];
 const AMOY_CHAIN_ID = 80002;
 const AMOY_EXPLORER = "https://amoy.polygonscan.com";
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1500;
 
 function canonicalJson(obj: unknown): string {
   if (obj === null || obj === undefined) return JSON.stringify(obj);
@@ -33,60 +24,6 @@ async function hashData(data: string): Promise<string> {
   const encoder = new TextEncoder();
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(data));
   return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function getProvider(): Promise<ethers.JsonRpcProvider> {
-  for (const rpc of AMOY_RPC_ENDPOINTS) {
-    try {
-      const provider = new ethers.JsonRpcProvider(rpc, AMOY_CHAIN_ID);
-      await provider.getBlockNumber(); // quick health check
-      console.log(`Using RPC: ${rpc}`);
-      return provider;
-    } catch {
-      console.warn(`RPC unavailable: ${rpc}`);
-    }
-  }
-  throw new Error("All RPC endpoints are unavailable");
-}
-
-async function anchorOnChain(credentialHash: string): Promise<{ txHash: string; blockNumber: number; from: string }> {
-  const privateKey = Deno.env.get("SERVER_WALLET_PRIVATE_KEY");
-  if (!privateKey) throw new Error("SERVER_WALLET_PRIVATE_KEY not configured");
-
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const provider = await getProvider();
-      const wallet = new ethers.Wallet(privateKey, provider);
-
-      const tx = await wallet.sendTransaction({
-        to: wallet.address,
-        value: 0n,
-        data: ethers.hexlify(ethers.toUtf8Bytes(`decentraid:credential:${credentialHash}`)),
-      });
-
-      const receipt = await tx.wait();
-      if (!receipt) throw new Error("Transaction failed — no receipt");
-
-      console.log(`Anchored on attempt ${attempt}: ${receipt.hash}`);
-      return {
-        txHash: receipt.hash,
-        blockNumber: receipt.blockNumber,
-        from: wallet.address,
-      };
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`Anchor attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
-      if (attempt < MAX_RETRIES) await sleep(RETRY_DELAY_MS * attempt);
-    }
-  }
-
-  throw new Error(`Blockchain anchoring failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
 }
 
 async function logAudit(supabase: any, userId: string, action: string, entityType: string, entityId: string | null, metadata: any = {}) {
@@ -146,17 +83,6 @@ async function issueOne(
 
   const credential_hash = await hashData(canonicalJson(vc) + prev_hash);
 
-  // Real blockchain anchoring on Polygon Amoy
-  let blockchainResult: { txHash: string; blockNumber: number; from: string };
-  try {
-    blockchainResult = await anchorOnChain(credential_hash);
-  } catch (err) {
-    console.error("Blockchain anchoring failed:", err);
-    throw new Error(`Blockchain anchoring failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-  }
-
-  const anchor = `polygon-amoy:${blockchainResult.txHash.substring(0, 18)}:${blockchainResult.blockNumber}`;
-
   // Build proof
   const proof: any = {
     type: issuerSignature ? "EcdsaSecp256k1Signature2019" : "Ed25519Signature2020",
@@ -184,19 +110,9 @@ async function issueOne(
     credential_data: {
       ...vc,
       proof,
-      blockchain: {
-        network: "polygon-amoy",
-        chainId: AMOY_CHAIN_ID,
-        txHash: blockchainResult.txHash,
-        blockNumber: blockchainResult.blockNumber,
-        anchorWallet: blockchainResult.from,
-        explorerUrl: `${AMOY_EXPLORER}/tx/${blockchainResult.txHash}`,
-        calldata: `decentraid:credential:${credential_hash}`,
-      },
     },
     credential_hash,
     prev_hash,
-    blockchain_anchor: anchor,
     status: "active",
     issuer_signature: issuerSignature || null,
     signer_address: signerAddress || null,
@@ -220,12 +136,10 @@ async function issueOne(
     schema_name: schema.name,
     signed_by_wallet: !!issuerSignature,
     signer_address: signerAddress,
-    blockchain_anchor: anchor,
-    blockchain_tx: blockchainResult.txHash,
-    blockchain_block: blockchainResult.blockNumber,
+    credential_hash,
   });
 
-  return credential;
+  return { ...credential, credential_hash };
 }
 
 serve(async (req) => {

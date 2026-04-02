@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, ScrollText, Shield, Search, Filter } from "lucide-react";
+import { ArrowLeft, ScrollText, Shield, Search, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import ParticleBackground from "@/components/ui/ParticleBackground";
@@ -38,7 +39,43 @@ const AuditLog = () => {
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const { user } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Task #23: Export audit logs as CSV
+  const exportCSV = () => {
+    if (filtered.length === 0) return;
+    const headers = ["Timestamp", "Action", "Entity Type", "Entity ID", "Metadata"];
+    const rows = filtered.map(l => [
+      new Date(l.created_at).toISOString(),
+      l.action,
+      l.entity_type,
+      l.entity_id || "",
+      JSON.stringify(l.metadata || {}),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `blockid-audit-log-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV exported", description: `${filtered.length} records exported.` });
+  };
+
+  // Task #23: Export audit logs as JSON
+  const exportJSON = () => {
+    if (filtered.length === 0) return;
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `blockid-audit-log-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "JSON exported", description: `${filtered.length} records exported.` });
+  };
 
   useEffect(() => {
     if (!user) {
@@ -148,7 +185,7 @@ const AuditLog = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="flex gap-3"
+          className="flex gap-3 flex-wrap"
         >
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -173,6 +210,12 @@ const AuditLog = () => {
               <SelectItem value="schema_created">Schema Created</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={exportCSV} disabled={filtered.length === 0}>
+            <Download className="h-3.5 w-3.5" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={exportJSON} disabled={filtered.length === 0}>
+            <Download className="h-3.5 w-3.5" /> JSON
+          </Button>
         </motion.div>
 
         {/* Log entries */}

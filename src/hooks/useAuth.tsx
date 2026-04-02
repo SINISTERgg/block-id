@@ -6,9 +6,10 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  profileLoading: boolean;
   profile: { full_name: string; organization: string; did: string | null; biometric_registered: boolean; face_registered: boolean } | null;
   role: string | null;
-  signUp: (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier") => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier" | "org_admin") => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -20,6 +21,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [role, setRole] = useState<string | null>(null);
 
@@ -41,10 +43,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (data) setRole(data.role);
   };
 
+  const fetchProfileAndRole = async (userId: string) => {
+    setProfileLoading(true);
+    await Promise.all([fetchProfile(userId), fetchRole(userId)]);
+    setProfileLoading(false);
+  };
+
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfile(user.id);
-      await fetchRole(user.id);
+      await fetchProfileAndRole(user.id);
     }
   };
 
@@ -54,12 +61,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         setTimeout(() => {
-          fetchProfile(session.user.id);
-          fetchRole(session.user.id);
+          fetchProfileAndRole(session.user.id);
         }, 0);
       } else {
         setProfile(null);
         setRole(null);
+        setProfileLoading(false);
       }
       setLoading(false);
     });
@@ -68,8 +75,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
-        fetchRole(session.user.id);
+        fetchProfileAndRole(session.user.id);
+      } else {
+        setProfileLoading(false);
       }
       setLoading(false);
     });
@@ -77,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier") => {
+  const signUp = async (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier" | "org_admin") => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -106,10 +114,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSession(null);
     setProfile(null);
     setRole(null);
+    setProfileLoading(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, profile, role, signUp, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, loading, profileLoading, profile, role, signUp, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

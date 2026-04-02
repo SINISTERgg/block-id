@@ -3,12 +3,30 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 
+const STORAGE_KEY = "blockid-theme";
+
 interface ThemeToggleProps {
   className?: string;
 }
 
 const ThemeToggle = ({ className }: ThemeToggleProps) => {
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const [isDark, setIsDark] = useState(() => {
+    // Task #15: Read persisted preference, fall back to system/class check
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "dark") return true;
+    if (stored === "light") return false;
+    return document.documentElement.classList.contains("dark");
+  });
+
+  // Sync initial state on mount (in case stored value differs from class)
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "dark" && !document.documentElement.classList.contains("dark")) {
+      document.documentElement.classList.add("dark");
+    } else if (stored === "light" && document.documentElement.classList.contains("dark")) {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -21,7 +39,10 @@ const ThemeToggle = ({ className }: ThemeToggleProps) => {
 
   const applyTheme = () => {
     document.documentElement.classList.toggle("dark");
-    setIsDark(document.documentElement.classList.contains("dark"));
+    const newIsDark = document.documentElement.classList.contains("dark");
+    setIsDark(newIsDark);
+    // Task #15: Persist to localStorage
+    localStorage.setItem(STORAGE_KEY, newIsDark ? "dark" : "light");
   };
 
   const toggleTheme = async () => {

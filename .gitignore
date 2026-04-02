@@ -39,3 +39,15 @@ supabase/.env
 supabase/.env.local
 supabase/.env.development
 supabase/.env.production
+
+deployments
+deployments/*
+
+artifacts
+artifacts/*
+
+cache
+cache/*
+
+test
+test/*

@@ -8,9 +8,12 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
-  const { user, loading, role } = useAuth();
+  const { user, loading, profileLoading, role } = useAuth();
 
-  if (loading) {
+  // Wait until session AND profile/role are fully loaded before making routing decisions.
+  // Without this guard, `role` is briefly null even for authenticated users (causing
+  // a false redirect to "/" on hard refresh to a role-protected route).
+  if (loading || (user && profileLoading)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse-subtle text-muted-foreground font-display">Loading...</div>

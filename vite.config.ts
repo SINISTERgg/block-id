@@ -4,7 +4,8 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
-// https://vitejs.dev/config/
+// https://vite.dev/config/
+// Upgraded to Vite 8 — uses Rolldown + Oxc (unified Rust-based bundler).
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
@@ -12,6 +13,8 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Vite 8: forward browser console logs to the terminal
+    forwardConsole: mode === "development",
   },
   plugins: [
     react(),
@@ -38,6 +41,7 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        navigateFallback: "/offline.html",
         navigateFallbackDenylist: [/^\/~oauth/],
         runtimeCaching: [
           {
@@ -56,5 +60,11 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Vite 8: built-in tsconfig path alias support
+    tsconfigPaths: true,
+  },
+  build: {
+    // Vite 8 / Rolldown: target modern browsers for smaller output
+    target: "es2020",
   },
 }));

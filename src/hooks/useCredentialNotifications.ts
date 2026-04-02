@@ -49,8 +49,33 @@ export const useCredentialNotifications = () => {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "verification_requests" },
         (payload) => {
-          // Notify holders of incoming verification requests
-          // This works because we have RLS that checks holder_did
+          const req = payload.new as any;
+          // Notify holder when a verifier requests their credentials
+          if (req.holder_did) {
+            toast({
+              title: "🔍 Verification Request Received",
+              description: `A verifier has requested your ${req.credential_type || "credential"} for: ${req.purpose || "verification"}.`,
+            });
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "verification_requests" },
+        (payload) => {
+          const req = payload.new as any;
+          if (req.status === "verified") {
+            toast({
+              title: "✅ Verification Request Accepted",
+              description: `Your ${req.credential_type || "credential"} has been successfully verified.`,
+            });
+          } else if (req.status === "rejected") {
+            toast({
+              title: "❌ Verification Request Rejected",
+              description: `Your ${req.credential_type || "credential"} verification was rejected.`,
+              variant: "destructive",
+            });
+          }
         }
       )
       .subscribe();

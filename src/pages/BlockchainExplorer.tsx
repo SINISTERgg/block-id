@@ -257,7 +257,10 @@ const BlockchainExplorer = () => {
                               <p className="truncate" title={cred.holder_did}>
                                 Holder: {cred.holder_did.substring(0, 28)}...
                               </p>
-                              <p>{new Date(cred.issued_at).toLocaleString()}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">Schema:</span>
+                                <p className="font-mono text-foreground">{cred.credential_schemas?.name || "—"}</p>
+                              </div>
                             </div>
 
                             {isSelected && (
@@ -290,9 +293,14 @@ const BlockchainExplorer = () => {
                                       <p className="font-mono break-all">Tx Hash: {bc.txHash}</p>
                                       <p className="font-mono">Block: #{bc.blockNumber}</p>
                                       {bc.anchorWallet && <p className="font-mono break-all">Anchor Wallet: {bc.anchorWallet}</p>}
-                                      {bc.calldata && <p className="font-mono break-all">Calldata: {bc.calldata}</p>}
-                                      {bc.explorerUrl && (
-                                        <a href={bc.explorerUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline font-mono">
+                                      {bc.contractAddress && <p className="font-mono break-all">Contract: {bc.contractAddress}</p>}
+                                      {(bc.explorerUrl || bc.txHash) && (
+                                        <a
+                                          href={bc.explorerUrl || `https://amoy.polygonscan.com/tx/${bc.txHash}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-primary underline font-mono"
+                                        >
                                           View on Amoy PolygonScan ↗
                                         </a>
                                       )}

@@ -167,5 +167,5 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 ---
 
 <p align="center">
-  <i>Built with ❤️ for a decentralized future.</i>
+  <i>Built By Hoysala Sathyanarayana</i>
 </p>
