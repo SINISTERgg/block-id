@@ -1,15 +1,17 @@
-import { useState, useEffect, useMemo } from "react";
-import { Link2, ArrowLeft, Shield, Hash, Clock, ChevronRight, Search, ExternalLink } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Link2, ArrowLeft, Shield, Hash, Clock, ChevronRight, Search, ExternalLink, CheckCircle2, XCircle, Loader2, DatabaseZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import ParticleBackground from "@/components/ui/ParticleBackground";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
+import { getCredentialStatus, type CredentialStatus } from "@/services/blockchain/registry";
+import { AMOY_EXPLORER, IS_CONTRACT_DEPLOYED } from "@/services/blockchain/config";
 
 interface BlockCredential {
   id: string;
@@ -22,6 +24,70 @@ interface BlockCredential {
   holder_did: string;
   credential_schemas: { name: string; credential_type: string } | null;
 }
+
+// ── On-chain badge component — lazily fetches from the contract when the block is expanded ──
+const OnChainBadge = ({ hash }: { hash: string | null }) => {
+  const [status, setStatus] = useState<CredentialStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+
+  useEffect(() => {
+    if (!hash || !IS_CONTRACT_DEPLOYED || fetched) return;
+    let cancelled = false;
+    setLoading(true);
+    getCredentialStatus(hash)
+      .then((s) => { if (!cancelled) { setStatus(s); setFetched(true); } })
+      .catch(() => { if (!cancelled) setFetched(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [hash, fetched]);
+
+  if (!IS_CONTRACT_DEPLOYED) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+        Contract not deployed
+      </span>
+    );
+  }
+
+  if (loading) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking...
+      </span>
+    );
+  }
+
+  if (!status) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground">
+        — Not checked
+      </span>
+    );
+  }
+
+  if (status.revoked) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium">
+        <XCircle className="h-3 w-3" /> Revoked on-chain
+      </span>
+    );
+  }
+
+  if (status.anchored) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium">
+        <CheckCircle2 className="h-3 w-3" /> Verified on Polygon ✓
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 font-medium">
+      ⚠ Not anchored on-chain
+    </span>
+  );
+};
 
 const BlockchainExplorer = () => {
   const [credentials, setCredentials] = useState<BlockCredential[]>([]);
@@ -44,11 +110,7 @@ const BlockchainExplorer = () => {
       setIsLoading(false);
     };
 
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
+    if (!user) { setIsLoading(false); return; }
     fetchChain();
   }, [user]);
 
@@ -66,6 +128,7 @@ const BlockchainExplorer = () => {
 
   const totalBlocks = credentials.length;
   const activeBlocks = credentials.filter(c => c.status === "active").length;
+  const onChainAnchored = credentials.filter(c => c.credential_data?.blockchain?.txHash).length;
   const chainIntegrity = totalBlocks > 0 ? Math.round((activeBlocks / totalBlocks) * 100) : 100;
 
   if (isLoading) {
@@ -103,6 +166,20 @@ const BlockchainExplorer = () => {
               <span className="font-display text-lg font-semibold tracking-tight">Blockchain Explorer</span>
             </div>
           </motion.div>
+
+          {IS_CONTRACT_DEPLOYED && (
+            <motion.a
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              href={`${AMOY_EXPLORER}/address/${import.meta.env.VITE_CREDENTIAL_REGISTRY_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View Contract on Amoy
+            </motion.a>
+          )}
         </div>
       </header>
 
@@ -134,27 +211,25 @@ const BlockchainExplorer = () => {
           </Card>
           <Card className="glass-card border-0 rounded-2xl">
             <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl glass flex items-center justify-center">
+                  <DatabaseZap className="h-5 w-5 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-display font-bold text-foreground">{onChainAnchored}</p>
+                  <p className="text-sm text-muted-foreground">On-Chain Anchored</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="glass-card border-0 rounded-2xl">
+            <CardContent className="pt-6">
               <AnimatedCounter
                 value={chainIntegrity}
                 label="Chain Integrity"
                 suffix="%"
                 icon={<Link2 className="h-5 w-5 text-primary" />}
               />
-            </CardContent>
-          </Card>
-          <Card className="glass-card border-0 rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl glass flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-2xl font-display font-bold text-foreground">
-                    {credentials.length > 0 ? new Date(credentials[credentials.length - 1].issued_at).toLocaleDateString() : "—"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Latest Block</p>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -243,6 +318,12 @@ const BlockchainExplorer = () => {
                                 cred.status === "expired" ? "bg-muted text-muted-foreground" :
                                 "bg-destructive/10 text-destructive"
                               }`}>{cred.status}</span>
+                              {/* Compact on-chain indicator in list view */}
+                              {bc?.txHash && !isSelected && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium hidden sm:inline">
+                                  ⛓ anchored
+                                </span>
+                              )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
@@ -263,60 +344,83 @@ const BlockchainExplorer = () => {
                               </div>
                             </div>
 
-                            {isSelected && (
-                              <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "auto" }}
-                                className="mt-3 pt-3 border-t border-border/50 space-y-2"
-                              >
-                                <div className="grid grid-cols-1 gap-2 text-xs">
-                                  <div>
-                                    <span className="text-muted-foreground">Full Hash:</span>
-                                    <p className="font-mono text-foreground break-all">{cred.credential_hash}</p>
+                            {/* Expanded detail panel */}
+                            <AnimatePresence>
+                              {isSelected && (
+                                <motion.div
+                                  key="detail"
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: "auto" }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  className="mt-3 pt-3 border-t border-border/50 space-y-3"
+                                >
+                                  {/* On-chain verification badge */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">On-chain status:</span>
+                                    <OnChainBadge hash={cred.credential_hash} />
                                   </div>
-                                  {cred.prev_hash && (
+
+                                  <div className="grid grid-cols-1 gap-2 text-xs">
                                     <div>
-                                      <span className="text-muted-foreground">Previous Hash:</span>
-                                      <p className="font-mono text-foreground break-all">{cred.prev_hash}</p>
+                                      <span className="text-muted-foreground">Full Hash:</span>
+                                      <p className="font-mono text-foreground break-all">{cred.credential_hash}</p>
                                     </div>
-                                  )}
-                                  <div>
-                                    <span className="text-muted-foreground">Holder DID:</span>
-                                    <p className="font-mono text-foreground break-all">{cred.holder_did}</p>
-                                  </div>
-                                  {bc && (
-                                    <div className="glass rounded-xl p-3 space-y-1">
-                                      <p className="font-semibold text-foreground flex items-center gap-1">
-                                        <ExternalLink className="h-3 w-3" /> Blockchain Details
+                                    {cred.prev_hash && (
+                                      <div>
+                                        <span className="text-muted-foreground">Previous Hash:</span>
+                                        <p className="font-mono text-foreground break-all">{cred.prev_hash}</p>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <span className="text-muted-foreground">Holder DID:</span>
+                                      <p className="font-mono text-foreground break-all">{cred.holder_did}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Issued:</span>
+                                      <p className="font-mono text-foreground">
+                                        {new Date(cred.issued_at).toLocaleString()}
                                       </p>
-                                      <p className="font-mono">Network: {bc.network} {bc.chainId ? `(Chain ID: ${bc.chainId})` : ''}</p>
-                                      <p className="font-mono break-all">Tx Hash: {bc.txHash}</p>
-                                      <p className="font-mono">Block: #{bc.blockNumber}</p>
-                                      {bc.anchorWallet && <p className="font-mono break-all">Anchor Wallet: {bc.anchorWallet}</p>}
-                                      {bc.contractAddress && <p className="font-mono break-all">Contract: {bc.contractAddress}</p>}
-                                      {(bc.explorerUrl || bc.txHash) && (
-                                        <a
-                                          href={bc.explorerUrl || `https://amoy.polygonscan.com/tx/${bc.txHash}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-primary underline font-mono"
-                                        >
-                                          View on Amoy PolygonScan ↗
-                                        </a>
-                                      )}
                                     </div>
-                                  )}
-                                  {cred.credential_data?.proof && (
-                                    <div className="glass rounded-xl p-3 space-y-1">
-                                      <p className="font-semibold text-foreground">Cryptographic Proof</p>
-                                      <p className="font-mono">Type: {cred.credential_data.proof.type}</p>
-                                      <p className="font-mono">Purpose: {cred.credential_data.proof.proofPurpose}</p>
-                                      <p className="font-mono break-all">Method: {cred.credential_data.proof.verificationMethod}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </motion.div>
-                            )}
+                                    {bc && (
+                                      <div className="glass rounded-xl p-3 space-y-1.5">
+                                        <p className="font-semibold text-foreground flex items-center gap-1">
+                                          <ExternalLink className="h-3 w-3" /> Blockchain Details
+                                        </p>
+                                        <p className="font-mono">Network: {bc.network} {bc.chainId ? `(Chain ID: ${bc.chainId})` : ''}</p>
+                                        <p className="font-mono break-all">Tx Hash: {bc.txHash}</p>
+                                        <p className="font-mono">Block: #{bc.blockNumber}</p>
+                                        {bc.anchoredAt && (
+                                          <p className="font-mono">
+                                            Anchored: {new Date(bc.anchoredAt * 1000).toLocaleString()}
+                                          </p>
+                                        )}
+                                        {bc.anchorWallet && <p className="font-mono break-all">Anchor Wallet: {bc.anchorWallet}</p>}
+                                        {bc.contractAddress && <p className="font-mono break-all">Contract: {bc.contractAddress}</p>}
+                                        {(bc.explorerUrl || bc.txHash) && (
+                                          <a
+                                            href={bc.explorerUrl || `${AMOY_EXPLORER}/tx/${bc.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-primary underline font-mono hover:opacity-80 transition-opacity"
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                            View on Amoy PolygonScan ↗
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
+                                    {cred.credential_data?.proof && (
+                                      <div className="glass rounded-xl p-3 space-y-1">
+                                        <p className="font-semibold text-foreground">Cryptographic Proof</p>
+                                        <p className="font-mono">Type: {cred.credential_data.proof.type}</p>
+                                        <p className="font-mono">Purpose: {cred.credential_data.proof.proofPurpose}</p>
+                                        <p className="font-mono break-all">Method: {cred.credential_data.proof.verificationMethod}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
                         </button>
                       </motion.div>

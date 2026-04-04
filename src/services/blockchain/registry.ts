@@ -15,6 +15,8 @@ export interface CredentialStatus {
   revoked: boolean;
   issuer: string;
   blockAnchored: number;
+  anchoredAt: number;   // Unix timestamp (seconds), 0 if not anchored
+  revokedAt: number;    // Unix timestamp (seconds), 0 if not revoked
 }
 
 export function isContractDeployed(): boolean {
@@ -25,9 +27,16 @@ export function getContractAddress(): string | null {
   return CREDENTIAL_REGISTRY_ADDRESS;
 }
 
+/**
+ * Convert a hex credential hash string to a padded bytes32 value.
+ * Throws if the input is not a valid 32-byte (64 hex char) hash.
+ */
 function toBytes32(hash: string): string {
-  const hashBytes = hash.startsWith("0x") ? hash : "0x" + hash;
-  return ethers.zeroPadValue(hashBytes.length <= 66 ? hashBytes : hashBytes.slice(0, 66), 32);
+  const hex = hash.startsWith("0x") ? hash.slice(2) : hash;
+  if (hex.length > 64) {
+    throw new Error(`[BlockID] Invalid credential hash: expected ≤64 hex chars, got ${hex.length}. Hash: ${hash.substring(0, 20)}...`);
+  }
+  return ethers.zeroPadValue("0x" + hex, 32);
 }
 
 /**
@@ -58,20 +67,44 @@ export async function getSignedRegistry(): Promise<ethers.Contract> {
  */
 export async function getCredentialStatus(credentialHash: string): Promise<CredentialStatus> {
   const registry = await getReadOnlyRegistry();
-  const hashBytes = credentialHash.startsWith("0x")
-    ? credentialHash
-    : "0x" + credentialHash;
-
-  // Pad to bytes32 if needed
-  const bytes32Hash = ethers.zeroPadValue(hashBytes.length <= 66 ? hashBytes : hashBytes.slice(0, 66), 32);
-
-  const [anchored, revoked, issuer, blockAnchored] = await registry.getCredentialStatus(bytes32Hash);
+  const bytes32Hash = toBytes32(credentialHash);
+  const [anchored, revoked, issuer, blockAnchored, anchoredAt, revokedAt] =
+    await registry.getCredentialStatus(bytes32Hash);
   return {
     anchored,
     revoked,
     issuer,
     blockAnchored: Number(blockAnchored),
+    anchoredAt: Number(anchoredAt),
+    revokedAt: Number(revokedAt),
   };
+}
+
+/**
+ * Batch-read status for multiple credential hashes in a single free RPC call.
+ * Returns a Map<hash, CredentialStatus>.
+ */
+export async function getCredentialStatusBatch(
+  hashes: string[]
+): Promise<Map<string, CredentialStatus>> {
+  if (hashes.length === 0) return new Map();
+  const registry = await getReadOnlyRegistry();
+  const bytes32Hashes = hashes.map(toBytes32);
+  const [anchored, revoked, issuers, blockNumbers, timestamps] =
+    await registry.getCredentialBatch(bytes32Hashes);
+
+  const result = new Map<string, CredentialStatus>();
+  hashes.forEach((hash, i) => {
+    result.set(hash, {
+      anchored: anchored[i],
+      revoked: revoked[i],
+      issuer: issuers[i],
+      blockAnchored: Number(blockNumbers[i]),
+      anchoredAt: Number(timestamps[i]),
+      revokedAt: 0, // batch read doesn't return revokedAt to save gas
+    });
+  });
+  return result;
 }
 
 /**
@@ -80,14 +113,28 @@ export async function getCredentialStatus(credentialHash: string): Promise<Crede
  */
 export async function anchorCredentialOnChain(credentialHash: string): Promise<ethers.TransactionReceipt> {
   const registry = await getSignedRegistry();
-  const hashBytes = credentialHash.startsWith("0x")
-    ? credentialHash
-    : "0x" + credentialHash;
-  const bytes32Hash = ethers.zeroPadValue(hashBytes.length <= 66 ? hashBytes : hashBytes.slice(0, 66), 32);
-
+  const bytes32Hash = toBytes32(credentialHash);
   const tx = await registry.anchorCredential(bytes32Hash, AMOY_GAS_OVERRIDES);
   const receipt = await tx.wait();
   if (!receipt) throw new Error("Transaction failed — no receipt");
+  return receipt;
+}
+
+/**
+ * Anchor multiple credential hashes in a single MetaMask transaction.
+ * Much more gas-efficient than calling anchorCredential N times.
+ * Returns the transaction receipt.
+ */
+export async function anchorCredentialBatchOnChain(
+  credentialHashes: string[]
+): Promise<ethers.TransactionReceipt> {
+  if (credentialHashes.length === 0) throw new Error("Empty batch");
+  if (credentialHashes.length > 100) throw new Error("Batch too large (max 100)");
+  const registry = await getSignedRegistry();
+  const bytes32Hashes = credentialHashes.map(toBytes32);
+  const tx = await registry.anchorCredentialBatch(bytes32Hashes, AMOY_GAS_OVERRIDES);
+  const receipt = await tx.wait();
+  if (!receipt) throw new Error("Batch transaction failed — no receipt");
   return receipt;
 }
 
@@ -97,11 +144,7 @@ export async function anchorCredentialOnChain(credentialHash: string): Promise<e
  */
 export async function revokeCredentialOnChain(credentialHash: string): Promise<ethers.TransactionReceipt> {
   const registry = await getSignedRegistry();
-  const hashBytes = credentialHash.startsWith("0x")
-    ? credentialHash
-    : "0x" + credentialHash;
-  const bytes32Hash = ethers.zeroPadValue(hashBytes.length <= 66 ? hashBytes : hashBytes.slice(0, 66), 32);
-
+  const bytes32Hash = toBytes32(credentialHash);
   const tx = await registry.revokeCredential(bytes32Hash, AMOY_GAS_OVERRIDES);
   const receipt = await tx.wait();
   if (!receipt) throw new Error("Revocation transaction failed — no receipt");

@@ -125,10 +125,19 @@ const IssuerDashboard = () => {
       }
 
       const { data: session } = await supabase.auth.getSession();
+      const authBearer = `Bearer ${session?.session?.access_token}`;
+
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/issue-credential`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.session?.access_token}` },
-        body: JSON.stringify({ schema_id: schemaId, holder_did: holderDid, credential_data: credentialData, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null, issuer_signature: issuerSignature, signer_address: signerAddr }),
+        headers: { "Content-Type": "application/json", Authorization: authBearer },
+        body: JSON.stringify({
+          schema_id: schemaId,
+          holder_did: holderDid,
+          credential_data: credentialData,
+          expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+          issuer_signature: issuerSignature,
+          signer_address: signerAddr,
+        }),
       });
       const result = await res.json();
       if (result.error) { toast({ title: "Error", description: result.error, variant: "destructive" }); return; }
@@ -138,20 +147,57 @@ const IssuerDashboard = () => {
       if (!credHash) { toast({ title: "Error", description: "Failed to get credential hash", variant: "destructive" }); return; }
 
       if (walletAddress && isContractReady) {
+        // ── Browser wallet anchoring (MetaMask) ─────────────────────────────
         const anchorResult = await anchor(credHash);
         if (anchorResult.success) {
-          const { data: anchorSession } = await supabase.auth.getSession();
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${anchorSession?.session?.access_token}` },
-            body: JSON.stringify({ credential_id: credData.id, tx_hash: anchorResult.txHash, block_number: anchorResult.blockNumber, from_address: anchorResult.from }),
+            headers: { "Content-Type": "application/json", Authorization: authBearer },
+            body: JSON.stringify({
+              credential_id: credData.id,
+              tx_hash: anchorResult.txHash,
+              block_number: anchorResult.blockNumber,
+              from_address: anchorResult.from,
+              anchored_at: Math.floor(Date.now() / 1000),
+            }),
           });
-          toast({ title: "Credential issued & anchored on-chain", description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...` });
+          toast({
+            title: "Credential issued & anchored on-chain ✓",
+            description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...`,
+          });
         } else {
-          toast({ title: anchorResult.error?.includes("rejected") ? "Anchoring skipped" : "Anchoring failed", description: anchorResult.error?.includes("rejected") ? "Credential created. Anchor it later." : anchorResult.error, variant: anchorResult.error?.includes("rejected") ? "default" : "destructive" });
+          toast({
+            title: anchorResult.error?.includes("rejected") ? "Anchoring skipped" : "Anchoring failed",
+            description: anchorResult.error?.includes("rejected")
+              ? "Credential created. Anchor it later from the Blockchain Explorer."
+              : anchorResult.error,
+            variant: anchorResult.error?.includes("rejected") ? "default" : "destructive",
+          });
+        }
+      } else if (!window.ethereum && isContractReady) {
+        // ── Server wallet fallback (mobile / no MetaMask) ───────────────────
+        toast({ title: "Anchoring via server wallet…", description: "No wallet detected — using server wallet to anchor on Polygon Amoy." });
+        const serverRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential-server`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: authBearer },
+          body: JSON.stringify({ credential_id: credData.id, credential_hash: credHash }),
+        });
+        const serverResult = await serverRes.json();
+        if (serverResult.success) {
+          toast({
+            title: "Credential issued & anchored on-chain ✓",
+            description: `Block: #${serverResult.blockNumber} · Tx: ${serverResult.txHash?.substring(0, 18)}...`,
+          });
+        } else {
+          toast({ title: "Server anchoring failed", description: serverResult.error ?? "Unknown error", variant: "destructive" });
         }
       } else {
-        toast({ title: "Credential created", description: isContractReady ? "Connect wallet to anchor on Polygon Amoy." : "Contract not deployed. Credential created without on-chain anchor." });
+        toast({
+          title: "Credential created",
+          description: isContractReady
+            ? "Connect MetaMask to anchor on Polygon Amoy."
+            : "Contract not deployed. Credential created without on-chain anchor.",
+        });
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

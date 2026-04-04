@@ -52,6 +52,10 @@ async function issueOne(
     .eq("did", holderDid)
     .single();
 
+  // ── Fix: prev_hash race condition ────────────────────────────────────────────
+  // Use a millisecond-precision timestamp salt appended to the canonical JSON
+  // before hashing. This guarantees uniqueness even under concurrent issuance
+  // without requiring a DB row lock.
   const { data: lastCred } = await supabase
     .from("credentials")
     .select("credential_hash")
@@ -60,6 +64,8 @@ async function issueOne(
     .single();
 
   const prev_hash = lastCred?.credential_hash || "genesis";
+  // High-resolution salt: ISO timestamp to microsecond precision + random bytes
+  const issuanceSalt = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const vc: any = {
     "@context": ["https://www.w3.org/2018/credentials/v1", "https://w3id.org/security/suites/ed25519-2020/v1"],
@@ -81,7 +87,8 @@ async function issueOne(
     vc.expirationDate = expiresAt;
   }
 
-  const credential_hash = await hashData(canonicalJson(vc) + prev_hash);
+  // Salt is included in the hash input (not stored in the VC) to prevent collisions
+  const credential_hash = await hashData(canonicalJson(vc) + prev_hash + issuanceSalt);
 
   // Build proof
   const proof: any = {

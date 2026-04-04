@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { revokeCredentialOnChain } from "@/services/blockchain/registry";
 import { revokeCredential } from "@/services/api/issuer.service";
 import { useToast } from "@/hooks/use-toast";
+import { AMOY_EXPLORER } from "@/services/blockchain/config";
 
 type TxState = "idle" | "signing" | "mining" | "confirmed" | "failed";
 
@@ -39,19 +40,25 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
       setTxState("signing");
       setTxHash(null);
 
+      // Use a local variable to avoid the stale closure bug where
+      // txHash state would lag behind the actual submitted hash.
+      let submittedHash: string | null = null;
+
       try {
         // Attempt on-chain revocation first
         if (window.ethereum) {
           try {
             const receipt = await revokeCredentialOnChain(credentialHash);
-            setTxHash(receipt.hash);
+            submittedHash = receipt.hash;
+            setTxHash(submittedHash);
             setTxState("mining");
             toast({
               title: "Transaction submitted",
-              description: `Tx: ${receipt.hash.substring(0, 18)}...`,
+              description: `Tx: ${submittedHash.substring(0, 18)}... — View on Amoy Explorer`,
+              action: undefined,
             });
           } catch (onChainErr: any) {
-            // User rejected or contract not deployed — fall through to DB-only
+            // User rejected — abort completely
             if (onChainErr.code === 4001 || onChainErr.message?.includes("user rejected")) {
               setTxState("failed");
               toast({
@@ -61,6 +68,7 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
               });
               return false;
             }
+            // Other on-chain error — fall through to DB-only revocation
             console.warn("[BlockID] On-chain revocation failed, falling back to DB:", onChainErr.message);
           }
         }
@@ -68,11 +76,12 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
         // Update Supabase regardless (Supabase is source of truth for UI)
         await revokeCredential(credentialId, issuerId);
         setTxState("confirmed");
+
         toast({
-          title: txHash ? "Revoked on-chain & database" : "Revoked in database",
-          description: txHash
-            ? "Credential revocation anchored on Polygon Amoy."
-            : "On-chain revocation skipped (contract not deployed).",
+          title: submittedHash ? "Revoked on-chain & database" : "Revoked in database",
+          description: submittedHash
+            ? `Anchored on Polygon Amoy · ${AMOY_EXPLORER}/tx/${submittedHash}`
+            : "On-chain revocation skipped (contract not deployed or MetaMask unavailable).",
         });
         return true;
       } catch (err: any) {
@@ -85,7 +94,8 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
         return false;
       }
     },
-    [toast, txHash]
+    // ✅ toast is the only stable dep — NOT txHash (which caused the stale closure bug)
+    [toast]
   );
 
   return { revoke, txState, txHash, reset };

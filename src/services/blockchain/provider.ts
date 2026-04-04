@@ -10,22 +10,33 @@ const AMOY_ETHERS_NETWORK = ethers.Network.from({
 });
 
 /**
- * Get a read-only JSON-RPC provider with automatic RPC fallback.
+ * Get a read-only JSON-RPC provider with automatic RPC fallback
+ * and exponential backoff retry per endpoint.
  * No wallet needed — used for contract reads and tx lookups.
  */
 export async function getReadProvider(): Promise<ethers.JsonRpcProvider> {
+  const maxRetries = 2;
+  const baseDelayMs = 300;
+
   for (const rpc of AMOY_RPC_ENDPOINTS) {
-    try {
-      const provider = new ethers.JsonRpcProvider(rpc, AMOY_ETHERS_NETWORK, {
-        staticNetwork: AMOY_ETHERS_NETWORK, // skip per-request getNetwork() calls
-      });
-      await provider.getBlockNumber(); // health check
-      return provider;
-    } catch {
-      console.warn(`[BlockID] RPC unavailable: ${rpc}`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpc, AMOY_ETHERS_NETWORK, {
+          staticNetwork: AMOY_ETHERS_NETWORK, // skip per-request getNetwork() calls
+        });
+        await provider.getBlockNumber(); // health check
+        return provider;
+      } catch {
+        if (attempt < maxRetries) {
+          // Exponential backoff: 300ms, 600ms
+          await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+        } else {
+          console.warn(`[BlockID] RPC unavailable after ${maxRetries + 1} attempts: ${rpc}`);
+        }
+      }
     }
   }
-  throw new Error("All Polygon Amoy RPC endpoints are unavailable");
+  throw new Error("All Polygon Amoy RPC endpoints are unavailable. Check your network connection.");
 }
 
 /**

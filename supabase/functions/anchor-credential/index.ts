@@ -34,7 +34,7 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { credential_id, tx_hash, block_number, from_address } = await req.json();
+    const { credential_id, tx_hash, block_number, from_address, anchored_at } = await req.json();
 
     if (!credential_id || !tx_hash) {
       throw new Error("credential_id and tx_hash are required");
@@ -56,6 +56,7 @@ serve(async (req) => {
       });
     }
 
+    // Compact anchor string for the blockchain_anchor column
     const anchor = `polygon-amoy:${tx_hash.substring(0, 18)}:${block_number || 0}`;
 
     const updatedCredentialData = {
@@ -65,6 +66,8 @@ serve(async (req) => {
         chainId: AMOY_CHAIN_ID,
         txHash: tx_hash,
         blockNumber: block_number || 0,
+        // Unix timestamp from on-chain event (seconds). Falls back to now if not provided.
+        anchoredAt: anchored_at || Math.floor(Date.now() / 1000),
         anchorWallet: from_address || null,
         explorerUrl: `${AMOY_EXPLORER}/tx/${tx_hash}`,
         method: "contract",
@@ -86,6 +89,7 @@ serve(async (req) => {
       tx_hash,
       block_number,
       from_address,
+      anchored_at: anchored_at || null,
       credential_hash: credential.credential_hash,
     });
 
