@@ -1,3 +1,6 @@
+// @ts-nocheck — Deno Edge Function: run via `supabase functions serve`, not tsc
+/// <reference types="https://deno.land/x/deploy@0.9.0/types/deploy.fetchevent.d.ts" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -6,8 +9,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const AMOY_CHAIN_ID = 80002;
-const AMOY_EXPLORER = "https://amoy.polygonscan.com";
+const SEPOLIA_CHAIN_ID = 11155111;
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
 async function logAudit(supabase: any, userId: string, action: string, entityType: string, entityId: string | null, metadata: any = {}) {
   await supabase.from("audit_logs").insert({
@@ -34,7 +37,7 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { credential_id, tx_hash, block_number, from_address, anchored_at } = await req.json();
+    const { credential_id, tx_hash, block_number, from_address, anchored_at, force_update } = await req.json();
 
     if (!credential_id || !tx_hash) {
       throw new Error("credential_id and tx_hash are required");
@@ -49,7 +52,8 @@ serve(async (req) => {
 
     if (!credential) throw new Error("Credential not found or unauthorized");
 
-    if (credential.blockchain_anchor) {
+    // Skip duplicate check when force_update is true (fixing stale mainnet records)
+    if (credential.blockchain_anchor && !force_update) {
       return new Response(JSON.stringify({ error: "Credential already anchored" }), {
         status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -57,19 +61,19 @@ serve(async (req) => {
     }
 
     // Compact anchor string for the blockchain_anchor column
-    const anchor = `polygon-amoy:${tx_hash.substring(0, 18)}:${block_number || 0}`;
+    const anchor = `sepolia:${tx_hash.substring(0, 18)}:${block_number || 0}`;
 
     const updatedCredentialData = {
       ...credential.credential_data,
       blockchain: {
-        network: "polygon-amoy",
-        chainId: AMOY_CHAIN_ID,
+        network: "sepolia",
+        chainId: SEPOLIA_CHAIN_ID,
         txHash: tx_hash,
         blockNumber: block_number || 0,
         // Unix timestamp from on-chain event (seconds). Falls back to now if not provided.
         anchoredAt: anchored_at || Math.floor(Date.now() / 1000),
         anchorWallet: from_address || null,
-        explorerUrl: `${AMOY_EXPLORER}/tx/${tx_hash}`,
+        explorerUrl: `${SEPOLIA_EXPLORER}/tx/${tx_hash}`,
         method: "contract",
         contractAddress: Deno.env.get("CREDENTIAL_REGISTRY_ADDRESS") || null,
       },
@@ -96,7 +100,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       blockchain_anchor: anchor,
-      explorer_url: `${AMOY_EXPLORER}/tx/${tx_hash}`,
+      explorer_url: `${SEPOLIA_EXPLORER}/tx/${tx_hash}`,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

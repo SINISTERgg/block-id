@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
  * Use in HolderWallet to notify when credentials are issued or revoked.
  */
 export const useCredentialNotifications = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const isSubscribed = useRef(false);
 
@@ -50,11 +50,11 @@ export const useCredentialNotifications = () => {
         { event: "INSERT", schema: "public", table: "verification_requests" },
         (payload) => {
           const req = payload.new as any;
-          // Notify holder when a verifier requests their credentials
-          if (req.holder_did) {
+          // Only notify the holder whose DID matches the request
+          if (req.holder_did && profile?.did && req.holder_did === profile.did) {
             toast({
               title: "🔍 Verification Request Received",
-              description: `A verifier has requested your ${req.credential_type || "credential"} for: ${req.purpose || "verification"}.`,
+              description: `A verifier has requested your ${req.credential_type || "credential"} for: ${req.purpose || "verification"}. Check the Present tab.`,
             });
           }
         }
@@ -84,5 +84,6 @@ export const useCredentialNotifications = () => {
       supabase.removeChannel(channel);
       isSubscribed.current = false;
     };
-  }, [user, toast]);
+  }, [user, profile, toast]);
 };
+

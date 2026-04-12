@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { revokeCredentialOnChain } from "@/services/blockchain/registry";
+import { revokeCredentialOnChain, getCredentialStatus, isContractDeployed } from "@/services/blockchain/registry";
 import { revokeCredential } from "@/services/api/issuer.service";
 import { useToast } from "@/hooks/use-toast";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
@@ -15,11 +15,13 @@ interface UseOnChainRevocationResult {
 
 /**
  * Hook that manages the full on-chain revocation flow:
- * 1. MetaMask signing prompt
- * 2. Transaction mining on Polygon Amoy
- * 3. Supabase status update
+ * 1. Check on-chain status (skip if not anchored or already revoked)
+ * 2. MetaMask signing prompt
+ * 3. Transaction mining on Ethereum Sepolia
+ * 4. Supabase status update
  *
- * Falls back to Supabase-only revocation if MetaMask isn't available.
+ * Falls back to Supabase-only revocation if MetaMask isn't available
+ * or the credential was never anchored on-chain.
  */
 export function useOnChainRevocation(): UseOnChainRevocationResult {
   const [txState, setTxState] = useState<TxState>("idle");
@@ -46,17 +48,29 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
 
       try {
         // Attempt on-chain revocation first
-        if (window.ethereum) {
+        if (window.ethereum && isContractDeployed()) {
           try {
-            const receipt = await revokeCredentialOnChain(credentialHash);
-            submittedHash = receipt.hash;
-            setTxHash(submittedHash);
-            setTxState("mining");
-            toast({
-              title: "Transaction submitted",
-              description: `Tx: ${submittedHash.substring(0, 18)}... — View on Amoy Explorer`,
-              action: undefined,
-            });
+            // ── Pre-flight: check on-chain status before sending a tx ──
+            const status = await getCredentialStatus(credentialHash);
+
+            if (!status.anchored) {
+              // Credential was never anchored on-chain — skip silently
+              console.info("[BlockID] Credential not anchored on-chain, skipping on-chain revocation.");
+            } else if (status.revoked) {
+              // Already revoked on-chain — no need to send another tx
+              console.info("[BlockID] Credential already revoked on-chain, skipping duplicate tx.");
+            } else {
+              // Anchored and not yet revoked — proceed with on-chain revocation
+              const receipt = await revokeCredentialOnChain(credentialHash);
+              submittedHash = receipt.hash;
+              setTxHash(submittedHash);
+              setTxState("mining");
+              toast({
+                title: "Transaction submitted",
+                description: `Tx: ${submittedHash.substring(0, 18)}... — View on Sepolia Explorer`,
+                action: undefined,
+              });
+            }
           } catch (onChainErr: any) {
             // User rejected — abort completely
             if (onChainErr.code === 4001 || onChainErr.message?.includes("user rejected")) {
@@ -80,8 +94,8 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
         toast({
           title: submittedHash ? "Revoked on-chain & database" : "Revoked in database",
           description: submittedHash
-            ? `Anchored on Polygon Amoy · ${AMOY_EXPLORER}/tx/${submittedHash}`
-            : "On-chain revocation skipped (contract not deployed or MetaMask unavailable).",
+            ? `Anchored on Ethereum Sepolia · ${AMOY_EXPLORER}/tx/${submittedHash}`
+            : "On-chain revocation skipped (credential not anchored or MetaMask unavailable).",
         });
         return true;
       } catch (err: any) {
@@ -100,3 +114,4 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
 
   return { revoke, txState, txHash, reset };
 }
+

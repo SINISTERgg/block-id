@@ -2,6 +2,7 @@ import { Wallet, Unplug, ExternalLink, PenTool, AlertTriangle } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useWeb3Wallet } from "@/hooks/useWeb3Wallet";
+import { AMOY_EXPLORER } from "@/services/blockchain/config";
 
 interface Web3WalletCardProps {
   userId: string | undefined;
@@ -35,7 +36,7 @@ const Web3WalletCard = ({ userId }: Web3WalletCardProps) => {
           </div>
           <div>
             <h3 className="font-display font-semibold text-foreground">Web3 Wallet</h3>
-            <p className="text-xs text-muted-foreground">Polygon Network</p>
+            <p className="text-xs text-muted-foreground">Ethereum Sepolia Testnet</p>
           </div>
         </div>
 
@@ -52,17 +53,17 @@ const Web3WalletCard = ({ userId }: Web3WalletCardProps) => {
                 className="w-full flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-2"
               >
                 <AlertTriangle className="h-3 w-3" />
-                Wrong network — click to switch to Polygon
+                Wrong network — click to switch to Sepolia
               </button>
             )}
 
             <a
-              href={`https://polygonscan.com/address/${walletAddress}`}
+              href={`${AMOY_EXPLORER}/address/${walletAddress}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs text-primary hover:underline"
             >
-              <ExternalLink className="h-3 w-3" /> View on PolygonScan
+              <ExternalLink className="h-3 w-3" /> View on Etherscan
             </a>
 
             <div className="flex gap-2">

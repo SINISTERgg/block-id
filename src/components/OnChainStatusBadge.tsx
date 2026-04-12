@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
+import { AMOY_EXPLORER } from "@/services/blockchain/config";
 
 interface OnChainStatusBadgeProps {
   credentialId: string;
@@ -17,7 +18,14 @@ const OnChainStatusBadge = ({ credentialId, credentialData, blockchainAnchor }: 
 
   const blockchain = credentialData?.blockchain;
   const txHash = blockchain?.txHash;
-  const explorerUrl = blockchain?.explorerUrl;
+  const isMainnet = blockchain?.chainId && Number(blockchain.chainId) === 1;
+  const isLegacyPolygon = blockchain?.network === "polygon" || (blockchain?.chainId && [137, 80002].includes(Number(blockchain.chainId)));
+  const explorerBase = isMainnet
+    ? "https://etherscan.io"
+    : isLegacyPolygon
+      ? (Number(blockchain.chainId) === 80002 ? "https://amoy.polygonscan.com" : "https://polygonscan.com")
+      : AMOY_EXPLORER;
+  const explorerUrl = txHash ? `${explorerBase}/tx/${txHash}` : null;
 
   if (!blockchainAnchor || !txHash) {
     return (
@@ -80,7 +88,7 @@ const OnChainStatusBadge = ({ credentialId, credentialData, blockchainAnchor }: 
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
-          {status === "idle" && <p>Click to verify this credential's hash on the Polygon Amoy blockchain</p>}
+          {status === "idle" && <p>Click to verify this credential's hash on the Ethereum Sepolia blockchain</p>}
           {status === "checking" && <p>Querying blockchain RPCs...</p>}
           {status === "verified" && <p>✅ On-chain hash matches. {details}</p>}
           {status === "failed" && <p>❌ {details}</p>}
@@ -92,7 +100,7 @@ const OnChainStatusBadge = ({ credentialId, credentialData, blockchainAnchor }: 
               className="inline-flex items-center gap-1 text-primary hover:underline mt-1"
               onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink className="h-3 w-3" /> View on PolygonScan
+              <ExternalLink className="h-3 w-3" /> View on Etherscan
             </a>
           )}
         </TooltipContent>

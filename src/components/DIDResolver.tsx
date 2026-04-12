@@ -90,7 +90,7 @@ const DIDResolver = ({ compact = false }: DIDResolverProps) => {
             <Input
               value={did}
               onChange={(e) => setDid(e.target.value)}
-              placeholder="did:decentraid:... or did:ethr:polygon:0x..."
+              placeholder="did:decentraid:... or did:ethr:sepolia:0x..."
               className="font-mono text-sm"
             />
             <Button onClick={resolveDID} disabled={resolving}>

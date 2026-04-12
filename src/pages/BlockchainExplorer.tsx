@@ -13,6 +13,8 @@ import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import { getCredentialStatus, type CredentialStatus } from "@/services/blockchain/registry";
 import { AMOY_EXPLORER, IS_CONTRACT_DEPLOYED } from "@/services/blockchain/config";
 
+
+
 interface BlockCredential {
   id: string;
   credential_hash: string;
@@ -77,7 +79,7 @@ const OnChainBadge = ({ hash }: { hash: string | null }) => {
   if (status.anchored) {
     return (
       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium">
-        <CheckCircle2 className="h-3 w-3" /> Verified on Polygon ✓
+        <CheckCircle2 className="h-3 w-3" /> Verified on Sepolia ✓
       </span>
     );
   }
@@ -89,6 +91,123 @@ const OnChainBadge = ({ hash }: { hash: string | null }) => {
   );
 };
 
+// ── On-chain details panel — shows blockchain details sourced from the smart contract ──
+// Verifies the actual on-chain anchoring state independently of stored metadata.
+const OnChainDetailsPanel = ({ credentialHash, storedTxHash }: { credentialHash: string; storedTxHash?: string }) => {
+  const [status, setStatus] = useState<CredentialStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [txLookupError, setTxLookupError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!IS_CONTRACT_DEPLOYED || !credentialHash) { setLoading(false); return; }
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const fetchOnChainData = async () => {
+      try {
+        const contractStatus = await getCredentialStatus(credentialHash);
+        if (!cancelled) {
+          setStatus(contractStatus);
+          if (storedTxHash && contractStatus.anchored && contractStatus.blockAnchored > 0) {
+            setTxLookupError(`Stored txHash differs from on-chain record`);
+          }
+        }
+      } catch (err) {
+        console.warn("[BlockID] OnChainDetailsPanel fetch error:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, 5000);
+
+    fetchOnChainData();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [credentialHash, storedTxHash]);
+
+  if (loading) {
+    return (
+      <div className="glass rounded-xl p-3 space-y-1.5">
+        <p className="font-semibold text-foreground flex items-center gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" /> Verifying on-chain anchoring…
+        </p>
+      </div>
+    );
+  }
+
+  if (!status) return null;
+
+  const contractAddr = import.meta.env.VITE_CREDENTIAL_REGISTRY_ADDRESS;
+
+  if (!status.anchored) {
+    return (
+      <div className="glass rounded-xl p-3 space-y-1.5 border border-destructive/30">
+        <p className="font-semibold text-destructive flex items-center gap-1">
+          <XCircle className="h-3 w-3" /> Not Anchored on Sepolia
+        </p>
+        {storedTxHash && (
+          <p className="text-xs text-amber-500">
+            Stored txHash: {storedTxHash.substring(0, 18)}... but not found on-chain
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass rounded-xl p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <CheckCircle2 className="h-4 w-4 text-green-500" />
+        <p className="font-semibold text-foreground">On-Chain Anchored via Smart Contract</p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        The credential hash is stored as bytes32 in the CredentialRegistry contract on Ethereum Sepolia.
+        This provides immutable, cryptographic proof of existence at a specific point in time.
+      </p>
+      {txLookupError && (
+        <p className="text-xs text-amber-500 flex items-center gap-1">
+          <span className="font-medium">⚠</span> {txLookupError}
+        </p>
+      )}
+      {status.blockAnchored > 0 && (
+        <p className="font-mono">Block: #{status.blockAnchored}</p>
+      )}
+      {status.anchoredAt > 0 && (
+        <p className="font-mono">
+          Anchored: {new Date(status.anchoredAt * 1000).toLocaleString()}
+        </p>
+      )}
+      {status.issuer && status.issuer !== "0x0000000000000000000000000000000000000000" && (
+        <p className="font-mono break-all">Issuer: {status.issuer.substring(0, 10)}...{status.issuer.substring(status.issuer.length - 6)}</p>
+      )}
+      {contractAddr && (
+        <a
+          href={`${AMOY_EXPLORER}/address/${contractAddr}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-primary underline font-mono hover:opacity-80 transition-opacity text-xs"
+        >
+          <ExternalLink className="h-3 w-3" />
+          View Contract ↗
+        </a>
+      )}
+      {status.revoked && status.revokedAt > 0 && (
+        <p className="font-mono text-destructive">
+          Revoked: {new Date(status.revokedAt * 1000).toLocaleString()}
+        </p>
+      )}
+    </div>
+  );
+};
+
 const BlockchainExplorer = () => {
   const [credentials, setCredentials] = useState<BlockCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,22 +216,24 @@ const BlockchainExplorer = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchChain = async () => {
-      if (!user) return;
-      setIsLoading(true);
-      const { data } = await supabase
-        .from("credentials")
-        .select("id, credential_hash, prev_hash, blockchain_anchor, credential_data, status, issued_at, holder_did, credential_schemas(name, credential_type)")
-        .order("issued_at", { ascending: true })
-        .limit(200);
-      if (data) setCredentials(data as any);
-      setIsLoading(false);
-    };
+  const fetchChain = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    const { data } = await supabase
+      .from("credentials")
+      .select("id, credential_hash, prev_hash, blockchain_anchor, credential_data, status, issued_at, holder_did, credential_schemas(name, credential_type)")
+      .order("issued_at", { ascending: true })
+      .limit(200);
+    if (data) setCredentials(data as any);
+    setIsLoading(false);
+  }, [user]);
 
+  useEffect(() => {
     if (!user) { setIsLoading(false); return; }
     fetchChain();
-  }, [user]);
+  }, [user, fetchChain]);
+
+
 
   const filteredCredentials = useMemo(() => {
     if (!searchQuery.trim()) return credentials;
@@ -177,13 +298,37 @@ const BlockchainExplorer = () => {
               className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
             >
               <ExternalLink className="h-3 w-3" />
-              View Contract on Amoy
+              View Contract on Etherscan
             </motion.a>
           )}
         </div>
       </header>
 
       <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 relative z-10">
+        {/* Anchoring Methods Info */}
+        <Card className="glass-card border-0 rounded-2xl">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                <DatabaseZap className="h-4 w-4 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <p className="font-semibold text-foreground text-sm">How Anchoring Works</p>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 font-medium shrink-0">Contract</span>
+                    <span className="text-muted-foreground">Credential hash stored as bytes32 in the CredentialRegistry smart contract on Ethereum Sepolia. Provides immutable, cryptographically verifiable proof of existence.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium shrink-0">Legacy</span>
+                    <span className="text-muted-foreground">Hash embedded in transaction calldata. Legacy method for credentials anchored before contract deployment or via external systems.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -292,9 +437,12 @@ const BlockchainExplorer = () => {
                           </div>
                         )}
 
-                        <button
+                        <div
                           onClick={() => setSelectedBlock(isSelected ? null : cred)}
-                          className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedBlock(isSelected ? null : cred); }}
+                          className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
                             isSelected
                               ? "border-primary/40 bg-primary/5 shadow-lg glow-primary"
                               : cred.status === "revoked"
@@ -321,7 +469,12 @@ const BlockchainExplorer = () => {
                               {/* Compact on-chain indicator in list view */}
                               {bc?.txHash && !isSelected && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium hidden sm:inline">
-                                  ⛓ anchored
+                                  ⛓ Contract
+                                </span>
+                              )}
+                              {bc?.txHash && !bc?.contractAddress && !isSelected && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-medium hidden sm:inline">
+                                  📝 Legacy
                                 </span>
                               )}
                             </div>
@@ -386,7 +539,11 @@ const BlockchainExplorer = () => {
                                         <p className="font-semibold text-foreground flex items-center gap-1">
                                           <ExternalLink className="h-3 w-3" /> Blockchain Details
                                         </p>
+
                                         <p className="font-mono">Network: {bc.network} {bc.chainId ? `(Chain ID: ${bc.chainId})` : ''}</p>
+                                        {bc.network === "polygon" || (bc.chainId && [137, 80002].includes(Number(bc.chainId))) ? (
+                                          <p className="text-xs text-amber-500 font-medium">⚠ Legacy record from Polygon — tx may not resolve on Sepolia</p>
+                                        ) : null}
                                         <p className="font-mono break-all">Tx Hash: {bc.txHash}</p>
                                         <p className="font-mono">Block: #{bc.blockNumber}</p>
                                         {bc.anchoredAt && (
@@ -396,19 +553,38 @@ const BlockchainExplorer = () => {
                                         )}
                                         {bc.anchorWallet && <p className="font-mono break-all">Anchor Wallet: {bc.anchorWallet}</p>}
                                         {bc.contractAddress && <p className="font-mono break-all">Contract: {bc.contractAddress}</p>}
-                                        {(bc.explorerUrl || bc.txHash) && (
-                                          <a
-                                            href={bc.explorerUrl || `${AMOY_EXPLORER}/tx/${bc.txHash}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 text-primary underline font-mono hover:opacity-80 transition-opacity"
-                                          >
-                                            <ExternalLink className="h-3 w-3" />
-                                            View on Amoy PolygonScan ↗
-                                          </a>
-                                        )}
+                                        {bc.txHash && (() => {
+                                          const isMainnet = bc.chainId && Number(bc.chainId) === 1;
+                                          const isLegacyPolygon = bc.network === "polygon" || (bc.chainId && [137, 80002].includes(Number(bc.chainId)));
+                                          const explorerBase = isMainnet
+                                            ? "https://etherscan.io"
+                                            : isLegacyPolygon
+                                              ? (Number(bc.chainId) === 80002 ? "https://amoy.polygonscan.com" : "https://polygonscan.com")
+                                              : AMOY_EXPLORER;
+                                          const explorerLabel = isMainnet
+                                            ? "Etherscan (Mainnet)"
+                                            : isLegacyPolygon
+                                              ? "PolygonScan (Legacy)"
+                                              : "Sepolia Etherscan";
+                                          return (
+                                            <a
+                                              href={`${explorerBase}/tx/${bc.txHash}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1 text-primary underline font-mono hover:opacity-80 transition-opacity"
+                                            >
+                                              <ExternalLink className="h-3 w-3" />
+                                              View on {explorerLabel} ↗
+                                            </a>
+                                          );
+                                        })()}
                                       </div>
                                     )}
+
+                                    {IS_CONTRACT_DEPLOYED && (
+                                      <OnChainDetailsPanel credentialHash={cred.credential_hash} storedTxHash={bc?.txHash} />
+                                    )}
+
                                     {cred.credential_data?.proof && (
                                       <div className="glass rounded-xl p-3 space-y-1">
                                         <p className="font-semibold text-foreground">Cryptographic Proof</p>
@@ -422,7 +598,7 @@ const BlockchainExplorer = () => {
                               )}
                             </AnimatePresence>
                           </div>
-                        </button>
+                        </div>
                       </motion.div>
                     );
                   })}

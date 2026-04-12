@@ -176,7 +176,7 @@ const IssuerDashboard = () => {
         }
       } else if (!window.ethereum && isContractReady) {
         // ── Server wallet fallback (mobile / no MetaMask) ───────────────────
-        toast({ title: "Anchoring via server wallet…", description: "No wallet detected — using server wallet to anchor on Polygon Amoy." });
+        toast({ title: "Anchoring via server wallet…", description: "No wallet detected — using server wallet to anchor on Ethereum Sepolia." });
         const serverRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential-server`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: authBearer },
@@ -195,7 +195,7 @@ const IssuerDashboard = () => {
         toast({
           title: "Credential created",
           description: isContractReady
-            ? "Connect MetaMask to anchor on Polygon Amoy."
+            ? "Connect MetaMask to anchor on Ethereum Sepolia."
             : "Contract not deployed. Credential created without on-chain anchor.",
         });
       }

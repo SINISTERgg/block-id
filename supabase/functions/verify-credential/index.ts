@@ -12,18 +12,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const AMOY_RPC_ENDPOINTS = [
-  "https://rpc-amoy.polygon.technology",
-  "https://polygon-amoy.drpc.org",
-  "https://polygon-amoy-bor-rpc.publicnode.com",
+const SEPOLIA_RPC_ENDPOINTS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://rpc.sepolia.org",
+  "https://sepolia.gateway.tenderly.co",
 ];
-const AMOY_CHAIN_ID = 80002;
+const SEPOLIA_CHAIN_ID = 11155111;
 const CONTRACT_ADDRESS = Deno.env.get("CREDENTIAL_REGISTRY_ADDRESS") || "";
 const CONTRACT_ABI = [
   "function getCredentialStatus(bytes32 hash) external view returns (bool anchored, bool revoked, address issuer, uint256 blockAnchored)",
   "function isValid(bytes32 hash) external view returns (bool)",
 ];
-const AMOY_EXPLORER = "https://amoy.polygonscan.com";
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
 async function logAudit(supabase: any, userId: string, action: string, entityType: string, entityId: string | null, metadata: any = {}) {
   await supabase.from("audit_logs").insert({
@@ -47,9 +47,9 @@ function canonicalJson(obj: unknown): string {
 }
 
 async function verifyOnChain(txHash: string, expectedHash: string): Promise<{ verified: boolean; onChainData: string | null; blockNumber: number | null; rpcUsed: string }> {
-  for (const rpc of AMOY_RPC_ENDPOINTS) {
+  for (const rpc of SEPOLIA_RPC_ENDPOINTS) {
     try {
-      const provider = new ethers.JsonRpcProvider(rpc, AMOY_CHAIN_ID);
+      const provider = new ethers.JsonRpcProvider(rpc, SEPOLIA_CHAIN_ID);
       const tx = await provider.getTransaction(txHash);
       if (!tx) continue;
       const decodedData = ethers.toUtf8String(tx.data);
@@ -67,9 +67,9 @@ async function verifyOnContract(credentialHash: string): Promise<{ anchored: boo
   if (!CONTRACT_ADDRESS) {
     return { anchored: false, revoked: false, issuer: "", blockAnchored: 0, contractVerified: false };
   }
-  for (const rpc of AMOY_RPC_ENDPOINTS) {
+  for (const rpc of SEPOLIA_RPC_ENDPOINTS) {
     try {
-      const provider = new ethers.JsonRpcProvider(rpc, AMOY_CHAIN_ID);
+      const provider = new ethers.JsonRpcProvider(rpc, SEPOLIA_CHAIN_ID);
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
       const hashBytes = ethers.zeroPadValue(credentialHash.startsWith("0x") ? credentialHash : ("0x" + credentialHash), 32);
       const [anchored, revoked, issuer, blockAnchored] = await contract.getCredentialStatus(hashBytes);
@@ -164,7 +164,7 @@ serve(async (req) => {
         contractIssuer: contractResult.issuer,
         contractBlockAnchored: contractResult.blockAnchored,
         explorerUrl: contractResult.anchored
-          ? `${AMOY_EXPLORER}/address/${CONTRACT_ADDRESS}`
+          ? `${SEPOLIA_EXPLORER}/address/${CONTRACT_ADDRESS}`
           : null,
         checkedAt: new Date().toISOString(),
       };

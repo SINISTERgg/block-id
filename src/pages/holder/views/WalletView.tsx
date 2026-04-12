@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { AMOY_EXPLORER } from "@/services/blockchain/config";
 import { Shield, Copy, QrCode, ExternalLink, Download, Clock, Link2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -228,23 +229,26 @@ const WalletView = ({
                     {cred.blockchain_anchor && (() => {
                       const bc = (cred.credential_data as any)?.blockchain;
                       const txHash = bc?.txHash as string | undefined;
-                      const explorerUrl = bc?.explorerUrl as string | undefined;
                       return (
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-mono flex items-center gap-1 text-xs">
                             <Link2 className="h-3 w-3 text-primary" />
                             <span className="text-primary">⛓</span>
-                            {txHash ? (
-                              explorerUrl ? (
-                                <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {(() => {
+                              if (!txHash) return <span className="text-muted-foreground">{cred.blockchain_anchor}</span>;
+                              const isMainnet = bc?.chainId && Number(bc.chainId) === 1;
+                              const isLegacyPolygon = bc?.network === "polygon" || (bc?.chainId && [137, 80002].includes(Number(bc.chainId)));
+                              const explorerBase = isMainnet
+                                ? "https://etherscan.io"
+                                : isLegacyPolygon
+                                  ? (Number(bc.chainId) === 80002 ? "https://amoy.polygonscan.com" : "https://polygonscan.com")
+                                  : AMOY_EXPLORER;
+                              return (
+                                <a href={`${explorerBase}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                                   {txHash.substring(0, 22)}…
                                 </a>
-                              ) : (
-                                <span>{txHash.substring(0, 22)}…</span>
-                              )
-                            ) : (
-                              <span className="text-muted-foreground">{cred.blockchain_anchor}</span>
-                            )}
+                              );
+                            })()}
                           </p>
                           <OnChainStatusBadge credentialId={cred.id} credentialData={cred.credential_data} blockchainAnchor={cred.blockchain_anchor} />
                         </div>

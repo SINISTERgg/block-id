@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "compile": "node scripts/compile.mjs",
+    "deploy:sepolia": "node scripts/deploy.js --network sepolia",
     "deploy:amoy": "node scripts/deploy.js --network amoy",
     "deploy:polygon": "node scripts/deploy.js --network polygon",
     "deploy:localhost": "node scripts/deploy.js --network localhost",

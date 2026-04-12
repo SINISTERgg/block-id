@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AMOY_CHAIN_ID_HEX, AMOY_NETWORK } from "@/services/blockchain/config";
 
 interface EthereumProvider {
   isMetaMask?: boolean;
@@ -15,15 +16,9 @@ declare global {
   }
 }
 
-const POLYGON_CHAIN_ID = "0x89"; // 137 in hex
+const SEPOLIA_CHAIN_ID = AMOY_CHAIN_ID_HEX; // 0xaa36a7 — Ethereum Sepolia Testnet
 
-const POLYGON_NETWORK = {
-  chainId: POLYGON_CHAIN_ID,
-  chainName: "Polygon Mainnet",
-  nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-  rpcUrls: ["https://polygon-rpc.com"],
-  blockExplorerUrls: ["https://polygonscan.com"],
-};
+const SEPOLIA_NETWORK = AMOY_NETWORK;
 
 export function useWeb3Wallet(userId: string | undefined) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -32,7 +27,10 @@ export function useWeb3Wallet(userId: string | undefined) {
   const { toast } = useToast();
 
   const isMetaMaskInstalled = typeof window !== "undefined" && !!window.ethereum?.isMetaMask;
-  const isPolygonNetwork = chainId === POLYGON_CHAIN_ID;
+  const isSepoliaNetwork = chainId === SEPOLIA_CHAIN_ID;
+
+  // Legacy alias for backward compat
+  const isPolygonNetwork = isSepoliaNetwork;
 
   // Load saved wallet from profile
   useEffect(() => {
@@ -64,16 +62,19 @@ export function useWeb3Wallet(userId: string | undefined) {
     };
   }, []);
 
-  const switchToPolygon = useCallback(async () => {
+  const switchToSepolia = useCallback(async () => {
     if (!window.ethereum) return;
     try {
-      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: POLYGON_CHAIN_ID }] });
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA_CHAIN_ID }] });
     } catch (err: any) {
       if (err.code === 4902) {
-        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [POLYGON_NETWORK] });
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [SEPOLIA_NETWORK] });
       }
     }
   }, []);
+
+  // Legacy alias
+  const switchToPolygon = switchToSepolia;
 
   const connectWallet = useCallback(async () => {
     if (!window.ethereum) {
@@ -87,8 +88,8 @@ export function useWeb3Wallet(userId: string | undefined) {
 
       const address = accounts[0];
 
-      // Switch to Polygon
-      await switchToPolygon();
+      // Switch to Sepolia
+      await switchToSepolia();
 
       // Save to profile
       if (userId) {
@@ -100,13 +101,13 @@ export function useWeb3Wallet(userId: string | undefined) {
       }
 
       setWalletAddress(address);
-      toast({ title: "Wallet Connected", description: `Linked ${address.substring(0, 6)}...${address.substring(38)} on Polygon` });
+      toast({ title: "Wallet Connected", description: `Linked ${address.substring(0, 6)}...${address.substring(38)} on Ethereum Sepolia` });
     } catch (err: any) {
       toast({ title: "Connection failed", description: err.message || "Could not connect wallet", variant: "destructive" });
     } finally {
       setIsConnecting(false);
     }
-  }, [userId, switchToPolygon, toast]);
+  }, [userId, switchToSepolia, toast]);
 
   const disconnectWallet = useCallback(async () => {
     if (userId) {

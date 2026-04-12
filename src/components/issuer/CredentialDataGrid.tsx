@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Ban, Loader2, Link2 } from "lucide-react";
+import { AMOY_EXPLORER } from "@/services/blockchain/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -75,11 +76,20 @@ const CredentialDataGrid = ({ credentials, onRevoke, revokingId }: CredentialDat
                         {c.blockchain_anchor && (() => {
                           const bc = (c.credential_data as any)?.blockchain;
                           const txHash: string | undefined = bc?.txHash;
-                          const explorerUrl: string | undefined = bc?.explorerUrl;
-                          return txHash ? (
-                            explorerUrl ? (
+                          return (() => {
+                            if (!txHash) return (
+                              <span className="font-mono text-primary">⛓ {c.blockchain_anchor.substring(0, 20)}…</span>
+                            );
+                            const isMainnet = bc?.chainId && Number(bc.chainId) === 1;
+                            const isLegacyPolygon = bc?.network === "polygon" || (bc?.chainId && [137, 80002].includes(Number(bc.chainId)));
+                            const explorerBase = isMainnet
+                              ? "https://etherscan.io"
+                              : isLegacyPolygon
+                                ? (Number(bc.chainId) === 80002 ? "https://amoy.polygonscan.com" : "https://polygonscan.com")
+                                : AMOY_EXPLORER;
+                            return (
                               <a
-                                href={explorerUrl}
+                                href={`${explorerBase}/tx/${txHash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 font-mono text-primary hover:underline"
@@ -88,15 +98,8 @@ const CredentialDataGrid = ({ credentials, onRevoke, revokingId }: CredentialDat
                                 <Link2 className="h-3 w-3" />
                                 ⛓ {txHash.substring(0, 20)}… ↗
                               </a>
-                            ) : (
-                              <span className="font-mono text-primary flex items-center gap-1">
-                                <Link2 className="h-3 w-3" />
-                                ⛓ {txHash.substring(0, 20)}…
-                              </span>
-                            )
-                          ) : (
-                            <span className="font-mono text-primary">⛓ {c.blockchain_anchor.substring(0, 20)}…</span>
-                          );
+                            );
+                          })();
                         })()}
                       </div>
                     </div>

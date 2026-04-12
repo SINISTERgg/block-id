@@ -56,7 +56,7 @@ serve(async (req) => {
             id: `${did}#wallet-1`,
             type: "EcdsaSecp256k1RecoveryMethod2020",
             controller: did,
-            blockchainAccountId: `eip155:137:${profile.wallet_address}`,
+            blockchainAccountId: `eip155:11155111:${profile.wallet_address}`,
           });
         }
 
@@ -114,7 +114,7 @@ serve(async (req) => {
             id: `${did}#wallet-1`,
             type: "EcdsaSecp256k1RecoveryMethod2020",
             controller: did,
-            blockchainAccountId: `eip155:137:${profile.wallet_address}`,
+            blockchainAccountId: `eip155:11155111:${profile.wallet_address}`,
           });
         }
 
@@ -142,8 +142,8 @@ serve(async (req) => {
         };
       }
     }
-    // did:ethr:polygon:<address>
-    else if (did.startsWith("did:ethr:polygon:")) {
+    // did:ethr:sepolia:<address> (or legacy did:ethr:polygon:<address>)
+    else if (did.startsWith("did:ethr:sepolia:") || did.startsWith("did:ethr:polygon:")) {
       const address = did.split(":")[3];
       if (!address) throw new Error("Invalid did:ethr format");
 
@@ -166,7 +166,7 @@ serve(async (req) => {
             id: `${did}#controller`,
             type: "EcdsaSecp256k1RecoveryMethod2020",
             controller: did,
-            blockchainAccountId: `eip155:137:${address}`,
+            blockchainAccountId: `eip155:11155111:${address}`,
           },
         ],
         authentication: [`${did}#controller`],

@@ -3,12 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 export interface VerificationRecord {
   id: string;
   holder_did: string | null;
+  credential_id: string | null;
   credential_type: string | null;
   purpose: string;
   status: string;
   ai_analysis: unknown;
   verified_at: string | null;
   created_at: string;
+  shared_credential_data: Record<string, unknown> | null;
+  access_expires_at: string | null;
+  storage_consent: boolean;
+  responded_at: string | null;
 }
 
 /**

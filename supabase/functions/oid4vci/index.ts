@@ -205,7 +205,7 @@ serve(async (req) => {
         holder_did: holderDid,
         credential_data: vc,
         credential_hash: credentialHash,
-        blockchain_anchor: `polygon:oid4vci:${credentialHash.substring(0, 16)}`,
+        blockchain_anchor: `sepolia:oid4vci:${credentialHash.substring(0, 16)}`,
         status: "active",
       }).select().single();
 

@@ -508,6 +508,10 @@ export type Database = {
           status: string
           verified_at: string | null
           verifier_id: string
+          shared_credential_data: Json | null
+          access_expires_at: string | null
+          storage_consent: boolean
+          responded_at: string | null
         }
         Insert: {
           ai_analysis?: Json | null
@@ -520,6 +524,10 @@ export type Database = {
           status?: string
           verified_at?: string | null
           verifier_id: string
+          shared_credential_data?: Json | null
+          access_expires_at?: string | null
+          storage_consent?: boolean
+          responded_at?: string | null
         }
         Update: {
           ai_analysis?: Json | null
@@ -532,6 +540,10 @@ export type Database = {
           status?: string
           verified_at?: string | null
           verifier_id?: string
+          shared_credential_data?: Json | null
+          access_expires_at?: string | null
+          storage_consent?: boolean
+          responded_at?: string | null
         }
         Relationships: [
           {

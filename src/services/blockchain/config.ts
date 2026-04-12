@@ -1,24 +1,35 @@
-// Polygon Amoy Testnet Configuration
-export const AMOY_CHAIN_ID = 80002;
-export const AMOY_CHAIN_ID_HEX = "0x13882";
-export const AMOY_EXPLORER = "https://amoy.polygonscan.com";
+// Ethereum Sepolia Testnet Configuration
+export const SEPOLIA_CHAIN_ID = 11155111;
+export const SEPOLIA_CHAIN_ID_HEX = "0xaa36a7";
+export const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
-// Free public RPC endpoints for Polygon Amoy — tried in order with automatic fallback.
-export const AMOY_RPC_ENDPOINTS = [
-  "https://rpc-amoy.polygon.technology",        // Polygon official
-  "https://polygon-amoy.drpc.org",              // dRPC public
-  "https://polygon-amoy-bor-rpc.publicnode.com",// PublicNode
-  "https://rpc.ankr.com/polygon_amoy",          // Ankr public
-  "https://polygon-amoy.blockpi.network/v1/rpc/public", // BlockPI public
+// Legacy exports for backward compatibility (used throughout codebase)
+export const AMOY_CHAIN_ID = SEPOLIA_CHAIN_ID;
+export const AMOY_CHAIN_ID_HEX = SEPOLIA_CHAIN_ID_HEX;
+export const AMOY_EXPLORER = SEPOLIA_EXPLORER;
+
+// Free public RPC endpoints for Ethereum Sepolia — tried in order with automatic fallback.
+export const SEPOLIA_RPC_ENDPOINTS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",  // PublicNode (reliable)
+  "https://rpc.sepolia.org",                       // Community standard
+  "https://sepolia.gateway.tenderly.co",           // Tenderly
+  "https://rpc-sepolia.rockx.com",                 // RockX
+  "https://rpc.ankr.com/eth_sepolia",              // Ankr public
 ];
 
-export const AMOY_NETWORK = {
-  chainId: AMOY_CHAIN_ID_HEX,
-  chainName: "Polygon Amoy Testnet",
-  nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-  rpcUrls: [AMOY_RPC_ENDPOINTS[0]],
-  blockExplorerUrls: [AMOY_EXPLORER],
+// Legacy export alias
+export const AMOY_RPC_ENDPOINTS = SEPOLIA_RPC_ENDPOINTS;
+
+export const SEPOLIA_NETWORK = {
+  chainId: SEPOLIA_CHAIN_ID_HEX,
+  chainName: "Ethereum Sepolia Testnet",
+  nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+  rpcUrls: [SEPOLIA_RPC_ENDPOINTS[0]],
+  blockExplorerUrls: [SEPOLIA_EXPLORER],
 };
+
+// Legacy export alias
+export const AMOY_NETWORK = SEPOLIA_NETWORK;
 
 const CONTRACT_ADDRESS = import.meta.env.VITE_CREDENTIAL_REGISTRY_ADDRESS;
 
@@ -27,6 +38,9 @@ export const CREDENTIAL_REGISTRY_ADDRESS = CONTRACT_ADDRESS && CONTRACT_ADDRESS 
   : null;
 
 export const IS_CONTRACT_DEPLOYED = CREDENTIAL_REGISTRY_ADDRESS !== null;
+
+// Contract deployment block on Sepolia — query events from here instead of block 0
+export const CONTRACT_DEPLOYMENT_BLOCK = 6500000;
 
 // v2 ABI — includes batch functions and timestamps
 export const CREDENTIAL_REGISTRY_ABI = [

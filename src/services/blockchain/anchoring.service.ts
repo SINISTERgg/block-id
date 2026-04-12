@@ -71,7 +71,7 @@ export async function verifyAnchoringOnChain(
         contractIssuer,
         contractBlockAnchored,
         contractAnchoredAt,
-        error: "Transaction not found on Polygon Amoy",
+        error: "Transaction not found on Ethereum Sepolia",
       };
     }
 

@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const AMOY_CHAIN_ID = 80002;
-const AMOY_EXPLORER = "https://amoy.polygonscan.com";
+const SEPOLIA_CHAIN_ID = 11155111;
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
 function canonicalJson(obj: unknown): string {
   if (obj === null || obj === undefined) return JSON.stringify(obj);
@@ -95,7 +95,7 @@ async function issueOne(
     type: issuerSignature ? "EcdsaSecp256k1Signature2019" : "Ed25519Signature2020",
     created: new Date().toISOString(),
     verificationMethod: signerAddress
-      ? `did:ethr:polygon:${signerAddress}#controller`
+      ? `did:ethr:sepolia:${signerAddress}#controller`
       : `did:decentraid:issuer:${userId}#key-1`,
     proofPurpose: "assertionMethod",
   };

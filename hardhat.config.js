@@ -17,29 +17,23 @@ const config = {
     localhost: {
       url: "http://127.0.0.1:8545",
     },
+    sepolia: {
+      type: "http",
+      url: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
+      chainId: 11155111,
+      accounts: [process.env.DEPLOYER_PRIVATE_KEY ?? "0x0000000000000000000000000000000000000000000000000000000000000000"],
+    },
+    // Legacy — kept for reference
     amoy: {
       type: "http",
       url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
       chainId: 80002,
       accounts: [process.env.DEPLOYER_PRIVATE_KEY ?? "0x0000000000000000000000000000000000000000000000000000000000000000"],
     },
-    polygon: {
-      type: "http",
-      url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-      chainId: 137,
-      accounts: [process.env.DEPLOYER_PRIVATE_KEY ?? "0x0000000000000000000000000000000000000000000000000000000000000000"],
-    },
   },
   etherscan: {
-    amoy: {
-      apiKey: {
-        polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
-      },
-    },
-    polygon: {
-      apiKey: {
-        polygon: process.env.POLYGONSCAN_API_KEY || "",
-      },
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
     },
   },
 };

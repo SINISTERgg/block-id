@@ -5,7 +5,7 @@
  * Called when the issuer has no MetaMask (e.g. mobile users).
  *
  * The server wallet signs and submits the anchorCredential() transaction
- * using the SERVER_WALLET_PRIVATE_KEY Supabase secret (Polygon Amoy testnet MATIC).
+ * using the SERVER_WALLET_PRIVATE_KEY Supabase secret (Ethereum Sepolia testnet ETH).
  *
  * This function is completely free — it uses the testnet and public RPCs.
  *
@@ -24,15 +24,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const AMOY_CHAIN_ID = 80002;
-const AMOY_EXPLORER = "https://amoy.polygonscan.com";
+const SEPOLIA_CHAIN_ID = 11155111;
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
 // Free public RPCs — tried in order
-const AMOY_RPC_ENDPOINTS = [
-  "https://rpc-amoy.polygon.technology",
-  "https://polygon-amoy.drpc.org",
-  "https://polygon-amoy-bor-rpc.publicnode.com",
-  "https://rpc.ankr.com/polygon_amoy",
+const SEPOLIA_RPC_ENDPOINTS = [
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://rpc.sepolia.org",
+  "https://sepolia.gateway.tenderly.co",
+  "https://rpc.ankr.com/eth_sepolia",
 ];
 
 const REGISTRY_ABI = [
@@ -42,8 +42,8 @@ const REGISTRY_ABI = [
 ];
 
 async function getProvider(): Promise<ethers.JsonRpcProvider> {
-  const network = ethers.Network.from({ name: "matic-amoy", chainId: AMOY_CHAIN_ID });
-  for (const rpc of AMOY_RPC_ENDPOINTS) {
+  const network = ethers.Network.from({ name: "sepolia", chainId: SEPOLIA_CHAIN_ID });
+  for (const rpc of SEPOLIA_RPC_ENDPOINTS) {
     try {
       const provider = new ethers.JsonRpcProvider(rpc, network, { staticNetwork: network });
       await provider.getBlockNumber();
@@ -52,7 +52,7 @@ async function getProvider(): Promise<ethers.JsonRpcProvider> {
       console.warn(`[anchor-server] RPC unavailable: ${rpc}`);
     }
   }
-  throw new Error("All Polygon Amoy RPC endpoints are unavailable");
+  throw new Error("All Ethereum Sepolia RPC endpoints are unavailable");
 }
 
 function toBytes32(hash: string): string {
@@ -119,8 +119,8 @@ serve(async (req) => {
     const bytes32Hash = toBytes32(credential_hash);
 
     const tx = await registry.anchorCredential(bytes32Hash, {
-      maxPriorityFeePerGas: ethers.parseUnits("30", "gwei"),
-      maxFeePerGas: ethers.parseUnits("50", "gwei"),
+      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
+      maxFeePerGas: ethers.parseUnits("20", "gwei"),
     });
 
     console.log(`[anchor-server] Tx submitted: ${tx.hash}`);
@@ -129,16 +129,16 @@ serve(async (req) => {
     if (!receipt) throw new Error("No receipt received — transaction may have failed");
 
     const blockNumber = receipt.blockNumber ?? 0;
-    const explorerUrl = `${AMOY_EXPLORER}/tx/${receipt.hash}`;
+    const explorerUrl = `${SEPOLIA_EXPLORER}/tx/${receipt.hash}`;
     const anchoredAt = Math.floor(Date.now() / 1000); // approximate — block timestamp not available here
 
     // ── Update Supabase ───────────────────────────────────────────────────────
-    const anchor = `polygon-amoy:${receipt.hash.substring(0, 18)}:${blockNumber}`;
+    const anchor = `sepolia:${receipt.hash.substring(0, 18)}:${blockNumber}`;
     const updatedCredentialData = {
       ...credential.credential_data,
       blockchain: {
-        network: "polygon-amoy",
-        chainId: AMOY_CHAIN_ID,
+        network: "sepolia",
+        chainId: SEPOLIA_CHAIN_ID,
         txHash: receipt.hash,
         blockNumber,
         anchoredAt,

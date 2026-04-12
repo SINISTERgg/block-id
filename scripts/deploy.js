@@ -7,13 +7,23 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const NETWORKS = {
+  sepolia: {
+    url: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
+    chainId: 11155111,
+    currency: "ETH",
+    faucet: "https://sepoliafaucet.com"
+  },
   amoy: {
     url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
-    chainId: 80002
+    chainId: 80002,
+    currency: "MATIC",
+    faucet: "https://faucet.polygon.technology"
   },
   localhost: {
     url: "http://127.0.0.1:8545",
-    chainId: 31337
+    chainId: 31337,
+    currency: "ETH",
+    faucet: null
   }
 };
 
@@ -49,8 +59,8 @@ function updateEnvFile(address) {
 
 async function main() {
   const networkArgIdx = process.argv.findIndex(a => a === "--network");
-  const networkName = networkArgIdx !== -1 ? process.argv[networkArgIdx + 1] : "amoy";
-  const network = NETWORKS[networkName] || NETWORKS.amoy;
+  const networkName = networkArgIdx !== -1 ? process.argv[networkArgIdx + 1] : "sepolia";
+  const network = NETWORKS[networkName] || NETWORKS.sepolia;
 
   console.log(`Deploying CredentialRegistry to ${networkName} (chainId: ${network.chainId})...`);
 
@@ -66,10 +76,10 @@ async function main() {
   console.log(`Deployer: ${wallet.address}`);
   
   const balance = await provider.getBalance(wallet.address);
-  console.log(`Balance: ${ethers.formatEther(balance)} MATIC`);
+  console.log(`Balance: ${ethers.formatEther(balance)} ${network.currency}`);
 
   if (balance === 0n && networkName !== "localhost") {
-    console.error("❌ Wallet has 0 MATIC. Get free testnet MATIC at: https://faucet.polygon.technology");
+    console.error(`❌ Wallet has 0 ${network.currency}. Get free testnet ${network.currency} at: ${network.faucet}`);
     process.exit(1);
   }
 
@@ -101,7 +111,7 @@ async function main() {
   console.log(`Estimated Gas: ${estimatedGas.toString()} (limit: ${gasLimit.toString()})`);
   console.log(`Max Fee: ${ethers.formatUnits(maxFeePerGas, "gwei")} Gwei`);
   console.log(`Max Priority Fee: ${ethers.formatUnits(maxPriorityFeePerGas, "gwei")} Gwei`);
-  console.log(`Estimated cost: ${ethers.formatEther(maxFeePerGas * gasLimit)} MATIC`);
+  console.log(`Estimated cost: ${ethers.formatEther(maxFeePerGas * gasLimit)} ${network.currency}`);
 
   try {
     const contract = await factory.deploy({

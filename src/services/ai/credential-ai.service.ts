@@ -76,7 +76,7 @@ const QA_RULES: QARule[] = [
   {
     patterns: [/blockchain/i, /chain/i, /anchor/i, /on.?chain/i, /polygon/i],
     respond: (ctx) => ctx.blockchain_verified
-      ? `⛓ The credential is **anchored on the Polygon Amoy testnet** via the CredentialRegistry smart contract. The anchor hash is: \`${ctx.blockchain_anchor || "confirmed"}\`.`
+      ? `⛓ The credential is **anchored on the Ethereum Sepolia testnet** via the CredentialRegistry smart contract. The anchor hash is: \`${ctx.blockchain_anchor || "confirmed"}\`.`
       : ctx.blockchain_anchor
         ? `⚠️ A blockchain anchor transaction exists (\`${ctx.blockchain_anchor}\`) but **could not be verified** on the contract. This may be an RPC connectivity issue.`
         : `❌ This credential has **no blockchain anchor**. It is not recorded on-chain, which reduces its trustworthiness.`,

@@ -176,7 +176,7 @@ const SharedCredential = () => {
             </div>
 
             <p className="text-xs text-center text-muted-foreground">
-              Shared via DecentraID • Verified on Polygon
+              Shared via DecentraID • Verified on Ethereum Sepolia
             </p>
           </CardContent>
         </Card>

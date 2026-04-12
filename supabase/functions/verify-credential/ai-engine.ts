@@ -108,7 +108,7 @@ function scoreBlockchainAnchor(input: CredentialInput): DimensionScore {
     return {
       name: "Blockchain Anchoring", key: "blockchainAnchor",
       score: 100, weight: WEIGHTS.blockchainAnchor, status: "pass",
-      detail: "Credential hash confirmed anchored in the CredentialRegistry smart contract on Polygon Amoy.",
+      detail: "Credential hash confirmed anchored in the CredentialRegistry smart contract on Ethereum Sepolia.",
     };
   }
   if (input.blockchainAnchor) {

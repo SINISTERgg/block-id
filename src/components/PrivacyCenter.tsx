@@ -23,7 +23,7 @@ const CONSENT_TYPES = [
   { type: "credential_sharing", label: "Credential Sharing", purpose: "Allow sharing credentials with verifiers via time-limited links." },
   { type: "biometric_data", label: "Biometric Data", purpose: "Store biometric authentication data (WebAuthn, face capture)." },
   { type: "analytics", label: "Analytics", purpose: "Collect usage data to improve the platform experience." },
-  { type: "blockchain_anchoring", label: "Blockchain Anchoring", purpose: "Anchor credential hashes on the Polygon network." },
+  { type: "blockchain_anchoring", label: "Blockchain Anchoring", purpose: "Anchor credential hashes on the Ethereum Sepolia network." },
 ];
 
 const PrivacyCenter = () => {

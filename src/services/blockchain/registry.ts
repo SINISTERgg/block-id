@@ -1,13 +1,12 @@
 import { ethers } from "ethers";
-import { CREDENTIAL_REGISTRY_ADDRESS, CREDENTIAL_REGISTRY_ABI, IS_CONTRACT_DEPLOYED } from "./config";
+import { CREDENTIAL_REGISTRY_ADDRESS, CREDENTIAL_REGISTRY_ABI, IS_CONTRACT_DEPLOYED, CONTRACT_DEPLOYMENT_BLOCK } from "./config";
 import { getReadProvider, getBrowserSigner } from "./provider";
 
-// Polygon Amoy requires a minimum maxPriorityFeePerGas of 30 Gwei.
-// Without this override ethers v6 auto-estimates too low a tip and the
-// RPC rejects the transaction with error -32603 (gas tip cap too low).
-const AMOY_GAS_OVERRIDES = {
-  maxPriorityFeePerGas: ethers.parseUnits("30", "gwei"),
-  maxFeePerGas: ethers.parseUnits("50", "gwei"),
+// Sepolia uses standard EIP-1559 gas pricing.
+// These overrides provide reasonable defaults for the testnet.
+const SEPOLIA_GAS_OVERRIDES = {
+  maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
+  maxFeePerGas: ethers.parseUnits("20", "gwei"),
 };
 
 export interface CredentialStatus {
@@ -114,7 +113,7 @@ export async function getCredentialStatusBatch(
 export async function anchorCredentialOnChain(credentialHash: string): Promise<ethers.TransactionReceipt> {
   const registry = await getSignedRegistry();
   const bytes32Hash = toBytes32(credentialHash);
-  const tx = await registry.anchorCredential(bytes32Hash, AMOY_GAS_OVERRIDES);
+  const tx = await registry.anchorCredential(bytes32Hash, SEPOLIA_GAS_OVERRIDES);
   const receipt = await tx.wait();
   if (!receipt) throw new Error("Transaction failed — no receipt");
   return receipt;
@@ -132,7 +131,7 @@ export async function anchorCredentialBatchOnChain(
   if (credentialHashes.length > 100) throw new Error("Batch too large (max 100)");
   const registry = await getSignedRegistry();
   const bytes32Hashes = credentialHashes.map(toBytes32);
-  const tx = await registry.anchorCredentialBatch(bytes32Hashes, AMOY_GAS_OVERRIDES);
+  const tx = await registry.anchorCredentialBatch(bytes32Hashes, SEPOLIA_GAS_OVERRIDES);
   const receipt = await tx.wait();
   if (!receipt) throw new Error("Batch transaction failed — no receipt");
   return receipt;
@@ -145,8 +144,55 @@ export async function anchorCredentialBatchOnChain(
 export async function revokeCredentialOnChain(credentialHash: string): Promise<ethers.TransactionReceipt> {
   const registry = await getSignedRegistry();
   const bytes32Hash = toBytes32(credentialHash);
-  const tx = await registry.revokeCredential(bytes32Hash, AMOY_GAS_OVERRIDES);
+  const tx = await registry.revokeCredential(bytes32Hash, SEPOLIA_GAS_OVERRIDES);
   const receipt = await tx.wait();
   if (!receipt) throw new Error("Revocation transaction failed — no receipt");
   return receipt;
+}
+
+/**
+ * Find the on-chain anchoring transaction for a credential by querying
+ * the CredentialAnchored event logs from the contract.
+ * Returns the transaction hash and block number, or null if not found.
+ * Uses chunked queries to respect RPC block range limits.
+ */
+export async function findAnchorTransaction(
+  credentialHash: string,
+  fromBlock?: number
+): Promise<{ txHash: string; blockNumber: number } | null> {
+  const startBlock = fromBlock ?? CONTRACT_DEPLOYMENT_BLOCK;
+  const BLOCKS_PER_QUERY = 45000;
+  const MAX_TOTAL_BLOCKS = 90000; // Query max ~90k blocks (2 chunks) for recent tx
+
+  try {
+    const registry = await getReadOnlyRegistry();
+    const provider = await getReadProvider();
+    const bytes32Hash = toBytes32(credentialHash);
+    const filter = registry.filters.CredentialAnchored(bytes32Hash);
+
+    const currentBlock = await provider.getBlockNumber();
+    const endBlock = Math.min(startBlock + MAX_TOTAL_BLOCKS, currentBlock);
+
+    let from = endBlock;
+    while (from >= startBlock) {
+      const to = Math.max(from - BLOCKS_PER_QUERY + 1, startBlock);
+      try {
+        const events = await registry.queryFilter(filter, to, from);
+        if (events.length > 0) {
+          const event = events[events.length - 1];
+          return {
+            txHash: event.transactionHash,
+            blockNumber: event.blockNumber,
+          };
+        }
+      } catch {
+        // Skip this chunk on error
+      }
+      from = to - 1;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[BlockID] Failed to query anchor events:", err);
+    return null;
+  }
 }

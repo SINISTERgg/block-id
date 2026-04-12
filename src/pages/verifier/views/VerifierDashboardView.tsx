@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CheckCircle2, XCircle, Clock, Brain, TrendingUp, BarChart3, Link2 } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Brain, TrendingUp, BarChart3, Link2, Eye, Lock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import DIDResolver from "@/components/DIDResolver";
@@ -13,10 +13,17 @@ interface VerifierDashboardViewProps {
 }
 
 const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
-  const verified = records.filter((r) => r.status === "verified").length;
+  const verified = records.filter((r) => r.status === "verified" || r.status === "accepted").length;
   const pending = records.filter((r) => r.status === "pending").length;
   const rejected = records.filter((r) => r.status === "rejected").length;
   const aiAnalyzedCount = records.filter((r) => r.ai_analysis).length;
+  const docsLive = records.filter((r) => {
+    if (!r.shared_credential_data) return false;
+    if (r.storage_consent) return true;
+    if (!r.access_expires_at) return false;
+    return new Date(r.access_expires_at).getTime() > Date.now();
+  }).length;
+  const stored = records.filter((r) => r.storage_consent && r.shared_credential_data).length;
 
   const avgConfidence = useMemo(() => {
     const analyzed = records.filter((r) => (r.ai_analysis as any)?.confidence);
@@ -41,11 +48,13 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           { icon: CheckCircle2, value: verified, label: "Verified" },
           { icon: Clock, value: pending, label: "Pending" },
           { icon: XCircle, value: rejected, label: "Rejected" },
+          { icon: Eye, value: docsLive, label: "Docs Live" },
+          { icon: Lock, value: stored, label: "Stored" },
           { icon: Brain, value: aiAnalyzedCount > 0 ? `${avgConfidence}%` : "—", label: "AI Confidence" },
         ].map(({ icon: Icon, value, label }) => (
           <Card key={label}><CardContent className="pt-6">

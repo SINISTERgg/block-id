@@ -107,7 +107,7 @@ const IssueView = ({
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg p-2">
                   <Link2 className="h-3 w-3 shrink-0" />
-                  <span>{signWithWallet ? "Credential will be wallet-signed & anchored on Polygon" : "Credential will be anchored on-chain with SHA-256 hash proof"}</span>
+                  <span>{signWithWallet ? "Credential will be wallet-signed & anchored on Sepolia" : "Credential will be anchored on-chain with SHA-256 hash proof"}</span>
                 </div>
                 <Button variant="issuer" className="w-full" onClick={handleIssue} disabled={issuing || anchorTxState === "connecting" || anchorTxState === "signing" || anchorTxState === "mining"}>
                   {issuing ? (
@@ -119,7 +119,7 @@ const IssueView = ({
                 </Button>
                 {anchorTxState === "confirmed" && (
                   <div className="flex items-center gap-2 text-xs text-green-600 bg-green-500/10 rounded-lg p-2">
-                    <CheckCircle2 className="h-3 w-3" /><span>Anchored on Polygon Amoy</span>
+                    <CheckCircle2 className="h-3 w-3" /><span>Anchored on Ethereum Sepolia</span>
                   </div>
                 )}
                 {anchorTxState === "failed" && (
