@@ -1,5 +1,5 @@
-import { FileText, Send, Link2, Ban, Calendar } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { FileText, Send, Link2, Ban, Calendar, TrendingUp } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface IssuerStatsOverviewProps {
   schemaCount: number;
@@ -9,80 +9,46 @@ interface IssuerStatsOverviewProps {
   expiredCount: number;
 }
 
+const stats = [
+  { key: "schemaCount", label: "Schemas", icon: FileText, color: "bg-issuer" },
+  { key: "credentialCount", label: "Issued", icon: Send, color: "bg-issuer" },
+  { key: "anchoredCount", label: "On-Chain", icon: Link2, color: "bg-issuer" },
+  { key: "revokedCount", label: "Revoked", icon: Ban, color: "bg-destructive" },
+  { key: "expiredCount", label: "Expired", icon: Calendar, color: "bg-muted" },
+];
+
 const IssuerStatsOverview = ({
   schemaCount,
   credentialCount,
   anchoredCount,
   revokedCount,
   expiredCount,
-}: IssuerStatsOverviewProps) => (
-  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-issuer-muted flex items-center justify-center">
-            <FileText className="h-5 w-5" style={{ color: "hsl(var(--issuer))" }} />
+}: IssuerStatsOverviewProps) => {
+  const values = { schemaCount, credentialCount, anchoredCount, revokedCount, expiredCount };
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {stats.map((stat, index) => (
+        <motion.div
+          key={stat.key}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: index * 0.06, duration: 0.3 }}
+          className="solid-card p-5"
+        >
+          <div className="flex items-center gap-4">
+            <div className={`w-11 h-11 ${stat.color} rounded-lg flex items-center justify-center shrink-0`}>
+              <stat.icon className={`h-5 w-5 ${stat.color === "bg-muted" ? "text-muted-foreground" : "text-white"}`} />
+            </div>
+            <div>
+              <p className="stat-number text-xl text-foreground">{values[stat.key as keyof typeof values]}</p>
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-display font-bold text-foreground">{schemaCount}</p>
-            <p className="text-sm text-muted-foreground">Schemas</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-issuer-muted flex items-center justify-center">
-            <Send className="h-5 w-5" style={{ color: "hsl(var(--issuer))" }} />
-          </div>
-          <div>
-            <p className="text-2xl font-display font-bold text-foreground">{credentialCount}</p>
-            <p className="text-sm text-muted-foreground">Issued</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-issuer-muted flex items-center justify-center">
-            <Link2 className="h-5 w-5" style={{ color: "hsl(var(--issuer))" }} />
-          </div>
-          <div>
-            <p className="text-2xl font-display font-bold text-foreground">{anchoredCount}</p>
-            <p className="text-sm text-muted-foreground">On-Chain</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-            <Ban className="h-5 w-5 text-destructive" />
-          </div>
-          <div>
-            <p className="text-2xl font-display font-bold text-foreground">{revokedCount}</p>
-            <p className="text-sm text-muted-foreground">Revoked</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-2xl font-display font-bold text-foreground">{expiredCount}</p>
-            <p className="text-sm text-muted-foreground">Expired</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+        </motion.div>
+      ))}
+    </div>
+  );
+};
 
 export default IssuerStatsOverview;

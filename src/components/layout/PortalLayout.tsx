@@ -1,12 +1,10 @@
 import { ReactNode, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, LogOut, Menu, X, Link2, Crown } from "lucide-react";
+import { ArrowLeft, LogOut, Menu, X, Link2, Crown, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/NotificationBell";
-import { motion, AnimatePresence } from "framer-motion";
-import ParticleBackground from "@/components/ui/ParticleBackground";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { isOrgAdmin } from "@/lib/permissions";
 
@@ -18,16 +16,10 @@ interface PortalLayoutProps {
   navItems: { label: string; path: string }[];
 }
 
-const PORTAL_LABELS: Record<string, string> = {
-  issuer: "Issuer Portal",
-  holder: "Holder Wallet",
-  verifier: "Verifier Portal",
-};
-
-const PORTAL_BADGE_CLASS: Record<string, string> = {
-  issuer: "bg-[hsl(var(--issuer-muted))] text-[hsl(var(--issuer))] border-[hsl(var(--issuer))]/20",
-  holder: "bg-[hsl(var(--holder-muted))] text-[hsl(var(--holder))] border-[hsl(var(--holder))]/20",
-  verifier: "bg-[hsl(var(--verifier-muted))] text-[hsl(var(--verifier))] border-[hsl(var(--verifier))]/20",
+const PORTAL_COLORS = {
+  issuer: { bg: "bg-issuer", text: "text-issuer", muted: "bg-issuer-muted" },
+  holder: { bg: "bg-holder", text: "text-holder", muted: "bg-holder-muted" },
+  verifier: { bg: "bg-verifier", text: "text-verifier", muted: "bg-verifier-muted" },
 };
 
 const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLayoutProps) => {
@@ -36,205 +28,159 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
   const { profile, role, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const adminUser = isOrgAdmin(role);
+  const colors = PORTAL_COLORS[portalType];
 
-  // Initials avatar
   const initials = profile?.full_name
     ? profile.full_name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
     : "U";
 
   return (
-    <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      <ParticleBackground particleCount={25} className="opacity-30" />
-      <div className="absolute inset-0 mesh-gradient pointer-events-none" />
-
-      <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
-        <div className="container mx-auto flex items-center justify-between">
-          <motion.div
-            initial={{ opacity: 0, x: -15 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2 sm:gap-3"
-          >
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="shrink-0 rounded-xl">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2.5">
-              <div className="relative">
-                {icon}
-                <div
-                  className="absolute -inset-1 rounded-full blur-md -z-10 animate-glow-pulse"
-                  style={{ backgroundColor: `hsla(var(--${portalType}), 0.2)` }}
-                />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="font-display text-base sm:text-lg font-semibold tracking-tight leading-none">
-                  {title}
-                </span>
-                {/* Portal type pill */}
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] leading-3 px-1.5 py-0.5 w-fit border font-medium ${PORTAL_BADGE_CLASS[portalType]}`}
-                >
-                  {PORTAL_LABELS[portalType]}
-                </Badge>
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="border-b border-border bg-card sticky top-0 z-50">
+        <div className="container mx-auto px-4 sm:px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={() => navigate("/")} className="shrink-0 border-border hover:border-primary hover:text-primary transition-colors">
+                    <Home className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Back to Home</TooltipContent>
+              </Tooltip>
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 ${colors.bg} rounded-lg flex items-center justify-center`}>
+                  <span className={`${colors.text}`}>{icon}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-display text-base sm:text-lg font-bold tracking-tight leading-none">
+                    {title}
+                  </span>
+                  <span className={`badge-solid ${colors.bg} text-white text-[10px]`}>
+                    {portalType}
+                  </span>
+                </div>
               </div>
             </div>
-          </motion.div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1">
-              {navItems.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <motion.button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="relative px-4 py-2 text-sm font-medium rounded-xl transition-colors text-muted-foreground hover:text-foreground"
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId={`nav-${portalType}`}
-                        className="absolute inset-0 rounded-xl"
-                        style={{ backgroundColor: `hsla(var(--${portalType}-muted))` }}
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                      />
-                    )}
-                    <span className="relative z-10" style={isActive ? { color: `hsl(var(--${portalType}))` } : {}}>
+            <div className="flex items-center gap-2">
+              <nav className="hidden md:flex items-center gap-1 bg-muted p-1 rounded-lg">
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => navigate(item.path)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                        isActive 
+                          ? `${colors.bg} text-white` 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background"
+                      }`}
+                    >
                       {item.label}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </nav>
+                    </button>
+                  );
+                })}
+              </nav>
 
-            {/* Blockchain Explorer */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/explorer")}
-              className="shrink-0 rounded-xl"
-              title="Blockchain Explorer"
-            >
-              <Link2 className="h-4 w-4" />
-            </Button>
-
-            {/* Admin button — gold gradient */}
-            {adminUser && (
-              <motion.button
-                onClick={() => navigate("/admin")}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                title="Organization Admin"
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 border ${
-                  location.pathname.startsWith("/admin")
-                    ? "bg-gradient-to-r from-amber-500/20 to-amber-400/10 text-amber-600 border-amber-500/30 shadow-sm"
-                    : "bg-amber-500/8 text-amber-600/70 border-amber-500/15 hover:bg-amber-500/15 hover:text-amber-600 hover:border-amber-500/25"
-                }`}
-              >
-                <Crown className="h-3.5 w-3.5" />
-                <span className="hidden sm:block">Admin</span>
-              </motion.button>
-            )}
-
-            <NotificationBell />
-            <ThemeToggle className="shrink-0 rounded-xl" />
-
-            {/* User info + avatar */}
-            <div className="hidden sm:flex items-center gap-2.5 border-l border-border/50 pl-3">
-              {/* Initials circle */}
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-semibold text-xs"
-                style={{
-                  backgroundColor: `hsla(var(--${portalType}-muted))`,
-                  color: `hsl(var(--${portalType}))`,
-                  border: `1.5px solid hsl(var(--${portalType}) / 0.25)`,
-                }}
-              >
-                {initials}
-              </div>
-              <div className="flex flex-col">
-                {profile?.organization && (
-                  <span className="text-[10px] text-muted-foreground leading-none truncate max-w-[100px]">
-                    {profile.organization}
-                  </span>
-                )}
-                <span className="text-xs font-medium text-foreground leading-tight truncate max-w-[100px]">
-                  {profile?.full_name}
-                </span>
-              </div>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => signOut().then(() => navigate("/"))}
-                className="rounded-xl h-8 w-8"
+                onClick={() => navigate("/explorer")}
+                className="shrink-0"
+                title="Blockchain Explorer"
               >
-                <LogOut className="h-3.5 w-3.5" />
+                <Link2 className="h-4 w-4" />
+              </Button>
+
+              {adminUser && (
+                <button
+                  onClick={() => navigate("/admin")}
+                  title="Organization Admin"
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                    location.pathname.startsWith("/admin")
+                      ? "bg-amber-500/20 text-amber-700 border-amber-500/30"
+                      : "bg-amber-500/10 text-amber-600/80 border-amber-500/20 hover:bg-amber-500/15"
+                  }`}
+                >
+                  <Crown className="h-3.5 w-3.5" />
+                  <span className="hidden sm:block">Admin</span>
+                </button>
+              )}
+
+              <NotificationBell />
+              <ThemeToggle />
+
+              <div className="hidden sm:flex items-center gap-3 border-l border-border pl-3">
+                <div className={`w-8 h-8 ${colors.bg} rounded-lg flex items-center justify-center font-semibold text-xs text-white`}>
+                  {initials}
+                </div>
+                <div className="flex flex-col">
+                  {profile?.organization && (
+                    <span className="text-[10px] text-muted-foreground leading-none truncate max-w-[100px]">
+                      {profile.organization}
+                    </span>
+                  )}
+                  <span className="text-xs font-medium text-foreground leading-tight truncate max-w-[100px]">
+                    {profile?.full_name}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => signOut().then(() => navigate("/"))}
+                  className="rounded-lg h-8 w-8"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
             </div>
-
-            {/* Mobile menu toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden rounded-xl"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </Button>
           </div>
-        </div>
 
-        {/* Mobile menu */}
-        <AnimatePresence>
           {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-border/30 mt-3 pt-3 pb-2 space-y-1 overflow-hidden"
-            >
+            <div className="md:hidden border-t border-border mt-3 pt-3 space-y-1">
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
                   <button
                     key={item.path}
                     onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                    className="block w-full text-left px-3 py-2.5 text-sm font-medium rounded-xl transition-colors"
-                    style={
+                    className={`block w-full text-left px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
                       isActive
-                        ? { color: `hsl(var(--${portalType}))`, backgroundColor: `hsla(var(--${portalType}-muted))` }
-                        : { color: "hsl(var(--muted-foreground))" }
-                    }
+                        ? `${colors.bg} text-white`
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
                   >
                     {item.label}
                   </button>
                 );
               })}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-border/30 mt-2 pt-2">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border mt-2 pt-2">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                    style={{
-                      backgroundColor: `hsla(var(--${portalType}-muted))`,
-                      color: `hsl(var(--${portalType}))`,
-                    }}
-                  >
+                  <div className={`w-7 h-7 ${colors.bg} rounded-lg flex items-center justify-center text-white text-xs font-bold`}>
                     {initials}
                   </div>
-                  <span className="text-xs text-muted-foreground">{profile?.full_name}</span>
+                  <span className="text-sm font-medium">{profile?.full_name}</span>
                 </div>
-                <Button variant="ghost" size="sm" className="rounded-xl" onClick={() => signOut().then(() => navigate("/"))}>
+                <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
                   <LogOut className="h-4 w-4 mr-1" /> Sign Out
                 </Button>
               </div>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
+        </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10">
+      <main className="flex-1 container mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {children}
       </main>
     </div>

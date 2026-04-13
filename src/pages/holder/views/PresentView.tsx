@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { QrCode, Share2, ExternalLink, Inbox, CheckCircle2, XCircle, Loader2, Clock, FileCheck, ShieldCheck, Lock } from "lucide-react";
+import { QrCode, Share2, ExternalLink, Inbox, CheckCircle2, XCircle, Loader2, Clock, FileCheck, ShieldCheck, Lock, Smartphone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import ActiveShareLinks from "@/components/ActiveShareLinks";
 import PrivacyCenter from "@/components/PrivacyCenter";
+import OID4VCIReceiveDialog from "@/components/OID4VCIReceiveDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchPendingRequests,
@@ -39,12 +40,10 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
   const { toast } = useToast();
   const activeCredentials = credentials.filter((c) => c.status === "active");
 
-  // ── Incoming verification requests ──
   const [requests, setRequests] = useState<VerificationRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
-  // ── Credential picker dialog ──
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerRequestId, setPickerRequestId] = useState<string | null>(null);
   const [pickerRequestType, setPickerRequestType] = useState<string | null>(null);
@@ -58,7 +57,7 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
       const data = await fetchPendingRequests(holderDid);
       setRequests(data);
     } catch {
-      // silently fail — not critical
+      // silently fail
     } finally {
       setLoadingRequests(false);
     }
@@ -79,9 +78,8 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
     setPickerOpen(true);
   };
 
-  // Filter credentials matching the requested type (if any)
   const matchingCredentials = activeCredentials.filter((c) => {
-    if (!pickerRequestType) return true; // show all if no specific type requested
+    if (!pickerRequestType) return true;
     const type = c.credential_schemas?.credential_type?.toLowerCase() || "";
     const name = c.credential_schemas?.name?.toLowerCase() || "";
     const reqType = pickerRequestType.toLowerCase();
@@ -119,7 +117,7 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
       });
 
       toast({
-        title: "Credential shared ✓",
+        title: "Credential shared",
         description: storageConsent
           ? "The verifier can store this credential permanently."
           : "The verifier can view this credential for 4 hours.",
@@ -155,16 +153,18 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
 
   return (
     <>
-      <h2 className="text-xl font-display font-semibold text-foreground">Present Credentials</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-headline">Present Credentials</h2>
+        <OID4VCIReceiveDialog onCredentialReceived={loadRequests} />
+      </div>
 
-      {/* ── Incoming Verification Requests ── */}
-      <Card className="border-primary/20">
-        <CardHeader className="pb-3">
+      <Card className="solid-card mb-6">
+        <CardHeader className="pb-3 bg-muted/30">
           <CardTitle className="font-display text-base flex items-center gap-2">
             <Inbox className="h-4 w-4 text-primary" />
             Incoming Verification Requests
             {requests.length > 0 && (
-              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold animate-pulse">
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
                 {requests.length} pending
               </span>
             )}
@@ -197,7 +197,7 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
                           ? req.credential_type.charAt(0).toUpperCase() + req.credential_type.slice(1)
                           : "Any Credential"}
                       </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-medium">
                         pending
                       </span>
                     </div>
@@ -243,7 +243,6 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
         </CardContent>
       </Card>
 
-      {/* ── Credential Picker Dialog ── */}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -294,7 +293,6 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
               </div>
             )}
 
-            {/* Storage consent toggle */}
             <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/30">
               <div className="flex items-start gap-2">
                 <Lock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -311,31 +309,36 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
             </div>
 
             <Button
-              className="w-full gap-2"
+              className="w-full"
               disabled={!selectedCredId}
               onClick={handleAcceptWithCredential}
             >
-              <ShieldCheck className="h-4 w-4" />
+              <ShieldCheck className="h-4 w-4 mr-2" />
               Share Selected Credential
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Credentials available to present ── */}
       {activeCredentials.length === 0 ? (
-        <Card><CardContent className="py-12"><div className="flex items-center justify-center text-muted-foreground text-sm">No active credentials to present.</div></CardContent></Card>
+        <Card className="solid-card">
+          <CardContent className="py-12">
+            <div className="flex items-center justify-center text-muted-foreground text-sm">
+              No active credentials to present.
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-4">
           {activeCredentials.map((cred) => (
-            <Card key={cred.id}>
+            <Card key={cred.id} className="solid-card">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h4 className="font-display font-semibold text-foreground">{cred.credential_schemas?.name || "Credential"}</h4>
                     <p className="text-xs text-muted-foreground">{cred.credential_schemas?.credential_type}</p>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-accent text-accent-foreground">active</span>
+                  <span className="badge-solid bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-400">active</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" className="gap-1" onClick={() => onShowQR(createPresentation(cred), cred.credential_schemas?.name || "Credential")}>
