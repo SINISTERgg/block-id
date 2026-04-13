@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Fingerprint, ArrowLeft, KeyRound, Shield, User, Building2,
-  Lock, Globe, CheckCircle2, Eye, EyeOff
+  Lock, Globe, CheckCircle2, Eye, EyeOff, Home
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,9 +131,14 @@ const Auth = () => {
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
         <div className="absolute top-4 left-6">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-muted-foreground">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Home
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={() => navigate("/")} className="border-border hover:border-primary hover:text-primary transition-colors">
+                <Home className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to Home</TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="lg:hidden flex items-center gap-2 mb-8">

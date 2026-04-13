@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,7 +26,7 @@ import ParticleBackground from "@/components/ui/ParticleBackground";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { Home, LogOut } from "lucide-react";
 
 interface StatCard {
   label: string;
@@ -171,9 +172,14 @@ const OrgManagement = () => {
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-3"
           >
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="shrink-0 rounded-xl">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" onClick={() => navigate("/")} className="border-border hover:border-primary hover:text-primary transition-colors">
+                  <Home className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back to Home</TooltipContent>
+            </Tooltip>
             <div className="flex items-center gap-2.5">
               {/* Gold crown icon */}
               <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/25 flex items-center justify-center">

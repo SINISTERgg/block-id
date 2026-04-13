@@ -1,11 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
-// https://vite.dev/config/
-// Upgraded to Vite 8 — uses Rolldown + Oxc (unified Rust-based bundler).
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
@@ -13,12 +10,10 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
-    // Vite 8: forward browser console logs to the terminal
     forwardConsole: mode === "development",
   },
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico"],

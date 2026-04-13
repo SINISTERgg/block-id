@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, ScrollText, Shield, Search, Filter, Download } from "lucide-react";
+import { Home, ScrollText, Shield, Search, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,9 +132,14 @@ const AuditLog = () => {
 
       <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
         <div className="container mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-xl">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={() => navigate("/")} className="border-border hover:border-primary hover:text-primary transition-colors">
+                <Home className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to Home</TooltipContent>
+          </Tooltip>
           <div className="relative">
             <ScrollText className="h-5 w-5 text-primary" />
             <div className="absolute -inset-1 bg-primary/20 rounded-full blur-md -z-10 animate-glow-pulse" />
