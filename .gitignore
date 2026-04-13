@@ -53,3 +53,7 @@ test
 test/*
 
 implementation plans phase2/
+
+
+.stitch/*
+.vscode/*
