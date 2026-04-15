@@ -23,6 +23,7 @@ interface PresentViewProps {
   onShowQR: (value: string, title: string) => void;
   onCopy: (text: string) => void;
   onShareCred: (id: string, name: string, fields: string[]) => void;
+  isWalletConnected: boolean;
 }
 
 function timeAgo(dateStr: string): string {
@@ -36,7 +37,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: PresentViewProps) => {
+const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred, isWalletConnected }: PresentViewProps) => {
   const { toast } = useToast();
   const activeCredentials = credentials.filter((c) => c.status === "active");
 
@@ -174,6 +175,10 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred }: 
           {loadingRequests ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading requests…
+            </div>
+          ) : !holderDid && !isWalletConnected ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+              Connect your wallet and generate a DID to receive verification requests.
             </div>
           ) : !holderDid ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">

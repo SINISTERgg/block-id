@@ -26,6 +26,7 @@ interface WalletViewProps {
   holderName: string | undefined;
   onGenerateDid: () => void;
   securityScore: number;
+  isWalletConnected: boolean;
 }
 
 const STATUS_FILTER_OPTIONS: { label: string; value: StatusFilter }[] = [
@@ -50,6 +51,7 @@ const WalletView = ({
   holderName,
   onGenerateDid,
   securityScore,
+  isWalletConnected,
 }: WalletViewProps) => {
   const activeCount = credentials.filter((c) => c.status === "active").length;
   const revokedCount = credentials.filter((c) => c.status === "revoked").length;
@@ -223,10 +225,14 @@ const WalletView = ({
                         <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                       </button>
                     </div>
-                  ) : (
+                  ) : isWalletConnected ? (
                     <Button variant="default" size="sm" onClick={onGenerateDid} className="btn-primary">
                       Generate DID
                     </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-lg">
+                      Connect your wallet to generate a DID
+                    </p>
                   )}
                 </div>
               </div>

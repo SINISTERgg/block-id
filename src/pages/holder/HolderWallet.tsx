@@ -9,6 +9,7 @@ import ShareCredentialDialog from "@/components/ShareCredentialDialog";
 import Web3WalletCard from "@/components/Web3WalletCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useWeb3Wallet } from "@/hooks/useWeb3Wallet";
 import { useCredentialNotifications } from "@/hooks/useCredentialNotifications";
 import {
   fetchHolderCredentials,
@@ -41,6 +42,7 @@ const HolderWallet = () => {
 
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const { walletAddress } = useWeb3Wallet(user?.id);
   useCredentialNotifications();
 
   const loadCredentials = async () => {
@@ -62,6 +64,10 @@ const HolderWallet = () => {
   }, [user]);
 
   const handleGenerateDid = async () => {
+    if (!walletAddress) {
+      toast({ title: "Wallet Required", description: "Please connect your wallet first to generate a DID.", variant: "destructive" });
+      return;
+    }
     if (!user || profile?.did) return;
     try {
       const did = await generateDidService(user.id);
@@ -112,6 +118,7 @@ const HolderWallet = () => {
                   holderName={profile?.full_name ?? undefined}
                   onGenerateDid={handleGenerateDid}
                   securityScore={securityScore}
+                  isWalletConnected={!!walletAddress}
                 />
                 {/* Web3 card stays in wallet view shell */}
                 <Web3WalletCard userId={user?.id} />
@@ -124,6 +131,7 @@ const HolderWallet = () => {
                 onShowQR={showQR}
                 onCopy={copyToClipboard}
                 onShareCred={handleShareCred}
+                isWalletConnected={!!walletAddress}
               />
             )}
           </>
