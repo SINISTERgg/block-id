@@ -14,14 +14,15 @@ dist-ssr
 
 # Editor directories and files
 .vscode/*
-!.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw
+.stitch/designs/DESIGN.md
 
 # Environment
 .env
