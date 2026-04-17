@@ -10,7 +10,6 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
-    forwardConsole: mode === "development",
   },
   plugins: [
     react(),
@@ -55,11 +54,8 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    // Vite 8: built-in tsconfig path alias support
-    tsconfigPaths: true,
   },
   build: {
-    // Vite 8 / Rolldown: target modern browsers for smaller output
     target: "es2020",
   },
 }));
