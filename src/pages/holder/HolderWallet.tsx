@@ -42,7 +42,9 @@ const HolderWallet = () => {
 
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
-  const { walletAddress } = useWeb3Wallet(user?.id);
+  const { walletAddress, isAutoGeneratingDid } = useWeb3Wallet(user?.id, {
+    onConnected: refreshProfile,
+  });
   useCredentialNotifications();
 
   const loadCredentials = async () => {
@@ -64,11 +66,7 @@ const HolderWallet = () => {
   }, [user]);
 
   const handleGenerateDid = async () => {
-    if (!walletAddress) {
-      toast({ title: "Wallet Required", description: "Please connect your wallet first to generate a DID.", variant: "destructive" });
-      return;
-    }
-    if (!user || profile?.did) return;
+    if (!walletAddress || !user || profile?.did) return;
     try {
       const did = await generateDidService(user.id);
       toast({ title: "DID Generated", description: did });
@@ -121,7 +119,7 @@ const HolderWallet = () => {
                   isWalletConnected={!!walletAddress}
                 />
                 {/* Web3 card stays in wallet view shell */}
-                <Web3WalletCard userId={user?.id} />
+                <Web3WalletCard userId={user?.id} onConnected={refreshProfile} />
               </>
             )}
             {currentView === "present" && (

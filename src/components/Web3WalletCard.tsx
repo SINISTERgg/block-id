@@ -6,19 +6,21 @@ import { AMOY_EXPLORER } from "@/services/blockchain/config";
 
 interface Web3WalletCardProps {
   userId: string | undefined;
+  onConnected?: () => void;
 }
 
-const Web3WalletCard = ({ userId }: Web3WalletCardProps) => {
+const Web3WalletCard = ({ userId, onConnected }: Web3WalletCardProps) => {
   const {
     walletAddress,
     isConnecting,
     isMetaMaskInstalled,
     isPolygonNetwork,
+    isAutoGeneratingDid,
     connectWallet,
     disconnectWallet,
     signMessage,
     switchToPolygon,
-  } = useWeb3Wallet(userId);
+  } = useWeb3Wallet(userId, { onConnected });
 
   const handleTestSign = async () => {
     const sig = await signMessage("DecentraID identity verification");
@@ -95,9 +97,9 @@ const Web3WalletCard = ({ userId }: Web3WalletCardProps) => {
               size="sm"
               className="w-full"
               onClick={connectWallet}
-              disabled={isConnecting}
+              disabled={isConnecting || isAutoGeneratingDid}
             >
-              {isConnecting ? "Connecting..." : "Connect Wallet"}
+              {isConnecting ? "Connecting..." : isAutoGeneratingDid ? "Generating DID..." : "Connect Wallet"}
             </Button>
           </div>
         )}

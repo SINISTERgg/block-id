@@ -152,7 +152,7 @@ const IssueView = ({
               <Input 
                 value={holderDid} 
                 onChange={(e) => setHolderDid(e.target.value)} 
-                placeholder="did:decentraid:..." 
+                placeholder="did:ethr:sepolia:0x..." 
                 className="input-solid"
               />
             </div>

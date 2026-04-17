@@ -226,12 +226,13 @@ const WalletView = ({
                       </button>
                     </div>
                   ) : isWalletConnected ? (
-                    <Button variant="default" size="sm" onClick={onGenerateDid} className="btn-primary">
-                      Generate DID
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-holder border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-muted-foreground">Generating your DID from wallet…</p>
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-lg">
-                      Connect your wallet to generate a DID
+                      Connect your wallet below to generate your Decentralized Identifier
                     </p>
                   )}
                 </div>

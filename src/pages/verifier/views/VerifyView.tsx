@@ -342,7 +342,7 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
               <Input 
                 value={requestDid} 
                 onChange={(e) => setRequestDid(e.target.value)} 
-                placeholder="did:decentraid:..." 
+                placeholder="did:ethr:sepolia:0x..." 
                 className="input-solid"
               />
             </div>

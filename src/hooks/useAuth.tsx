@@ -56,19 +56,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        setTimeout(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
           fetchProfileAndRole(session.user.id);
-        }, 0);
-      } else {
-        setProfile(null);
-        setRole(null);
-        setProfileLoading(false);
+        } else {
+          setProfile(null);
+          setRole(null);
+          setProfileLoading(false);
+        }
+        setLoading(false);
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        setSession(session);
+        setUser(session.user);
       }
-      setLoading(false);
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
