@@ -9,6 +9,7 @@ interface AuthContextType {
   profileLoading: boolean;
   profile: { full_name: string; organization: string; did: string | null; biometric_registered: boolean; face_registered: boolean } | null;
   role: string | null;
+  accountStatus: string | null;
   signUp: (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier" | "org_admin") => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -98,10 +99,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       },
     });
     if (error) return { error: error.message };
-    // Update profile with organization (may fail if not yet authenticated, that's ok - trigger handles core data)
-    if (data.user && data.session) {
-      await supabase.from("profiles").update({ organization, full_name: fullName }).eq("user_id", data.user.id);
+    
+    // Check if email confirmation is required
+    if (!data.session) {
+      // Email confirmation may be required - trigger still creates profile and role
+      if (data.user) {
+        const needsApproval = role === "issuer" || role === "verifier";
+        // Trigger handles profile creation, but we can still update here if session exists later
+        // The user will need to confirm email to complete signup
+        return { error: "_confirmation_required" };
+      }
+      return { error: "Signup failed. Please try again." };
     }
+    
+    // Email confirmed - update profile and insert role
+    const needsApproval = role === "issuer" || role === "verifier";
+    await supabase.from("profiles").update({ 
+      organization, 
+      full_name: fullName,
+      account_status: needsApproval ? "pending" : "approved"
+    }).eq("user_id", data.user.id);
+    
+    await supabase.from("user_roles").insert({
+      user_id: data.user.id,
+      role: role,
+    });
+    
     return { error: null };
   };
 

@@ -82,7 +82,11 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     const { error } = await signUp(email, password, fullName, organization, role);
-    if (error) {
+    if (error === "_confirmation_required") {
+      // Email confirmation required - this is expected, show success message
+      toast({ title: "Check your email", description: "A confirmation link has been sent. Click it to complete signup.", variant: "default" });
+      setView("check-email");
+    } else if (error) {
       toast({ title: "Sign up failed", description: error, variant: "destructive" });
     } else {
       setView("check-email");

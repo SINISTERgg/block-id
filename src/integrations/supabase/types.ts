@@ -360,6 +360,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_status: string
           biometric_registered: boolean | null
           created_at: string
           did: string | null
@@ -372,6 +373,7 @@ export type Database = {
           wallet_address: string | null
         }
         Insert: {
+          account_status?: string
           biometric_registered?: boolean | null
           created_at?: string
           did?: string | null
@@ -384,6 +386,7 @@ export type Database = {
           wallet_address?: string | null
         }
         Update: {
+          account_status?: string | null
           biometric_registered?: boolean | null
           created_at?: string
           did?: string | null
@@ -570,7 +573,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "issuer" | "holder" | "verifier"
+      app_role: "issuer" | "holder" | "verifier" | "org_admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -698,7 +701,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["issuer", "holder", "verifier"],
+      app_role: ["issuer", "holder", "verifier", "org_admin"],
     },
   },
 } as const
