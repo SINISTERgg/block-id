@@ -49,15 +49,24 @@ const Auth = () => {
   const [role, setRole] = useState<"issuer" | "holder" | "verifier">("holder");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { signIn, signUp, user, role: userRole } = useAuth();
+  const { signIn, signUp, user, role: userRole, accountStatus } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (user && userRole) {
+      // Issuers & verifiers: check approval status before granting portal access
+      if ((userRole === "issuer" || userRole === "verifier") && accountStatus !== "approved") {
+        if (accountStatus === "rejected") {
+          navigate("/account-rejected", { replace: true });
+        } else {
+          navigate("/pending-approval", { replace: true });
+        }
+        return;
+      }
       navigate(`/${userRole}`, { replace: true });
     }
-  }, [user, userRole, navigate]);
+  }, [user, userRole, accountStatus, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

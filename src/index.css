@@ -358,3 +358,54 @@ html {
   height: 1px;
   background: linear-gradient(to right, transparent, hsl(var(--border)), transparent);
 }
+
+/* Stat cards with colored top accent strip */
+.stat-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--stat-accent, hsl(var(--primary)));
+}
+
+.stat-card:hover {
+  box-shadow: 0 4px 16px hsl(30 10% 12% / 0.08);
+}
+
+/* Glass header */
+.glass-header {
+  background: hsl(var(--card) / 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* Mesh gradient background */
+.mesh-gradient {
+  background: radial-gradient(ellipse at 20% 50%, hsl(var(--primary) / 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 20%, hsl(24 85% 55% / 0.03) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 80%, hsl(270 60% 55% / 0.03) 0%, transparent 50%);
+}
+
+/* Slow ping animation for pending indicators */
+@keyframes ping-slow {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
