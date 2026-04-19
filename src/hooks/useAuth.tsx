@@ -25,14 +25,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [accountStatus, setAccountStatus] = useState<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from("profiles")
-      .select("full_name, organization, did, biometric_registered, face_registered")
+      .select("full_name, organization, did, biometric_registered, face_registered, account_status")
       .eq("user_id", userId)
       .single();
-    if (data) setProfile(data);
+    if (data) {
+      setProfile(data);
+      setAccountStatus((data as any).account_status ?? null);
+    }
   };
 
   const fetchRole = async (userId: string) => {
@@ -144,7 +148,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, profileLoading, profile, role, signUp, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, loading, profileLoading, profile, role, accountStatus, signUp, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

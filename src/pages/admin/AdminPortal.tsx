@@ -28,10 +28,26 @@ interface PendingUser {
   email: string;
 }
 
-// ── Admin credentials (for standalone portal) ────────────────────
+// ── Admin credentials (standalone portal — not Supabase Auth) ────
 
 const ADMIN_EMAIL = "admin@blockid.dev";
 const ADMIN_PASSWORD = "BlockID@Admin2024";
+const ADMIN_SECRET = "blockid-admin-secret-2024";
+
+const callAdminAPI = async (path: string, options: RequestInit = {}) => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const resp = await fetch(`${supabaseUrl}/functions/v1/admin-users${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-key": ADMIN_SECRET,
+      ...(options.headers || {}),
+    },
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || "API request failed");
+  return data;
+};
 
 // ── Status config ────────────────────────────────────────────────
 
@@ -87,22 +103,13 @@ const AdminPortal = () => {
 
   // Check session on mount
   useEffect(() => {
-    const checkSession = async () => {
-      const stored = sessionStorage.getItem("blockid_admin_session");
-      if (stored === "authenticated") {
-        // Verify Supabase session is still valid
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setIsAuthenticated(true);
-        } else {
-          sessionStorage.removeItem("blockid_admin_session");
-        }
-      }
-    };
-    checkSession();
+    const stored = sessionStorage.getItem("blockid_admin_session");
+    if (stored === "authenticated") {
+      setIsAuthenticated(true);
+    }
   }, []);
 
-  // ── Auth ──────────────────────────────────────────────────────
+  // ── Auth (local credentials — no Supabase Auth dependency) ────
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,79 +117,42 @@ const AdminPortal = () => {
     setLoginError("");
 
     try {
-      // Sign in via Supabase Auth so we get a real session for RLS
-      const { error } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password: loginPassword,
-      });
-
-      if (error) {
+      // Local credential check
+      if (loginEmail !== ADMIN_EMAIL || loginPassword !== ADMIN_PASSWORD) {
         setLoginError("Invalid admin credentials");
         return;
       }
 
+      // Verify the admin secret works by doing a test fetch
+      await callAdminAPI("?action=list", { method: "GET" });
+
       sessionStorage.setItem("blockid_admin_session", "authenticated");
       setIsAuthenticated(true);
-    } catch {
-      setLoginError("Login failed. Please try again.");
+    } catch (err) {
+      console.error("Admin login error:", err);
+      setLoginError("Login failed. Could not connect to admin API.");
     } finally {
       setLoginLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
     sessionStorage.removeItem("blockid_admin_session");
     setIsAuthenticated(false);
     setLoginEmail("");
     setLoginPassword("");
   };
 
-  // ── Fetch users ───────────────────────────────────────────────
+  // ── Fetch users (via edge function to bypass RLS) ─────────────
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      // Get all profiles
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, organization, account_status, created_at")
-        .order("created_at", { ascending: false }) as any;
-
-      if (!profiles) { setUsers([]); return; }
-
-      // Get their roles
-      const userIds = profiles.map((p: any) => p.user_id);
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("user_id, role")
-        .in("user_id", userIds) as any;
-
-      if (!roles) { setUsers([]); return; }
-
-      // Build role map
-      const roleMap: Record<string, string> = {};
-      roles.forEach((r: any) => { roleMap[r.user_id] = r.role; });
-
-      // Only show issuers and verifiers (they're the gated ones)
-      const gatedUsers: PendingUser[] = profiles
-        .filter((p: any) => {
-          const role = roleMap[p.user_id];
-          return role === "issuer" || role === "verifier";
-        })
-        .map((p: any) => ({
-          user_id: p.user_id,
-          full_name: p.full_name,
-          organization: p.organization,
-          account_status: p.account_status ?? "pending",
-          created_at: p.created_at,
-          role: roleMap[p.user_id],
-          email: "", // Will be filled below
-        }));
-
-      // Try to get emails from auth.users via profiles (Supabase doesn't expose auth.users from client)
-      // We'll show user_id as fallback since we can't query auth.users from the browser
-      setUsers(gatedUsers);
+      const result = await callAdminAPI("?action=list", { method: "GET" });
+      setUsers(result.users || []);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+      setUsers([]);
     } finally {
       setLoadingUsers(false);
     }
@@ -200,25 +170,13 @@ const AdminPortal = () => {
 
     const newStatus = pendingAction.type === "approve" ? "approved" : "rejected";
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ account_status: newStatus } as any)
-        .eq("user_id", pendingAction.user.user_id);
-
-      if (error) throw error;
-
-      // Log to audit
-      await supabase.from("audit_logs").insert({
-        user_id: pendingAction.user.user_id,
-        action: pendingAction.type === "approve" ? "account_approved" : "account_rejected",
-        entity_type: "profile",
-        entity_id: pendingAction.user.user_id,
-        metadata: {
-          admin: ADMIN_EMAIL,
-          full_name: pendingAction.user.full_name,
-          role: pendingAction.user.role,
-        },
-      } as any);
+      await callAdminAPI("", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: pendingAction.user.user_id,
+          new_status: newStatus,
+        }),
+      });
 
       await fetchUsers();
     } catch (err) {

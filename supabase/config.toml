@@ -1,4 +1,4 @@
-project_id = "tzyjfndwmhakjumpivzh"
+project_id = "gqsiirtclckqnftcglaq"
 
 [functions.issue-credential]
 verify_jwt = false
@@ -13,4 +13,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.oid4vp]
+verify_jwt = false
+
+[functions.anchor-credential]
+verify_jwt = false
+
+[functions.anchor-credential-server]
+verify_jwt = false
+
+[functions.admin-users]
 verify_jwt = false
