@@ -68,13 +68,16 @@ const features = [
   },
 ];
 
+// Map role to route path — org_admin needs special handling
+const getRolePath = (r: string) => r === "org_admin" ? "/admin" : `/${r}`;
+
 const Landing = () => {
   const navigate = useNavigate();
   const { user, role, profile, signOut, loading } = useAuth();
 
   useEffect(() => {
     if (!loading && user && role) {
-      navigate(`/${role}`, { replace: true });
+      navigate(getRolePath(role), { replace: true });
     }
   }, [loading, user, role, navigate]);
 
@@ -127,7 +130,7 @@ const Landing = () => {
               </p>
 
               <div className="flex flex-wrap gap-4">
-                <Button size="lg" onClick={() => navigate(user ? `/${role || "holder"}` : "/auth")} className="btn-primary">
+                <Button size="lg" onClick={() => navigate(user ? getRolePath(role || "holder") : "/auth")} className="btn-primary">
                   Get Started <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
                 <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}>
@@ -226,7 +229,7 @@ const Landing = () => {
             <p className="text-muted-foreground mb-8">
               Join the ecosystem — issue your first credential, store it in your wallet, or verify one in seconds.
             </p>
-            <Button size="lg" onClick={() => navigate(user ? `/${role || "holder"}` : "/auth")} className="btn-primary">
+            <Button size="lg" onClick={() => navigate(user ? getRolePath(role || "holder") : "/auth")} className="btn-primary">
               {user ? "Go to Dashboard" : "Create Account"} <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>

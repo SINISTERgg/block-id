@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +15,15 @@ interface SchemasViewProps {
   onCreate: (name: string, type: string, fields: SchemaFieldDef[]) => Promise<void>;
   onNewVersion: (base: IssuerSchema, name: string, type: string, fields: SchemaFieldDef[]) => Promise<void>;
   onMigrate: (target: IssuerSchema) => Promise<void>;
+  onDelete: (schema: IssuerSchema) => Promise<void>;
 }
 
-const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate }: SchemasViewProps) => {
+const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, onDelete }: SchemasViewProps) => {
   const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
   const [versioningSchema, setVersioningSchema] = useState<IssuerSchema | null>(null);
   const [migrationSchema, setMigrationSchema] = useState<IssuerSchema | null>(null);
   const [migrating, setMigrating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // New schema form state
   const [schemaName, setSchemaName] = useState("");
@@ -56,6 +58,16 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate }
     await onMigrate(migrationSchema);
     setMigrating(false);
     setMigrationSchema(null);
+  };
+
+  const handleDelete = async (schema: IssuerSchema) => {
+    if (!confirm(`Delete schema "${schema.name}"? This cannot be undone.`)) return;
+    setDeletingId(schema.id);
+    try {
+      await onDelete(schema);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // Schema lineage helpers
@@ -131,6 +143,17 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate }
                     )}
                   </div>
                 )}
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 flex-1 text-red-500 hover:text-red-500 hover:bg-red-50"
+                    onClick={() => handleDelete(s)}
+                    disabled={deletingId === s.id}
+                  >
+                    <Trash2 className="h-3 w-3" /> {deletingId === s.id ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

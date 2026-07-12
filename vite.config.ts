@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => ({
       manifest: {
         name: "DecentraID - Decentralized Identity Platform",
         short_name: "DecentraID",
-        description: "W3C Verifiable Credentials & DID management on Polygon",
+        description: "W3C Verifiable Credentials & DID management on Ethereum Sepolia",
         theme_color: "#0f172a",
         background_color: "#0f172a",
         display: "standalone",

@@ -46,11 +46,14 @@ async function issueOne(
   issuerSignature: string | null,
   signerAddress: string | null
 ) {
+  console.log("issueOne called with:", { userId, schemaId: schema.id, holderDid });
+
   const { data: holderProfile } = await supabase
     .from("profiles")
     .select("user_id")
     .eq("did", holderDid)
     .single();
+  console.log("holderProfile:", holderProfile);
 
   // ── Fix: prev_hash race condition ────────────────────────────────────────────
   // Use a millisecond-precision timestamp salt appended to the canonical JSON
@@ -129,13 +132,17 @@ async function issueOne(
     insertData.expires_at = expiresAt;
   }
 
+  console.log("Inserting credential with data:", JSON.stringify(insertData));
   const { data: credential, error: insertError } = await supabase
     .from("credentials")
     .insert(insertData)
     .select()
     .single();
 
-  if (insertError) throw insertError;
+  if (insertError) {
+    console.error("Insert error:", insertError);
+    throw new Error("DB insert failed: " + JSON.stringify(insertError));
+  }
 
   await logAudit(supabase, userId, "credential_issued", "credential", credential.id, {
     holder_did: holderDid,
@@ -207,14 +214,19 @@ serve(async (req) => {
     }
 
     // Single issuance
-    const credential = await issueOne(supabase, user.id, schema, holder_did, credential_data || {}, expires_at || null, issuer_signature || null, signer_address || null);
-
-    return new Response(JSON.stringify({ credential }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    try {
+      const credential = await issueOne(supabase, user.id, schema, holder_did, credential_data || {}, expires_at || null, issuer_signature || null, signer_address || null);
+      return new Response(JSON.stringify({ credential }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (issueError) {
+      console.error("issueOne error:", issueError);
+      throw new Error("Failed to issue: " + (issueError instanceof Error ? issueError.message : String(issueError)));
+    }
   } catch (e) {
     console.error("issue-credential error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: errorMsg, details: errorMsg }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

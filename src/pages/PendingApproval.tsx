@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from "framer-motion";
 
+const getRolePath = (r: string) => r === "org_admin" ? "/admin" : `/${r}`;
+
 const PendingApproval = () => {
   const { user, role, accountStatus, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -28,7 +30,7 @@ const PendingApproval = () => {
   // Redirect if already approved
   useEffect(() => {
     if (accountStatus === "approved" && role) {
-      navigate(`/${role}`, { replace: true });
+      navigate(getRolePath(role), { replace: true });
     }
     if (accountStatus === "rejected") {
       navigate("/account-rejected", { replace: true });

@@ -40,6 +40,8 @@ const brandFeatures = [
   { icon: Lock, text: "Decentralized identifier anchoring" },
 ];
 
+const getRolePath = (r: string) => r === "org_admin" ? "/admin" : `/${r}`;
+
 const Auth = () => {
   const [view, setView] = useState<AuthView>("login");
   const [email, setEmail] = useState("");
@@ -64,7 +66,7 @@ const Auth = () => {
         }
         return;
       }
-      navigate(`/${userRole}`, { replace: true });
+      navigate(getRolePath(userRole), { replace: true });
     }
   }, [user, userRole, accountStatus, navigate]);
 

@@ -16,6 +16,7 @@ import {
   createNewVersion,
   migrateCredentials,
   revokeCredential as revokeCredentialDb,
+  deleteSchema,
 } from "@/services/api/issuer.service";
 import type { IssuerSchema, IssuerCredential, SchemaFieldDef } from "@/services/api/issuer.service";
 import DashboardView from "./views/DashboardView";
@@ -108,6 +109,17 @@ const IssuerDashboard = () => {
     loadData();
   };
 
+  const handleDeleteSchema = async (schema: IssuerSchema) => {
+    if (!user) return;
+    try {
+      await deleteSchema(schema.id, user.id);
+      toast({ title: "Schema deleted" });
+      loadData();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
   // ── Issue credential ───────────────────────────────────────────────
   const handleIssue = async ({ schemaId, holderDid, credentialData, expiresAt, signWithWallet }: {
     schemaId: string; holderDid: string; credentialData: Record<string, any>; expiresAt: string; signWithWallet: boolean;
@@ -127,6 +139,11 @@ const IssuerDashboard = () => {
       const { data: session } = await supabase.auth.getSession();
       const authBearer = `Bearer ${session?.session?.access_token}`;
 
+      if (!authBearer || authBearer === 'Bearer undefined') {
+        toast({ title: "Error", description: "Not authenticated. Please sign in again.", variant: "destructive" });
+        return;
+      }
+
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/issue-credential`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authBearer },
@@ -139,12 +156,32 @@ const IssuerDashboard = () => {
           signer_address: signerAddr,
         }),
       });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = errorText;
+        try { 
+          const errObj = JSON.parse(errorText);
+          errorMsg = errObj.error || errObj.details || errorText;
+        } catch {}
+        console.error("Issue credential error:", res.status, errorMsg);
+        toast({ title: "Error", description: `Failed (${res.status}): ${errorMsg}`, variant: "destructive" });
+        return;
+      }
+      
       const result = await res.json();
       if (result.error) { toast({ title: "Error", description: result.error, variant: "destructive" }); return; }
 
       const credData = result.credential;
-      const credHash = credData?.credential_hash;
+const credHash = credData?.credential_hash;
       if (!credHash) { toast({ title: "Error", description: "Failed to get credential hash", variant: "destructive" }); return; }
+
+      // Skip on-chain anchoring if contract not deployed
+      if (!walletAddress || !isContractReady) {
+        toast({ title: "Credential issued (off-chain)", description: "No wallet or contract - credential created without on-chain anchor." });
+        loadData();
+        return;
+      }
 
       if (walletAddress && isContractReady) {
         // ── Browser wallet anchoring (MetaMask) ─────────────────────────────
@@ -246,6 +283,7 @@ const IssuerDashboard = () => {
                 onCreate={handleCreateSchema}
                 onNewVersion={handleNewVersion}
                 onMigrate={handleMigrate}
+                onDelete={handleDeleteSchema}
               />
             )}
             {currentView === "issue" && (

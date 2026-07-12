@@ -3,18 +3,26 @@ import {
   Fingerprint, LogOut, Shield, Users, CheckCircle2, XCircle,
   Clock, Search, ThumbsUp, ThumbsDown, Eye, EyeOff,
   Lock, Building2, RefreshCw, ListFilter, ChevronRight, Activity,
+  Home, Crown, RotateCcw, Mail, Download, ScrollText,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -28,19 +36,36 @@ interface PendingUser {
   email: string;
 }
 
-// ── Admin credentials (standalone portal — not Supabase Auth) ────
+interface AuditEntry {
+  id: string;
+  user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: any;
+  created_at: string;
+}
 
-const ADMIN_EMAIL = "admin@blockid.dev";
-const ADMIN_PASSWORD = "BlockID@Admin2024";
-const ADMIN_SECRET = "blockid-admin-secret-2024";
+const ADMIN_ACTION_LABELS: Record<string, { label: string; color: string }> = {
+  account_approved: { label: "Approved", color: "bg-emerald-500/10 text-emerald-600" },
+  account_rejected: { label: "Rejected", color: "bg-red-500/10 text-red-600" },
+  account_reinstated: { label: "Reinstated", color: "bg-amber-500/10 text-amber-600" },
+  admin_access_denied: { label: "Access Denied", color: "bg-red-500/10 text-red-600" },
+};
+
+const ITEMS_PER_PAGE = 15;
+
+// ── Admin API helper (uses Supabase JWT — no separate secret needed) ────
 
 const callAdminAPI = async (path: string, options: RequestInit = {}) => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || "";
   const resp = await fetch(`${supabaseUrl}/functions/v1/admin-users${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": ADMIN_SECRET,
+      "Authorization": `Bearer ${token}`,
       ...(options.headers || {}),
     },
   });
@@ -82,14 +107,13 @@ const STATUS_CONFIG: Record<string, {
 };
 
 // ── Component ────────────────────────────────────────────────────
+// NOTE: Route is now protected by <ProtectedRoute requiredRole="org_admin">
+// so we no longer need an inline login screen or sessionStorage auth.
 
 const AdminPortal = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
+  const { user, profile, role, signOut } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -97,51 +121,12 @@ const AdminPortal = () => {
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [pendingAction, setPendingAction] = useState<{
     user: PendingUser;
-    type: "approve" | "reject";
+    type: "approve" | "reject" | "reinstate";
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // Check session on mount
-  useEffect(() => {
-    const stored = sessionStorage.getItem("blockid_admin_session");
-    if (stored === "authenticated") {
-      setIsAuthenticated(true);
-    }
-  }, []);
-
-  // ── Auth (local credentials — no Supabase Auth dependency) ────
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError("");
-
-    try {
-      // Local credential check
-      if (loginEmail !== ADMIN_EMAIL || loginPassword !== ADMIN_PASSWORD) {
-        setLoginError("Invalid admin credentials");
-        return;
-      }
-
-      // Verify the admin secret works by doing a test fetch
-      await callAdminAPI("?action=list", { method: "GET" });
-
-      sessionStorage.setItem("blockid_admin_session", "authenticated");
-      setIsAuthenticated(true);
-    } catch (err) {
-      console.error("Admin login error:", err);
-      setLoginError("Login failed. Could not connect to admin API.");
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem("blockid_admin_session");
-    setIsAuthenticated(false);
-    setLoginEmail("");
-    setLoginPassword("");
-  };
+  const [page, setPage] = useState(1);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // ── Fetch users (via edge function to bypass RLS) ─────────────
 
@@ -152,15 +137,77 @@ const AdminPortal = () => {
       setUsers(result.users || []);
     } catch (err) {
       console.error("Failed to fetch users:", err);
+      toast({
+        title: "Failed to load users",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
       setUsers([]);
     } finally {
       setLoadingUsers(false);
     }
+  }, [toast]);
+
+  // ── Fetch audit logs (#11) ──────────────────────────────────────
+
+  const fetchAuditLogs = useCallback(async () => {
+    setLoadingAudit(true);
+    try {
+      const { data } = await supabase
+        .from("audit_logs")
+        .select("*")
+        .in("action", ["account_approved", "account_rejected", "account_reinstated", "admin_access_denied"])
+        .order("created_at", { ascending: false })
+        .limit(50);
+      setAuditLogs((data as AuditEntry[]) || []);
+    } catch {
+      setAuditLogs([]);
+    } finally {
+      setLoadingAudit(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) fetchUsers();
-  }, [isAuthenticated, fetchUsers]);
+    fetchUsers();
+    fetchAuditLogs();
+  }, [fetchUsers, fetchAuditLogs]);
+
+  // ── Real-time subscription (#15) ────────────────────────────────
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-profiles-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchUsers]);
+
+  // ── CSV Export (#20) ────────────────────────────────────────────
+
+  const exportUsersCSV = () => {
+    if (filtered.length === 0) return;
+    const headers = ["Name", "Email", "Organization", "Role", "Status", "Registered"];
+    const rows = filtered.map((u) => [
+      u.full_name,
+      u.email,
+      u.organization || "",
+      u.role,
+      u.account_status,
+      new Date(u.created_at).toISOString(),
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `blockid-users-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV exported", description: `${filtered.length} user records exported.` });
+  };
 
   // ── Actions ───────────────────────────────────────────────────
 
@@ -168,7 +215,9 @@ const AdminPortal = () => {
     if (!pendingAction) return;
     setActionLoading(true);
 
-    const newStatus = pendingAction.type === "approve" ? "approved" : "rejected";
+    const newStatus = pendingAction.type === "reject" ? "rejected" : "approved";
+    const actionLabel = pendingAction.type === "approve" ? "approved" : pendingAction.type === "reject" ? "rejected" : "reinstated";
+
     try {
       await callAdminAPI("", {
         method: "POST",
@@ -178,9 +227,19 @@ const AdminPortal = () => {
         }),
       });
 
+      toast({
+        title: `User ${actionLabel}`,
+        description: `${pendingAction.user.full_name} has been ${actionLabel} successfully.`,
+      });
+
       await fetchUsers();
     } catch (err) {
       console.error("Action failed:", err);
+      toast({
+        title: "Action failed",
+        description: err instanceof Error ? err.message : "Could not update user status.",
+        variant: "destructive",
+      });
     } finally {
       setActionLoading(false);
       setPendingAction(null);
@@ -190,10 +249,12 @@ const AdminPortal = () => {
   // ── Derived data ──────────────────────────────────────────────
 
   const filtered = users.filter((u) => {
-    const matchesSearch = search.trim()
-      ? u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-        u.organization?.toLowerCase().includes(search.toLowerCase()) ||
-        u.user_id.toLowerCase().includes(search.toLowerCase())
+    const q = search.trim().toLowerCase();
+    const matchesSearch = q
+      ? u.full_name.toLowerCase().includes(q) ||
+        u.organization?.toLowerCase().includes(q) ||
+        u.user_id.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
       : true;
     const matchesFilter = filter === "all" || u.account_status === filter;
     return matchesSearch && matchesFilter;
@@ -205,112 +266,20 @@ const AdminPortal = () => {
   const issuerCount = users.filter((u) => u.role === "issuer").length;
   const verifierCount = users.filter((u) => u.role === "verifier").length;
 
-  // ──────────────────────────────────────────────────────────────
-  // LOGIN SCREEN
-  // ──────────────────────────────────────────────────────────────
+  // Pagination (#14)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedUsers = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center relative overflow-hidden px-6">
-        <div className="absolute inset-0 pattern-dots opacity-30" />
-        <div className="absolute top-1/3 -left-48 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 -right-48 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
+  // Reset page when filter/search changes
+  useEffect(() => { setPage(1); }, [filter, search]);
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="relative z-10 w-full max-w-sm"
-        >
-          {/* Brand */}
-          <div className="flex items-center justify-center gap-2 mb-10">
-            <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
-              <Fingerprint className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-display text-xl font-bold tracking-tight">BlockID</span>
-          </div>
-
-          <Card className="solid-card">
-            <CardHeader className="pb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/25 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <Shield className="h-7 w-7 text-amber-500" />
-              </div>
-              <CardTitle className="font-display text-xl text-center">Admin Portal</CardTitle>
-              <CardDescription className="text-center">
-                Sign in with your administrator credentials
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="admin-email">Admin Email</Label>
-                  <Input
-                    id="admin-email"
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    required
-                    placeholder="admin@blockid.dev"
-                    className="input-solid h-11"
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="admin-password">Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="admin-password"
-                      type={showPassword ? "text" : "password"}
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      required
-                      placeholder="••••••••"
-                      className="input-solid h-11 pr-10"
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {loginError && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-center"
-                  >
-                    {loginError}
-                  </motion.div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full btn-primary h-11"
-                  disabled={loginLoading}
-                >
-                  {loginLoading ? "Signing in..." : "Sign In as Admin"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <p className="mt-6 text-xs text-muted-foreground/60 flex items-center justify-center gap-2">
-            <Lock className="h-3 w-3" />
-            BlockID Admin Portal · Authorized access only
-          </p>
-        </motion.div>
-      </div>
-    );
-  }
+  // Initials avatar helper
+  const initials = profile?.full_name
+    ? profile.full_name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "SA";
 
   // ──────────────────────────────────────────────────────────────
-  // ADMIN DASHBOARD
+  // ADMIN DASHBOARD (the only view — login is handled by ProtectedRoute)
   // ──────────────────────────────────────────────────────────────
 
   return (
@@ -325,6 +294,21 @@ const AdminPortal = () => {
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-3"
           >
+            {/* Home button (#22) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => navigate("/")}
+                  className="border-border hover:border-primary hover:text-primary transition-colors rounded-xl"
+                >
+                  <Home className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back to Home</TooltipContent>
+            </Tooltip>
+
             <div className="flex items-center gap-2.5">
               <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/25 flex items-center justify-center">
                 <Shield className="h-4 w-4 text-amber-500" />
@@ -352,18 +336,26 @@ const AdminPortal = () => {
               Refresh
             </Button>
 
+            {/* Notification bell (#21) */}
+            <NotificationBell />
+
+            {/* Theme toggle (#17) */}
+            <ThemeToggle className="shrink-0 rounded-xl" />
+
             <div className="hidden sm:flex items-center gap-2.5 border-l border-border/50 pl-3">
               <div className="w-8 h-8 rounded-full bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-amber-600">SA</span>
+                <span className="text-xs font-bold text-amber-600">{initials}</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-xs font-medium text-foreground leading-none">Super Admin</span>
-                <span className="text-[10px] text-muted-foreground">{ADMIN_EMAIL}</span>
+                <span className="text-xs font-medium text-foreground leading-none">{profile?.full_name || "Admin"}</span>
+                <Badge variant="outline" className="mt-0.5 text-[10px] capitalize bg-amber-500/10 text-amber-600 border-amber-500/20 w-fit px-1.5 py-0 leading-4">
+                  <Crown className="h-2.5 w-2.5 mr-0.5" />{role}
+                </Badge>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={handleLogout}
+                onClick={() => signOut().then(() => navigate("/"))}
                 className="rounded-xl h-8 w-8"
               >
                 <LogOut className="h-3.5 w-3.5" />
@@ -385,7 +377,7 @@ const AdminPortal = () => {
           <div>
             <h1 className="font-display text-2xl font-bold text-foreground">Account Approvals</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Review and manage issuer & verifier registrations.
+              Review and manage issuer &amp; verifier registrations.
             </p>
           </div>
 
@@ -418,166 +410,297 @@ const AdminPortal = () => {
             ))}
           </div>
 
-          {/* Filter tabs + search */}
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <div className="flex gap-1.5">
-              {(["all", "pending", "approved", "rejected"] as const).map((f) => (
-                <Button
-                  key={f}
-                  variant={filter === f ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilter(f)}
-                  className={`rounded-xl capitalize text-xs h-8 px-3 ${
-                    filter === f ? "" : "text-muted-foreground"
-                  }`}
-                >
-                  {f === "pending" && pendingCount > 0 && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" />
-                  )}
-                  {f}
-                  {f === "all" ? ` (${users.length})` : f === "pending" ? ` (${pendingCount})` : f === "approved" ? ` (${approvedCount})` : ` (${rejectedCount})`}
-                </Button>
-              ))}
+          {/* Tabs: Users + Audit Log (#11) */}
+          <Tabs defaultValue="users" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <TabsList className="grid grid-cols-2 w-full sm:w-64">
+                <TabsTrigger value="users" className="gap-1.5">
+                  <Users className="h-3.5 w-3.5" /> Users
+                </TabsTrigger>
+                <TabsTrigger value="audit" className="gap-1.5">
+                  <ScrollText className="h-3.5 w-3.5" /> Activity Log
+                </TabsTrigger>
+              </TabsList>
+
+              {/* CSV Export (#20) */}
+              <Button variant="outline" size="sm" className="rounded-xl gap-1.5 hidden sm:flex" onClick={exportUsersCSV} disabled={filtered.length === 0}>
+                <Download className="h-3.5 w-3.5" /> Export CSV
+              </Button>
             </div>
 
-            <div className="relative flex-1 w-full sm:w-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, org, or ID..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 rounded-xl"
-              />
-            </div>
-          </div>
+            {/* ── Users Tab ─────────────────────────────── */}
+            <TabsContent value="users" className="space-y-4">
+              {/* Filter buttons + search */}
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["all", "pending", "approved", "rejected"] as const).map((f) => (
+                    <Button
+                      key={f}
+                      variant={filter === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setFilter(f)}
+                      className={`rounded-xl capitalize text-xs h-8 px-3 ${
+                        filter === f ? "" : "text-muted-foreground"
+                      }`}
+                    >
+                      {f === "pending" && pendingCount > 0 && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" />
+                      )}
+                      {f}
+                      {f === "all" ? ` (${users.length})` : f === "pending" ? ` (${pendingCount})` : f === "approved" ? ` (${approvedCount})` : ` (${rejectedCount})`}
+                    </Button>
+                  ))}
+                </div>
 
-          {/* User list */}
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="font-display text-lg flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  User Registrations
-                </CardTitle>
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <ListFilter className="h-3 w-3" /> {filtered.length} shown
-                </span>
+                <div className="relative flex-1 w-full sm:w-auto">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, email, org, or ID..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-10 rounded-xl"
+                  />
+                </div>
               </div>
-            </CardHeader>
 
-            <CardContent className="px-0 pb-0">
-              {loadingUsers ? (
-                <div className="py-16 text-center">
-                  <RefreshCw className="h-6 w-6 text-muted-foreground/40 mx-auto mb-3 animate-spin" />
-                  <p className="text-sm text-muted-foreground">Loading users...</p>
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="py-16 text-center">
-                  <Users className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">
-                    {filter === "pending" ? "No pending registrations 🎉" : "No users found."}
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/40">
-                  <AnimatePresence>
-                    {filtered.map((u, idx) => {
-                      const cfg = STATUS_CONFIG[u.account_status] || STATUS_CONFIG.pending;
-                      const StatusIcon = cfg.icon;
-                      const isPending = u.account_status === "pending";
-                      const isIssuer = u.role === "issuer";
+              {/* User list */}
+              <Card className="border-border/50 overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="font-display text-lg flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      User Registrations
+                    </CardTitle>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <ListFilter className="h-3 w-3" /> {filtered.length} total · Page {page}/{totalPages}
+                    </span>
+                  </div>
+                </CardHeader>
 
-                      return (
-                        <motion.div
-                          key={u.user_id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.03 }}
-                          className={`flex items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors border-l-2 ${cfg.rowBorder}`}
-                        >
-                          {/* Left — user info */}
-                          <div className="flex items-center gap-4 min-w-0">
-                            {/* Role avatar */}
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                              isIssuer ? "bg-blue-500/10" : "bg-purple-500/10"
-                            }`}>
-                              {isIssuer ? (
-                                <Shield className="h-5 w-5 text-blue-500" />
-                              ) : (
-                                <Building2 className="h-5 w-5 text-purple-500" />
-                              )}
-                            </div>
+                <CardContent className="px-0 pb-0">
+                  {loadingUsers ? (
+                    <div className="py-16 text-center">
+                      <RefreshCw className="h-6 w-6 text-muted-foreground/40 mx-auto mb-3 animate-spin" />
+                      <p className="text-sm text-muted-foreground">Loading users...</p>
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="py-16 text-center">
+                      <Users className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">
+                        {filter === "pending" ? "No pending registrations 🎉" : "No users found."}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="divide-y divide-border/40">
+                        <AnimatePresence>
+                          {paginatedUsers.map((u, idx) => {
+                            const cfg = STATUS_CONFIG[u.account_status] || STATUS_CONFIG.pending;
+                            const StatusIcon = cfg.icon;
+                            const isPending = u.account_status === "pending";
+                            const isRejected = u.account_status === "rejected";
+                            const isIssuer = u.role === "issuer";
 
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-foreground truncate">{u.full_name}</p>
-                              {u.organization && (
-                                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                  {u.organization}
+                            return (
+                              <motion.div
+                                key={u.user_id}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.03 }}
+                                className={`flex items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors border-l-2 ${cfg.rowBorder}`}
+                              >
+                                {/* Left — user info */}
+                                <div className="flex items-center gap-4 min-w-0">
+                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                    isIssuer ? "bg-blue-500/10" : "bg-purple-500/10"
+                                  }`}>
+                                    {isIssuer ? (
+                                      <Shield className="h-5 w-5 text-blue-500" />
+                                    ) : (
+                                      <Building2 className="h-5 w-5 text-purple-500" />
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground truncate">{u.full_name}</p>
+                                    {u.email && (
+                                      <p className="text-xs text-muted-foreground truncate mt-0.5 flex items-center gap-1">
+                                        <Mail className="h-3 w-3 shrink-0" />
+                                        {u.email}
+                                      </p>
+                                    )}
+                                    {u.organization && (
+                                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                        {u.organization}
+                                      </p>
+                                    )}
+                                    <p className="text-xs font-mono text-muted-foreground/60 truncate max-w-[200px] mt-0.5">
+                                      {u.user_id.substring(0, 8)}...
+                                    </p>
+                                    <p className="text-xs text-muted-foreground/50 mt-0.5">
+                                      Registered {new Date(u.created_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Right — badges + actions */}
+                                <div className="flex items-center gap-2 shrink-0 ml-4">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full capitalize border border-border/50 ${
+                                    isIssuer
+                                      ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                                      : "bg-purple-500/10 text-purple-600 border-purple-500/20"
+                                  }`}>
+                                    {u.role}
+                                  </span>
+
+                                  <span className={`text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 border font-medium ${cfg.badgeClass}`}>
+                                    {isPending ? (
+                                      <span className="relative flex items-center justify-center w-2 h-2">
+                                        <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${cfg.dotClass}`} />
+                                        <span className={`relative inline-flex rounded-full w-1.5 h-1.5 ${cfg.dotClass}`} />
+                                      </span>
+                                    ) : (
+                                      <StatusIcon className="h-3 w-3" />
+                                    )}
+                                    {cfg.label}
+                                  </span>
+
+                                  {isPending && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2.5 text-xs gap-1 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg"
+                                        variant="ghost"
+                                        onClick={() => setPendingAction({ user: u, type: "approve" })}
+                                      >
+                                        <ThumbsUp className="h-3 w-3" /> Approve
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2.5 text-xs gap-1 bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/20 rounded-lg"
+                                        variant="ghost"
+                                        onClick={() => setPendingAction({ user: u, type: "reject" })}
+                                      >
+                                        <ThumbsDown className="h-3 w-3" /> Reject
+                                      </Button>
+                                    </div>
+                                  )}
+
+                                  {isRejected && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2.5 text-xs gap-1 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg"
+                                      variant="ghost"
+                                      onClick={() => setPendingAction({ user: u, type: "reinstate" })}
+                                    >
+                                      <RotateCcw className="h-3 w-3" /> Reinstate
+                                    </Button>
+                                  )}
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* Pagination controls (#14) */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-border/40">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={page <= 1}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            className="gap-1 text-xs rounded-lg"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            Page {page} of {totalPages}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={page >= totalPages}
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                            className="gap-1 text-xs rounded-lg"
+                          >
+                            Next <ChevronRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ── Audit Log Tab (#11) ────────────────────── */}
+            <TabsContent value="audit">
+              <Card className="border-border/50 overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="font-display text-lg flex items-center gap-2">
+                      <ScrollText className="h-5 w-5 text-primary" />
+                      Admin Activity Log
+                    </CardTitle>
+                    <Button variant="outline" size="sm" onClick={fetchAuditLogs} disabled={loadingAudit} className="gap-1.5 rounded-xl">
+                      <RefreshCw className={`h-3.5 w-3.5 ${loadingAudit ? "animate-spin" : ""}`} /> Refresh
+                    </Button>
+                  </div>
+                  <CardDescription>Recent admin actions — approvals, rejections, and access events.</CardDescription>
+                </CardHeader>
+                <CardContent className="px-0 pb-0">
+                  {loadingAudit ? (
+                    <div className="py-16 text-center">
+                      <RefreshCw className="h-6 w-6 text-muted-foreground/40 mx-auto mb-3 animate-spin" />
+                      <p className="text-sm text-muted-foreground">Loading activity log...</p>
+                    </div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="py-16 text-center">
+                      <ScrollText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">No admin activity recorded yet.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/40">
+                      {auditLogs.map((log, idx) => {
+                        const info = ADMIN_ACTION_LABELS[log.action] || { label: log.action, color: "bg-muted text-muted-foreground" };
+                        return (
+                          <motion.div
+                            key={log.id}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.02 }}
+                            className="flex items-start gap-3 px-6 py-3 hover:bg-muted/20 transition-colors"
+                          >
+                            <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${info.color}`}>
+                                  {info.label}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-mono truncate">
+                                  {log.entity_id ? log.entity_id.substring(0, 8) + "..." : "—"}
+                                </span>
+                              </div>
+                              {log.metadata?.admin_email && (
+                                <p className="text-xs text-muted-foreground">
+                                  By: {log.metadata.admin_email}
                                 </p>
                               )}
-                              <p className="text-xs font-mono text-muted-foreground/60 truncate max-w-[200px] mt-0.5">
-                                {u.user_id.substring(0, 8)}...
-                              </p>
-                              <p className="text-xs text-muted-foreground/50 mt-0.5">
-                                Registered {new Date(u.created_at).toLocaleDateString()}
-                              </p>
                             </div>
-                          </div>
-
-                          {/* Right — badges + actions */}
-                          <div className="flex items-center gap-2 shrink-0 ml-4">
-                            {/* Role badge */}
-                            <span className={`text-xs px-2 py-0.5 rounded-full capitalize border border-border/50 ${
-                              isIssuer
-                                ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
-                                : "bg-purple-500/10 text-purple-600 border-purple-500/20"
-                            }`}>
-                              {u.role}
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {new Date(log.created_at).toLocaleString()}
                             </span>
-
-                            {/* Status badge */}
-                            <span className={`text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 border font-medium ${cfg.badgeClass}`}>
-                              {isPending ? (
-                                <span className="relative flex items-center justify-center w-2 h-2">
-                                  <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${cfg.dotClass}`} />
-                                  <span className={`relative inline-flex rounded-full w-1.5 h-1.5 ${cfg.dotClass}`} />
-                                </span>
-                              ) : (
-                                <StatusIcon className="h-3 w-3" />
-                              )}
-                              {cfg.label}
-                            </span>
-
-                            {/* Actions for pending users */}
-                            {isPending && (
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2.5 text-xs gap-1 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg"
-                                  variant="ghost"
-                                  onClick={() => setPendingAction({ user: u, type: "approve" })}
-                                >
-                                  <ThumbsUp className="h-3 w-3" /> Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2.5 text-xs gap-1 bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/20 rounded-lg"
-                                  variant="ghost"
-                                  onClick={() => setPendingAction({ user: u, type: "reject" })}
-                                >
-                                  <ThumbsDown className="h-3 w-3" /> Reject
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </motion.div>
       </main>
 
@@ -586,15 +709,22 @@ const AdminPortal = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pendingAction?.type === "approve" ? "Approve User?" : "Reject User?"}
+              {pendingAction?.type === "approve"
+                ? "Approve User?"
+                : pendingAction?.type === "reject"
+                ? "Reject User?"
+                : "Reinstate User?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction?.type === "approve"
                 ? `This will approve "${pendingAction?.user.full_name}" and grant them access to the ${pendingAction?.user.role} portal.`
-                : `This will reject "${pendingAction?.user.full_name}". They will not be able to access the platform.`}
+                : pendingAction?.type === "reject"
+                ? `This will reject "${pendingAction?.user.full_name}". They will not be able to access the platform.`
+                : `This will reinstate "${pendingAction?.user.full_name}" and re-approve their access to the ${pendingAction?.user.role} portal.`}
               <br />
               <span className="text-xs font-mono mt-2 block text-muted-foreground">
                 Role: {pendingAction?.user.role} · Org: {pendingAction?.user.organization || "—"}
+                {pendingAction?.user.email ? ` · ${pendingAction.user.email}` : ""}
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -613,7 +743,9 @@ const AdminPortal = () => {
                 ? "Processing..."
                 : pendingAction?.type === "approve"
                 ? "Approve User"
-                : "Reject User"}
+                : pendingAction?.type === "reject"
+                ? "Reject User"
+                : "Reinstate User"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

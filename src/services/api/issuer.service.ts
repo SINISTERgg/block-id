@@ -17,7 +17,6 @@ export interface IssuerCredential {
   status: string;
   blockchain_anchor: string | null;
   issued_at: string;
-  expires_at: string | null;
   schema_id: string | null;
   credential_hash: string | null;
   credential_data: unknown;
@@ -50,7 +49,7 @@ export async function fetchCredentials(issuerId: string): Promise<IssuerCredenti
   const { data, error } = await supabase
     .from("credentials")
     .select(
-      "id, holder_did, status, blockchain_anchor, issued_at, expires_at, schema_id, credential_hash, credential_data, credential_schemas(name, credential_type)"
+      "id, holder_did, status, blockchain_anchor, issued_at, schema_id, credential_hash, credential_data, credential_schemas(name, credential_type)"
     )
     .eq("issuer_id", issuerId)
     .order("issued_at", { ascending: false })
@@ -70,19 +69,16 @@ export async function createSchema(
 ): Promise<IssuerSchema> {
   const { data, error } = await supabase
     .from("credential_schemas")
-    .insert({ issuer_id: issuerId, name, credential_type: credentialType, fields } as any)
+    .insert({
+      issuer_id: issuerId,
+      name,
+      credential_type: credentialType,
+      fields: fields as any,
+    } as any)
     .select()
     .single();
+
   if (error) throw error;
-
-  await supabase.from("audit_logs").insert({
-    user_id: issuerId,
-    action: "schema_created",
-    entity_type: "schema",
-    entity_id: data?.id,
-    metadata: { name, type: credentialType, version: 1 },
-  } as any);
-
   return data as IssuerSchema;
 }
 
@@ -98,6 +94,7 @@ export async function createNewVersion(
 ): Promise<IssuerSchema> {
   const newVersion = baseSchema.version + 1;
 
+  // Set old version is_latest to false
   await supabase
     .from("credential_schemas")
     .update({ is_latest: false } as any)
@@ -109,7 +106,7 @@ export async function createNewVersion(
       issuer_id: issuerId,
       name,
       credential_type: credentialType,
-      fields,
+      fields: fields as any,
       version: newVersion,
       parent_schema_id: baseSchema.parent_schema_id || baseSchema.id,
       is_latest: true,
@@ -118,23 +115,24 @@ export async function createNewVersion(
     .single();
 
   if (error) {
-    // Roll back is_latest on failure
-    await supabase
-      .from("credential_schemas")
-      .update({ is_latest: true } as any)
-      .eq("id", baseSchema.id);
-    throw error;
+    await supabase.from("credential_schemas").update({ is_latest: true } as any).eq("id", baseSchema.id);
+    throw new Error(error.message || "Failed to create new schema version");
   }
 
-  await supabase.from("audit_logs").insert({
-    user_id: issuerId,
-    action: "schema_versioned",
-    entity_type: "schema",
-    entity_id: data?.id,
-    metadata: { name, version: newVersion, parent: baseSchema.id },
-  } as any);
-
   return data as IssuerSchema;
+}
+
+/**
+ * Delete a credential schema.
+ */
+export async function deleteSchema(schemaId: string, issuerId: string): Promise<void> {
+  const { error } = await supabase
+    .from("credential_schemas")
+    .delete()
+    .eq("id", schemaId)
+    .eq("issuer_id", issuerId);
+
+  if (error) throw error;
 }
 
 /**

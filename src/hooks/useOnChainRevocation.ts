@@ -1,5 +1,9 @@
 import { useState, useCallback } from "react";
-import { revokeCredentialOnChain, getCredentialStatus, isContractDeployed } from "@/services/blockchain/registry";
+import {
+  revokeCredentialOnChain,
+  getCredentialStatus,
+  isContractDeployed,
+} from "@/services/blockchain/registry";
 import { revokeCredential } from "@/services/api/issuer.service";
 import { useToast } from "@/hooks/use-toast";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
@@ -7,7 +11,11 @@ import { AMOY_EXPLORER } from "@/services/blockchain/config";
 type TxState = "idle" | "signing" | "mining" | "confirmed" | "failed";
 
 interface UseOnChainRevocationResult {
-  revoke: (credentialHash: string, credentialId: string, issuerId: string) => Promise<boolean>;
+  revoke: (
+    credentialHash: string,
+    credentialId: string,
+    issuerId: string,
+  ) => Promise<boolean>;
   txState: TxState;
   txHash: string | null;
   reset: () => void;
@@ -37,7 +45,7 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
     async (
       credentialHash: string,
       credentialId: string,
-      issuerId: string
+      issuerId: string,
     ): Promise<boolean> => {
       setTxState("signing");
       setTxHash(null);
@@ -55,10 +63,14 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
 
             if (!status.anchored) {
               // Credential was never anchored on-chain — skip silently
-              console.info("[BlockID] Credential not anchored on-chain, skipping on-chain revocation.");
+              console.info(
+                "[BlockID] Credential not anchored on-chain, skipping on-chain revocation.",
+              );
             } else if (status.revoked) {
               // Already revoked on-chain — no need to send another tx
-              console.info("[BlockID] Credential already revoked on-chain, skipping duplicate tx.");
+              console.info(
+                "[BlockID] Credential already revoked on-chain, skipping duplicate tx.",
+              );
             } else {
               // Anchored and not yet revoked — proceed with on-chain revocation
               const receipt = await revokeCredentialOnChain(credentialHash);
@@ -73,7 +85,10 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
             }
           } catch (onChainErr: any) {
             // User rejected — abort completely
-            if (onChainErr.code === 4001 || onChainErr.message?.includes("user rejected")) {
+            if (
+              onChainErr.code === 4001 ||
+              onChainErr.message?.includes("user rejected")
+            ) {
               setTxState("failed");
               toast({
                 title: "Transaction rejected",
@@ -83,7 +98,10 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
               return false;
             }
             // Other on-chain error — fall through to DB-only revocation
-            console.warn("[BlockID] On-chain revocation failed, falling back to DB:", onChainErr.message);
+            console.warn(
+              "[BlockID] On-chain revocation failed, falling back to DB:",
+              onChainErr.message,
+            );
           }
         }
 
@@ -92,7 +110,9 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
         setTxState("confirmed");
 
         toast({
-          title: submittedHash ? "Revoked on-chain & database" : "Revoked in database",
+          title: submittedHash
+            ? "Revoked on-chain & database"
+            : "Revoked in database",
           description: submittedHash
             ? `Anchored on Ethereum Sepolia · ${AMOY_EXPLORER}/tx/${submittedHash}`
             : "On-chain revocation skipped (credential not anchored or MetaMask unavailable).",
@@ -109,9 +129,8 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
       }
     },
     // ✅ toast is the only stable dep — NOT txHash (which caused the stale closure bug)
-    [toast]
+    [toast],
   );
 
   return { revoke, txState, txHash, reset };
 }
-
