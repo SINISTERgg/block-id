@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, LogOut, Menu, X, Link2, Crown, Home } from "lucide-react";
+import { ArrowLeft, LogOut, Menu, X, Link2, Crown, Home, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,9 +17,9 @@ interface PortalLayoutProps {
 }
 
 const PORTAL_COLORS = {
-  issuer: { bg: "bg-issuer", text: "text-issuer", muted: "bg-issuer-muted" },
-  holder: { bg: "bg-holder", text: "text-holder", muted: "bg-holder-muted" },
-  verifier: { bg: "bg-verifier", text: "text-verifier", muted: "bg-verifier-muted" },
+  issuer: { bg: "bg-foreground", text: "text-foreground", muted: "bg-muted" },
+  holder: { bg: "bg-foreground", text: "text-foreground", muted: "bg-muted" },
+  verifier: { bg: "bg-foreground", text: "text-foreground", muted: "bg-muted" },
 };
 
 const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLayoutProps) => {
@@ -35,28 +35,36 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
     : "U";
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4 sm:px-6 py-3">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Header - Sharp, bordered */}
+      <header className="sticky top-0 z-50 bg-background border-b border-foreground">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={() => navigate("/")} className="shrink-0 border-border hover:border-primary hover:text-primary transition-colors">
+                  <Button 
+                    variant="secondary" 
+                    size="icon" 
+                    onClick={() => navigate("/")} 
+                    className="shrink-0"
+                  >
                     <Home className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Back to Home</TooltipContent>
               </Tooltip>
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 ${colors.bg} rounded-lg flex items-center justify-center`}>
-                  <span className={`${colors.text}`}>{icon}</span>
+              <div className="flex items-center gap-4">
+                {/* Icon - Bordered square */}
+                <div className={`w-10 h-10 border-2 border-foreground flex items-center justify-center ${colors.text}`}>
+                  <span className="text-lg">{icon}</span>
                 </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-display text-base sm:text-lg font-bold tracking-tight leading-none">
+                <div className="flex flex-col gap-1">
+                  <span className="font-display text-lg font-bold tracking-tight leading-none">
                     {title}
                   </span>
-                  <span className={`badge-solid ${colors.bg} text-white text-[10px]`}>
+                  {/* Status - Uppercase monospace */}
+                  <span className={`text-xs font-mono uppercase tracking-widest ${colors.text}`}>
                     {portalType}
                   </span>
                 </div>
@@ -64,17 +72,18 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
             </div>
 
             <div className="flex items-center gap-2">
-              <nav className="hidden md:flex items-center gap-1 bg-muted p-1 rounded-lg">
+              {/* Navigation - Minimal bordered */}
+              <nav className="hidden md:flex items-center border border-foreground">
                 {navItems.map((item) => {
                   const isActive = location.pathname === item.path;
                   return (
                     <button
                       key={item.path}
                       onClick={() => navigate(item.path)}
-                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      className={`px-5 py-3 text-sm font-mono font-semibold uppercase tracking-wider transition-all duration-100 ${
                         isActive 
-                          ? `${colors.bg} text-white` 
-                          : "text-muted-foreground hover:text-foreground hover:bg-background"
+                          ? "bg-foreground text-background" 
+                          : "hover:bg-foreground hover:text-background"
                       }`}
                     >
                       {item.label}
@@ -97,10 +106,10 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                 <button
                   onClick={() => navigate("/admin")}
                   title="Organization Admin"
-                  className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                  className={`shrink-0 flex items-center gap-2 px-3 py-2 text-xs font-mono font-semibold uppercase tracking-wider transition-all border border-foreground ${
                     location.pathname.startsWith("/admin")
-                      ? "bg-amber-500/20 text-amber-700 border-amber-500/30"
-                      : "bg-amber-500/10 text-amber-600/80 border-amber-500/20 hover:bg-amber-500/15"
+                      ? "bg-foreground text-background"
+                      : "hover:bg-foreground hover:text-background"
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
@@ -111,17 +120,19 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
               <NotificationBell />
               <ThemeToggle />
 
-              <div className="hidden sm:flex items-center gap-3 border-l border-border pl-3">
-                <div className={`w-8 h-8 ${colors.bg} rounded-lg flex items-center justify-center font-semibold text-xs text-white`}>
+              {/* User Profile - Minimal */}
+              <div className="hidden sm:flex items-center gap-3 border-l border-foreground pl-4">
+                {/* Avatar - Bordered square */}
+                <div className="w-9 h-9 border border-foreground flex items-center justify-center font-mono font-bold text-xs">
                   {initials}
                 </div>
                 <div className="flex flex-col">
                   {profile?.organization && (
-                    <span className="text-[10px] text-muted-foreground leading-none truncate max-w-[100px]">
+                    <span className="text-[10px] font-mono uppercase text-muted-foreground leading-none truncate max-w-[100px]">
                       {profile.organization}
                     </span>
                   )}
-                  <span className="text-xs font-medium text-foreground leading-tight truncate max-w-[100px]">
+                  <span className="text-sm font-semibold leading-tight truncate max-w-[100px]">
                     {profile?.full_name}
                   </span>
                 </div>
@@ -129,14 +140,15 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                   variant="ghost"
                   size="icon"
                   onClick={() => signOut().then(() => navigate("/"))}
-                  className="rounded-lg h-8 w-8"
+                  className="h-9 w-9"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
+                  <LogOut className="h-4 w-4" />
                 </Button>
               </div>
 
+              {/* Mobile Menu Toggle */}
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="icon"
                 className="md:hidden"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -146,33 +158,36 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
             </div>
           </div>
 
+          {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border mt-3 pt-3 space-y-1">
-              {navItems.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                    className={`block w-full text-left px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                      isActive
-                        ? `${colors.bg} text-white`
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border mt-2 pt-2">
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 ${colors.bg} rounded-lg flex items-center justify-center text-white text-xs font-bold`}>
+            <div className="md:hidden border-t border-foreground mt-4 pt-4">
+              <nav className="flex flex-col border border-foreground">
+                {navItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
+                      className={`px-4 py-4 text-left text-sm font-mono font-semibold uppercase tracking-wider transition-all duration-100 ${
+                        isActive
+                          ? "bg-foreground text-background"
+                          : "hover:bg-foreground hover:text-background"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-foreground">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 border border-foreground flex items-center justify-center font-mono font-bold text-xs">
                     {initials}
                   </div>
-                  <span className="text-sm font-medium">{profile?.full_name}</span>
+                  <span className="text-sm font-semibold">{profile?.full_name}</span>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
-                  <LogOut className="h-4 w-4 mr-1" /> Sign Out
+                <Button variant="secondary" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
+                  <LogOut className="h-4 w-4 mr-2" /> Sign Out
                 </Button>
               </div>
             </div>
@@ -180,7 +195,7 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-8">
         {children}
       </main>
     </div>

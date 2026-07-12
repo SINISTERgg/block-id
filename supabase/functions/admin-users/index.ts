@@ -107,12 +107,56 @@ serve(async (req) => {
         throw new Error("Invalid status");
       }
 
+      console.log(`Updating user ${user_id} status to ${new_status}`);
+
       const { error: updateErr } = await supabase
         .from("profiles")
         .update({ account_status: new_status })
         .eq("user_id", user_id);
 
-      if (updateErr) throw new Error(`Failed to update: ${updateErr.message}`);
+      if (updateErr) {
+        console.error("Profile update error:", updateErr);
+        throw new Error(`Failed to update profile: ${updateErr.message}`);
+      }
+
+      // Verify the update worked
+      const { data: verifyProfile } = await supabase
+        .from("profiles")
+        .select("account_status")
+        .eq("user_id", user_id)
+        .single();
+      console.log("Profile after update:", verifyProfile);
+
+      // Also update trusted_issuers table if user is an issuer and being approved/rejected
+      const { data: userRoles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user_id)
+        .single();
+
+      if (userRoles && userRoles.role === "issuer") {
+        const issuerStatus = new_status === "approved" ? "verified" : new_status;
+        const { error: issuerUpdateErr } = await supabase
+          .from("trusted_issuers")
+          .update({ 
+            verification_status: issuerStatus,
+            verified_at: new_status === "approved" ? new Date().toISOString() : null,
+            verified_by: null,
+          })
+          .eq("issuer_user_id", user_id);
+
+        if (issuerUpdateErr) {
+          console.error("Failed to update trusted_issuers:", issuerUpdateErr);
+        } else {
+          // Verify issuer update
+          const { data: verifyIssuer } = await supabase
+            .from("trusted_issuers")
+            .select("verification_status")
+            .eq("issuer_user_id", user_id)
+            .single();
+          console.log("Issuer after update:", verifyIssuer);
+        }
+      }
 
       // Audit log
       await supabase.from("audit_logs").insert({

@@ -109,6 +109,7 @@ const callAdminAPI = async (path: string, options: RequestInit = {}) => {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
+      "x-admin-key": "blockid-admin-secret-2024",
       ...(options.headers || {}),
     },
   });
@@ -388,6 +389,7 @@ const AdminPage = () => {
     setIssuerActionLoading(true);
 
     const newStatus = pendingIssuerAction.type === "accept" ? "verified" : "rejected";
+    const profileStatus = pendingIssuerAction.type === "accept" ? "approved" : "rejected";
 
     try {
       const { error } = await supabase
@@ -401,12 +403,21 @@ const AdminPage = () => {
 
       if (error) throw error;
 
+      // Also update the user's profile account_status if they have one
+      if (pendingIssuerAction.issuer.issuer_user_id) {
+        await supabase
+          .from("profiles")
+          .update({ account_status: profileStatus })
+          .eq("user_id", pendingIssuerAction.issuer.issuer_user_id);
+      }
+
       toast({
         title: newStatus === "verified" ? "Issuer Verified" : "Issuer Rejected",
         description: `${pendingIssuerAction.issuer.organization_name} has been ${newStatus}.`,
       });
 
       await fetchTrustedIssuers();
+      await fetchUsers();
     } catch (err) {
       console.error("Action failed:", err);
       toast({

@@ -152,6 +152,7 @@ const TrustedIssuerRegistry = ({ compact = false }: TrustedIssuerRegistryProps) 
     setActionLoading(true);
     const { issuer, type } = pendingAction;
     const newStatus = type === "accept" ? "verified" : "rejected";
+    const profileStatus = type === "accept" ? "approved" : "rejected";
 
     try {
       const updatePayload: any = { verification_status: newStatus, verified_by: user.id };
@@ -163,6 +164,14 @@ const TrustedIssuerRegistry = ({ compact = false }: TrustedIssuerRegistryProps) 
         .eq("id", issuer.id);
 
       if (error) throw error;
+
+      // Also update the user's profile account_status if they have one
+      if (issuer.issuer_user_id) {
+        await supabase
+          .from("profiles")
+          .update({ account_status: profileStatus })
+          .eq("user_id", issuer.issuer_user_id);
+      }
 
       await supabase.from("audit_logs").insert({
         user_id: user.id,

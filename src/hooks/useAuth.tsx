@@ -54,6 +54,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setProfileLoading(false);
   };
 
+  // Real-time subscription for profile updates
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("profile-updates")
+      .on("postgres_changes", { 
+        event: "UPDATE", 
+        schema: "public", 
+        table: "profiles",
+        filter: `user_id=eq.${user.id}`
+      }, (payload) => {
+        const newStatus = payload.new?.account_status;
+        if (newStatus) {
+          setAccountStatus(newStatus);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfileAndRole(user.id);
@@ -108,8 +132,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!data.session) {
       // Email confirmation may be required - trigger still creates profile and role
       if (data.user) {
-        const needsApproval = role === "issuer" || role === "verifier";
-        // Trigger handles profile creation, but we can still update here if session exists later
         // The user will need to confirm email to complete signup
         return { error: "_confirmation_required" };
       }
@@ -117,11 +139,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     
     // Email confirmed - update profile and insert role
-    const needsApproval = role === "issuer" || role === "verifier";
     await supabase.from("profiles").update({ 
       organization, 
       full_name: fullName,
-      account_status: needsApproval ? "pending" : "approved"
+      account_status: "approved"
     }).eq("user_id", data.user.id);
     
     await supabase.from("user_roles").insert({

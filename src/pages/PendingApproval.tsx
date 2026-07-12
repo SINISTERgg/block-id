@@ -3,15 +3,41 @@ import { useNavigate } from "react-router-dom";
 import { Clock, Shield, LogOut, RefreshCw, Fingerprint, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 
 const getRolePath = (r: string) => r === "org_admin" ? "/admin" : `/${r}`;
 
 const PendingApproval = () => {
-  const { user, role, accountStatus, signOut, refreshProfile } = useAuth();
+  const { user, role, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [countdown, setCountdown] = useState(30);
+
+  // Real-time subscription for profile updates
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("pending-approval-updates")
+      .on("postgres_changes", { 
+        event: "UPDATE", 
+        schema: "public", 
+        table: "profiles",
+        filter: `user_id=eq.${user.id}`
+      }, (payload) => {
+        const newStatus = payload.new?.account_status;
+        if (newStatus) {
+          // Force a profile refresh when status changes
+          refreshProfile();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, refreshProfile]);
 
   // Auto-check every 30 seconds
   useEffect(() => {
@@ -29,13 +55,10 @@ const PendingApproval = () => {
 
   // Redirect if already approved
   useEffect(() => {
-    if (accountStatus === "approved" && role) {
+    if (role) {
       navigate(getRolePath(role), { replace: true });
     }
-    if (accountStatus === "rejected") {
-      navigate("/account-rejected", { replace: true });
-    }
-  }, [accountStatus, role, navigate]);
+  }, [role, navigate]);
 
   const handleRefresh = async () => {
     setChecking(true);

@@ -22,6 +22,7 @@ import {
   Shield,
   Activity,
   ListFilter,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,19 @@ interface PendingUser {
   email?: string;
 }
 
+interface TrustedIssuer {
+  id: string;
+  issuer_did: string;
+  issuer_user_id: string | null;
+  organization_name: string;
+  domain: string | null;
+  verification_status: string;
+  trust_level: string;
+  verified_at: string | null;
+  verified_by: string | null;
+  created_at: string;
+}
+
 interface AuditEntry {
   id: string;
   user_id: string;
@@ -89,7 +103,6 @@ const ADMIN_ACTION_LABELS: Record<string, { label: string; color: string }> = {
 const ITEMS_PER_PAGE = 15;
 
 const fetchAllUsers = async (): Promise<PendingUser[]> => {
-  // Fetch profiles and user_roles together using join
   const { data: profiles, error } = await supabase
     .from("profiles")
     .select("*")
@@ -100,7 +113,6 @@ const fetchAllUsers = async (): Promise<PendingUser[]> => {
     throw error;
   }
   
-  // Get all user_roles
   const { data: roles } = await supabase
     .from("user_roles")
     .select("user_id, role");
@@ -113,7 +125,11 @@ const fetchAllUsers = async (): Promise<PendingUser[]> => {
   }));
 };
 
-const updateUserStatus = async (userId: string, actionType: "approve" | "reject" | "reinstate" | "revoke", adminUserId: string) => {
+const updateUserStatus = async (
+  userId: string, 
+  actionType: "approve" | "reject" | "reinstate" | "revoke", 
+  adminUserId: string
+) => {
   let status: string;
   let auditAction: string;
   
@@ -124,7 +140,7 @@ const updateUserStatus = async (userId: string, actionType: "approve" | "reject"
       auditAction = actionType === "approve" ? "account_approved" : "account_reinstated";
       break;
     case "revoke":
-      status = "revoked";
+      status = "rejected";
       auditAction = "account_revoked";
       break;
     case "reject":
@@ -134,6 +150,7 @@ const updateUserStatus = async (userId: string, actionType: "approve" | "reject"
       break;
   }
   
+  // Update profile status
   const { error } = await supabase
     .from("profiles")
     .update({ account_status: status })
@@ -141,7 +158,26 @@ const updateUserStatus = async (userId: string, actionType: "approve" | "reject"
   
   if (error) throw error;
   
-  // Log audit - use adminUserId if provided
+  // Check if user is an issuer and update trusted_issuers
+  const { data: userRoles } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .single();
+
+  if (userRoles && userRoles.role === "issuer") {
+    const issuerStatus = status === "approved" ? "verified" : status;
+    await supabase
+      .from("trusted_issuers")
+      .update({ 
+        verification_status: issuerStatus,
+        verified_at: status === "approved" ? new Date().toISOString() : null,
+        verified_by: adminUserId,
+      })
+      .eq("issuer_user_id", userId);
+  }
+  
+  // Log audit
   if (adminUserId) {
     await supabase.from("audit_logs").insert({
       user_id: adminUserId,
@@ -151,6 +187,64 @@ const updateUserStatus = async (userId: string, actionType: "approve" | "reject"
       metadata: { target_user_id: userId, new_status: status },
     });
   }
+};
+
+const fetchTrustedIssuers = async (): Promise<TrustedIssuer[]> => {
+  const { data, error } = await supabase
+    .from("trusted_issuers")
+    .select("*")
+    .order("created_at", { ascending: false });
+  
+  if (error) {
+    console.error("trusted_issuers error:", error);
+    return [];
+  }
+  return data || [];
+};
+
+const updateIssuerStatus = async (
+  issuerId: string,
+  userId: string,
+  actionType: "accept" | "reject",
+  adminUserId: string
+) => {
+  const newStatus = actionType === "accept" ? "verified" : "rejected";
+  const profileStatus = actionType === "accept" ? "approved" : "rejected";
+  
+  // Update trusted_issuers
+  const { error } = await supabase
+    .from("trusted_issuers")
+    .update({ 
+      verification_status: newStatus,
+      verified_at: actionType === "accept" ? new Date().toISOString() : null,
+      verified_by: adminUserId,
+    })
+    .eq("id", issuerId);
+  
+  if (error) throw error;
+  
+  // Get the issuer's user_id and update their profile
+  const { data: issuer } = await supabase
+    .from("trusted_issuers")
+    .select("issuer_user_id")
+    .eq("id", issuerId)
+    .single();
+  
+  if (issuer?.issuer_user_id) {
+    await supabase
+      .from("profiles")
+      .update({ account_status: profileStatus })
+      .eq("user_id", issuer.issuer_user_id);
+  }
+  
+  // Log audit
+  await supabase.from("audit_logs").insert({
+    user_id: adminUserId,
+    action: actionType === "accept" ? "issuer_accepted" : "issuer_rejected",
+    entity_type: "trusted_issuer",
+    entity_id: issuerId,
+    metadata: { action: actionType, issuer_id: issuerId },
+  });
 };
 
 const AdminDashboard = () => {
@@ -179,6 +273,17 @@ const AdminDashboard = () => {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
 
+  // Trusted Issuers state
+  const [trustedIssuers, setTrustedIssuers] = useState<TrustedIssuer[]>([]);
+  const [loadingIssuers, setLoadingIssuers] = useState(false);
+  const [issuerSearch, setIssuerSearch] = useState("");
+  const [issuerFilter, setIssuerFilter] = useState<"all" | "verified" | "pending" | "rejected">("all");
+  const [pendingIssuerAction, setPendingIssuerAction] = useState<{
+    issuer: TrustedIssuer;
+    type: "accept" | "reject";
+  } | null>(null);
+  const [issuerActionLoading, setIssuerActionLoading] = useState(false);
+
   const currentTab = location.hash?.replace("#", "") || "overview";
 
   useEffect(() => {
@@ -186,6 +291,7 @@ const AdminDashboard = () => {
     fetchPendingIssuers();
     fetchUsers();
     fetchAuditLogs();
+    fetchTrustedIssuersData();
   }, [profile?.organization]);
 
   useEffect(() => {
@@ -243,7 +349,6 @@ const AdminDashboard = () => {
   const fetchAuditLogs = useCallback(async () => {
     setLoadingAudit(true);
     try {
-      // Get all audit logs sorted by date - filter in JS
       const { data, error } = await supabase
         .from("audit_logs")
         .select("*")
@@ -251,14 +356,25 @@ const AdminDashboard = () => {
         .limit(100);
       if (error) throw error;
       
-      // Filter for admin-related actions
-      const adminActions = ["account_approved", "account_rejected", "account_reinstated", "account_revoked", "admin_access_denied"];
+      const adminActions = ["account_approved", "account_rejected", "account_reinstated", "account_revoked", "admin_access_denied", "issuer_accepted", "issuer_rejected"];
       const filtered = (data || []).filter(log => adminActions.includes(log.action));
       setAuditLogs(filtered);
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
     } finally {
       setLoadingAudit(false);
+    }
+  }, []);
+
+  const fetchTrustedIssuersData = useCallback(async () => {
+    setLoadingIssuers(true);
+    try {
+      const result = await fetchTrustedIssuers();
+      setTrustedIssuers(result);
+    } catch (err) {
+      console.error("Failed to fetch trusted issuers:", err);
+    } finally {
+      setLoadingIssuers(false);
     }
   }, []);
 
@@ -297,6 +413,33 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleIssuerAction = async () => {
+    if (!pendingIssuerAction || !user) return;
+    setIssuerActionLoading(true);
+    try {
+      await updateIssuerStatus(
+        pendingIssuerAction.issuer.id,
+        pendingIssuerAction.issuer.issuer_user_id || "",
+        pendingIssuerAction.type,
+        user.id
+      );
+      const actionMsg = pendingIssuerAction.type === "accept" ? "verified" : "rejected";
+      toast({ title: `Issuer ${actionMsg} successfully` });
+      fetchTrustedIssuersData();
+      fetchUsers();
+      fetchAuditLogs();
+      setPendingIssuerAction(null);
+    } catch (err) {
+      toast({
+        title: "Action failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIssuerActionLoading(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
       !search ||
@@ -309,6 +452,20 @@ const AdminDashboard = () => {
       (filter === "approved" && u.account_status === "approved") ||
       (filter === "revoked" && u.account_status === "revoked") ||
       (filter === "rejected" && u.account_status === "rejected");
+    return matchesSearch && matchesFilter;
+  });
+
+  const filteredIssuers = trustedIssuers.filter((i) => {
+    const matchesSearch =
+      !issuerSearch ||
+      i.organization_name?.toLowerCase().includes(issuerSearch.toLowerCase()) ||
+      i.issuer_did?.toLowerCase().includes(issuerSearch.toLowerCase()) ||
+      i.domain?.toLowerCase().includes(issuerSearch.toLowerCase());
+    const matchesFilter =
+      issuerFilter === "all" ||
+      (issuerFilter === "pending" && i.verification_status === "pending") ||
+      (issuerFilter === "verified" && i.verification_status === "verified") ||
+      (issuerFilter === "rejected" && i.verification_status === "rejected");
     return matchesSearch && matchesFilter;
   });
 
@@ -338,18 +495,25 @@ const AdminDashboard = () => {
       iconColor: "text-emerald-500",
     },
     {
-      label: "Revoked",
-      value: users.filter((u) => u.account_status === "revoked").length,
+      label: "Rejected",
+      value: users.filter((u) => u.account_status === "rejected").length,
       icon: XCircle,
       accentColor: "#ef4444",
       iconColor: "text-red-500",
     },
     {
-      label: "Organization Members",
-      value: members.length,
-      icon: Building2,
+      label: "Trusted Issuers",
+      value: trustedIssuers.length,
+      icon: ShieldCheck,
       accentColor: "#8b5cf6",
-      iconColor: "text-violet-500",
+      iconColor: "text-purple-500",
+    },
+    {
+      label: "Pending Issuers",
+      value: trustedIssuers.filter((i) => i.verification_status === "pending").length,
+      icon: Shield,
+      accentColor: "#f97316",
+      iconColor: "text-orange-500",
     },
   ];
 
@@ -388,6 +552,9 @@ const AdminDashboard = () => {
               </TabsTrigger>
               <TabsTrigger value="users" className="gap-1">
                 <Users className="h-4 w-4" /> User Approvals
+              </TabsTrigger>
+              <TabsTrigger value="issuers" className="gap-1">
+                <ShieldCheck className="h-4 w-4" /> Trusted Issuers
               </TabsTrigger>
               <TabsTrigger value="organization" className="gap-1">
                 <Building2 className="h-4 w-4" /> Organization
@@ -661,6 +828,128 @@ const AdminDashboard = () => {
               </Card>
             </TabsContent>
 
+            {/* Trusted Issuers Tab */}
+            <TabsContent value="issuers" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5" /> Trusted Issuer Registry
+                      </CardTitle>
+                      <CardDescription>Manage trusted issuer registrations</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchTrustedIssuersData}
+                      disabled={loadingIssuers}
+                      className="gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loadingIssuers ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Search and Filter */}
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by name, DID, or domain..."
+                        value={issuerSearch}
+                        onChange={(e) => setIssuerSearch(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      {(["all", "verified", "pending", "rejected"] as const).map((f) => (
+                        <Button
+                          key={f}
+                          variant={issuerFilter === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setIssuerFilter(f)}
+                          className="capitalize"
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Issuers List */}
+                  {loadingIssuers ? (
+                    <div className="py-8 text-center">
+                      <RefreshCw className="h-6 w-6 animate-spin mx-auto" />
+                      <p className="text-sm text-muted-foreground mt-2">Loading issuers...</p>
+                    </div>
+                  ) : filteredIssuers.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <ShieldCheck className="h-10 w-10 text-muted-foreground/30 mx-auto" />
+                      <p className="text-sm text-muted-foreground mt-2">No issuers found</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {filteredIssuers.map((issuer) => (
+                        <div key={issuer.id} className="flex items-center justify-between py-4">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              issuer.verification_status === "verified" 
+                                ? "bg-emerald-500/10" 
+                                : issuer.verification_status === "rejected"
+                                ? "bg-red-500/10"
+                                : "bg-amber-500/10"
+                            }`}>
+                              {issuer.verification_status === "verified" ? (
+                                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                              ) : issuer.verification_status === "rejected" ? (
+                                <XCircle className="h-5 w-5 text-red-500" />
+                              ) : (
+                                <Clock className="h-5 w-5 text-amber-500" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium">{issuer.organization_name}</p>
+                              <p className="text-sm text-muted-foreground font-mono">{issuer.issuer_did}</p>
+                              {issuer.domain && (
+                                <p className="text-xs text-muted-foreground">{issuer.domain}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <Badge variant="outline" className="capitalize">
+                              {issuer.verification_status}
+                            </Badge>
+                            {issuer.verification_status === "pending" && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                                  onClick={() => setPendingIssuerAction({ issuer, type: "accept" })}
+                                >
+                                  <ThumbsUp className="h-4 w-4 mr-1" /> Verify
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => setPendingIssuerAction({ issuer, type: "reject" })}
+                                >
+                                  <ThumbsDown className="h-4 w-4 mr-1" /> Reject
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* Organization Tab */}
             <TabsContent value="organization" className="space-y-6">
               <Card>
@@ -776,14 +1065,33 @@ const AdminDashboard = () => {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to {pendingAction?.type}{" "}
-              {pendingAction?.user.full_name || pendingAction?.user.email}? This action will send them an email
-              notification.
+              {pendingAction?.user.full_name || pendingAction?.user.email}? This action will update their account status.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleUserAction} disabled={actionLoading}>
               {actionLoading ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingIssuerAction} onOpenChange={() => setPendingIssuerAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingIssuerAction?.type === "accept" ? "Verify Issuer" : "Reject Issuer"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to {pendingIssuerAction?.type === "accept" ? "verify" : "reject"}{" "}
+              {pendingIssuerAction?.issuer.organization_name}? This will also update their account status.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleIssuerAction} disabled={issuerActionLoading}>
+              {issuerActionLoading ? "Processing..." : "Confirm"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

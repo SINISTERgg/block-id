@@ -66,6 +66,7 @@ const callAdminAPI = async (path: string, options: RequestInit = {}) => {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
+      "x-admin-key": "blockid-admin-secret-2024",
       ...(options.headers || {}),
     },
   });

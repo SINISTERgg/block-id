@@ -20,8 +20,6 @@ const BlockchainExplorer = lazy(() => import("./pages/BlockchainExplorer"));
 const AuditLog = lazy(() => import("./pages/AuditLog"));
 const SharedCredential = lazy(() => import("./pages/SharedCredential"));
 const OrgManagement = lazy(() => import("./pages/admin/AdminDashboard"));
-const PendingApproval = lazy(() => import("./pages/PendingApproval"));
-const AccountRejected = lazy(() => import("./pages/AccountRejected"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // ── Loading fallback ─────────────────────────────────────────────────
@@ -58,8 +56,6 @@ const App = () => (
                 <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />
                 <Route path="/admin/*" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />
-                <Route path="/pending-approval" element={<PendingApproval />} />
-                <Route path="/account-rejected" element={<AccountRejected />} />
                 <Route path="/shared/:token" element={<SharedCredential />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
