@@ -18,7 +18,8 @@
     "deploy:localhost": "node scripts/deploy.js --network localhost",
     "hardhat": "hardhat",
     "verify:amoy": "hardhat verify --network amoy",
-    "test:contract": "hardhat test"
+    "test:contract": "node --import tsx scripts/test-contract.js",
+    "test:contract:node": "hardhat node"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

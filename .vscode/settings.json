@@ -1,0 +1,17 @@
+{
+  "deno.enable": false,
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.lint": true,
+  "deno.unstable": true,
+  "deno.config": "supabase/functions/deno.json",
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "files.exclude": {
+    "supabase/functions/**/*.ts": false
+  },
+  "css.validate": false
+}

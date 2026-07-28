@@ -24,15 +24,13 @@ dist-ssr
 *.sw
 .stitch/designs/DESIGN.md
 
-# Environment
+# Environment (contains private keys — NEVER commit)
 .env
 .env.local
 .env.development
 .env.production
+.env.staging
 *.env
-
-.env
-.env.example
 
 supabase/.temp
 supabase/.temp/*
@@ -41,20 +39,33 @@ supabase/.env.local
 supabase/.env.development
 supabase/.env.production
 
+# Deployment artifacts
 deployments
 deployments/*
-
 artifacts
 artifacts/*
-
 cache
 cache/*
 
+# Contract test artifacts (node-based, not vitest)
 test
 test/*
 
+# Implementation plans (local docs)
 implementation plans phase2/
-
-
+M
+# Stitch design files
 .stitch/*
-.vscode/*
+
+# Build output
+nul
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+#Test scripts
+scripts/test-contract.js
+
+#Progress tracker
+progress/
