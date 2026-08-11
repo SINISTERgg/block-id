@@ -17,6 +17,7 @@ export interface IssuerCredential {
   status: string;
   blockchain_anchor: string | null;
   issued_at: string;
+  expires_at: string | null;
   schema_id: string | null;
   credential_hash: string | null;
   credential_data: unknown;
@@ -49,7 +50,7 @@ export async function fetchCredentials(issuerId: string): Promise<IssuerCredenti
   const { data, error } = await supabase
     .from("credentials")
     .select(
-      "id, holder_did, status, blockchain_anchor, issued_at, schema_id, credential_hash, credential_data, credential_schemas(name, credential_type)"
+      "id, holder_did, status, blockchain_anchor, issued_at, expires_at, schema_id, credential_hash, credential_data, credential_schemas(name, credential_type)"
     )
     .eq("issuer_id", issuerId)
     .order("issued_at", { ascending: false })

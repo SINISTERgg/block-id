@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Ban, Loader2, Link2 } from "lucide-react";
+import { Ban, Loader2, Link2, FileImage } from "lucide-react";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import CertificateRenderer from "@/components/issuer/CertificateRenderer";
 import type { IssuerCredential } from "@/services/api/issuer.service";
 
 // Re-exported for backward compat with other consumers
@@ -22,6 +23,7 @@ const CredentialDataGrid = ({ credentials, onRevoke, revokingId }: CredentialDat
   const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [certPreview, setCertPreview] = useState<IssuerCredential | null>(null);
 
   // Filter
   const filtered = credentials.filter((c) => {
@@ -109,6 +111,9 @@ const CredentialDataGrid = ({ credentials, onRevoke, revokingId }: CredentialDat
                         c.status === "expired" ? "bg-muted text-muted-foreground" :
                         "bg-destructive/10 text-destructive"
                       }`}>{c.status}</span>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setCertPreview(c)}>
+                        <FileImage className="h-3 w-3" /> Certificate
+                      </Button>
                       {c.status === "active" && (
                         <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={() => setRevokeConfirmId(c.id)} disabled={revokingId === c.id}>
                           {revokingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Ban className="h-3 w-3 mr-1" /> Revoke</>}
@@ -163,6 +168,37 @@ const CredentialDataGrid = ({ credentials, onRevoke, revokingId }: CredentialDat
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Visual Certificate Renderer */}
+      <CertificateRenderer
+        open={!!certPreview}
+        onOpenChange={(open) => !open && setCertPreview(null)}
+        certificate={
+          certPreview
+            ? {
+                credentialName: certPreview.credential_schemas?.name || "Credential",
+                credentialType: certPreview.credential_schemas?.credential_type || "certificate",
+                holderName:
+                  (certPreview.credential_data as any)?.credentialSubject?.name ||
+                  (certPreview.credential_data as any)?.credentialSubject?.studentName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.employeeName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.holderName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.participantName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.candidateName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.internName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.attendeeName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.fullName ||
+                  "Credential Holder",
+                holderDid: certPreview.holder_did,
+                issuedAt: certPreview.issued_at,
+                status: certPreview.status,
+                credentialHash: certPreview.credential_hash || "",
+                blockchainAnchor: certPreview.blockchain_anchor,
+                credentialData: (certPreview.credential_data as Record<string, any>) || {},
+              }
+            : null
+        }
+      />
     </>
   );
 };

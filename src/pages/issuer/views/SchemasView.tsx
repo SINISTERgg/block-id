@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2, Trash2, Layout } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import SchemaFieldEditor from "@/components/issuer/SchemaFieldEditor";
+import SchemaBuilder from "@/components/issuer/SchemaBuilder";
 import CredentialTypeSelect from "@/components/issuer/CredentialTypeSelect";
 import type { IssuerCredential, IssuerSchema, SchemaFieldDef } from "@/services/api/issuer.service";
 
@@ -20,6 +21,7 @@ interface SchemasViewProps {
 
 const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, onDelete }: SchemasViewProps) => {
   const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
   const [versioningSchema, setVersioningSchema] = useState<IssuerSchema | null>(null);
   const [migrationSchema, setMigrationSchema] = useState<IssuerSchema | null>(null);
   const [migrating, setMigrating] = useState(false);
@@ -35,6 +37,14 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, 
     setIsSchemaDialogOpen(false);
     setSchemaName(""); setSchemaType("certificate");
     setSchemaFields([{ name: "", type: "string", required: false }]);
+  };
+
+  /** Called when a template is selected from SchemaBuilder */
+  const handleTemplateSelect = (name: string, credentialType: string, fields: SchemaFieldDef[]) => {
+    setSchemaName(name);
+    setSchemaType(credentialType);
+    setSchemaFields(fields);
+    setIsSchemaDialogOpen(true);
   };
 
   const openVersionDialog = (schema: IssuerSchema) => {
@@ -86,23 +96,35 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, 
     <>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-display font-semibold text-foreground">Credential Schemas</h2>
-        <Dialog open={isSchemaDialogOpen} onOpenChange={setIsSchemaDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="issuer" className="gap-2">
-              <Plus className="h-4 w-4" /> Create Schema
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="font-display">Create Credential Schema</DialogTitle></DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div><Label htmlFor="schema-name">Schema Name</Label><Input id="schema-name" value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="e.g., Bachelor's Degree" /></div>
-              <div><Label>Credential Type</Label><CredentialTypeSelect value={schemaType} onValueChange={setSchemaType} /></div>
-              <div><Label>Fields</Label><div className="mt-1"><SchemaFieldEditor fields={schemaFields} onChange={setSchemaFields} /></div></div>
-              <Button variant="issuer" className="w-full" onClick={handleCreate}>Create Schema</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setIsTemplatePickerOpen(true)}>
+            <Layout className="h-4 w-4" /> Use Template
+          </Button>
+          <Dialog open={isSchemaDialogOpen} onOpenChange={setIsSchemaDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="issuer" className="gap-2">
+                <Plus className="h-4 w-4" /> Create Schema
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader><DialogTitle className="font-display">Create Credential Schema</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div><Label htmlFor="schema-name">Schema Name</Label><Input id="schema-name" value={schemaName} onChange={(e) => setSchemaName(e.target.value)} placeholder="e.g., Bachelor's Degree" /></div>
+                <div><Label>Credential Type</Label><CredentialTypeSelect value={schemaType} onValueChange={setSchemaType} /></div>
+                <div><Label>Fields</Label><div className="mt-1"><SchemaFieldEditor fields={schemaFields} onChange={setSchemaFields} /></div></div>
+                <Button variant="issuer" className="w-full" onClick={handleCreate}>Create Schema</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
+
+      {/* Schema Template Picker */}
+      <SchemaBuilder
+        open={isTemplatePickerOpen}
+        onOpenChange={setIsTemplatePickerOpen}
+        onSelectTemplate={handleTemplateSelect}
+      />
 
       {schemas.length === 0 ? (
         <Card><CardContent className="py-12"><div className="flex items-center justify-center text-muted-foreground text-sm">No schemas yet. Create your first credential schema.</div></CardContent></Card>

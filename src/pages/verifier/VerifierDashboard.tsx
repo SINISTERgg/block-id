@@ -68,7 +68,7 @@ const VerifierDashboard = () => {
     <PortalLayout
       title="Verifier Portal"
       portalType="verifier"
-      icon={<Building2 className="h-5 w-5" style={{ color: "hsl(var(--verifier))" }} />}
+      icon={<Building2 className="h-5 w-5" />}
       navItems={navItems}
     >
       <motion.div

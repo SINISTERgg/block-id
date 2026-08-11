@@ -28,14 +28,33 @@ const SharedCredential = () => {
     const fetchShared = async () => {
       if (!token) { setError("Invalid link"); setLoading(false); return; }
 
-      const { data: share, error: err } = await supabase
+      // Try to fetch with disclosed_fields; fall back without it if column missing
+      let share: any = null;
+      let fetchErr: any = null;
+
+      const withFields = await supabase
         .from("credential_shares")
         .select("expires_at, credential_id, disclosed_fields")
         .eq("token", token)
         .single();
 
-      if (err || !share) { setError("Share link not found or invalid"); setLoading(false); return; }
+      if (withFields.error?.message?.includes("disclosed_fields")) {
+        // Column doesn't exist yet in DB — retry without it
+        const withoutFields = await supabase
+          .from("credential_shares")
+          .select("expires_at, credential_id")
+          .eq("token", token)
+          .single();
+        share = withoutFields.data;
+        fetchErr = withoutFields.error;
+      } else {
+        share = withFields.data;
+        fetchErr = withFields.error;
+      }
+
+      if (fetchErr || !share) { setError("Share link not found or invalid"); setLoading(false); return; }
       if (new Date(share.expires_at) < new Date()) { setError("This share link has expired"); setLoading(false); return; }
+
 
       const { data: cred } = await supabase
         .from("credentials")

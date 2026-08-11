@@ -4,26 +4,26 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center font-mono text-xs font-semibold uppercase tracking-wider transition-all duration-100",
+  "inline-flex items-center rounded-full font-mono text-xs font-semibold uppercase tracking-wider transition-all duration-200",
   {
     variants: {
       variant: {
-        default: "bg-foreground text-background",
-        secondary: "border border-foreground text-foreground bg-transparent",
-        destructive: "bg-foreground text-background",
-        outline: "border border-foreground text-foreground bg-transparent",
-        success: "bg-foreground text-background",
-        warning: "border-2 border-foreground text-foreground bg-transparent",
-        error: "bg-foreground text-background",
-        info: "bg-foreground text-background",
-        
+        default: "bg-gradient-to-r from-[#EA580C] to-[#F7931A] text-white",
+        secondary: "border border-border bg-secondary text-secondary-foreground",
+        destructive: "border border-destructive/20 bg-destructive/10 text-destructive",
+        outline: "border border-border bg-transparent text-foreground",
+        success: "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        warning: "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        error: "border border-destructive/20 bg-destructive/10 text-destructive",
+        info: "border border-primary/20 bg-primary/10 text-primary",
+
         /* Role badges */
-        issuer: "bg-foreground text-background",
-        issuer_muted: "border border-foreground text-foreground bg-transparent",
-        holder: "bg-foreground text-background",
-        holder_muted: "border border-foreground text-foreground bg-transparent",
-        verifier: "bg-foreground text-background",
-        verifier_muted: "border border-foreground text-foreground bg-transparent",
+        issuer: "bg-issuer text-issuer-foreground",
+        issuer_muted: "border border-issuer/30 bg-issuer-muted text-issuer",
+        holder: "bg-holder text-holder-foreground",
+        holder_muted: "border border-holder/30 bg-holder-muted text-holder",
+        verifier: "bg-verifier text-verifier-foreground",
+        verifier_muted: "border border-verifier/30 bg-verifier-muted text-verifier",
       },
       size: {
         default: "px-3 py-1",

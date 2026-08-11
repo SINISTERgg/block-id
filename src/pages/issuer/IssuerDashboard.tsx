@@ -264,7 +264,7 @@ const credHash = credData?.credential_hash;
   };
 
   return (
-    <PortalLayout title="Issuer Portal" portalType="issuer" icon={<Shield className="h-5 w-5" style={{ color: "hsl(var(--issuer))" }} />} navItems={navItems}>
+    <PortalLayout title="Issuer Portal" portalType="issuer" icon={<Shield className="h-5 w-5" />} navItems={navItems}>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}

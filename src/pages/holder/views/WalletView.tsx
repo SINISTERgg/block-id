@@ -1,13 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
-import { Shield, Copy, QrCode, ExternalLink, Download, Clock, Link2, Wallet, Key, AlertTriangle } from "lucide-react";
+import { Shield, Copy, QrCode, ExternalLink, Clock, Link2, Wallet, Key, AlertTriangle, FileImage } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import CertificateRenderer from "@/components/issuer/CertificateRenderer";
 import OnChainStatusBadge from "@/components/OnChainStatusBadge";
-import CredentialExport from "@/components/CredentialExport";
-import { generateCertificatePdf } from "@/lib/generateCertificatePdf";
 import { motion } from "framer-motion";
 import type { HolderCredential } from "@/services/api/holder.service";
 
@@ -53,6 +52,8 @@ const WalletView = ({
   securityScore,
   isWalletConnected,
 }: WalletViewProps) => {
+  const [certPreview, setCertPreview] = useState<HolderCredential | null>(null);
+
   const activeCount = credentials.filter((c) => c.status === "active").length;
   const revokedCount = credentials.filter((c) => c.status === "revoked").length;
   const expiredCount = credentials.filter((c) => c.status === "expired").length;
@@ -88,6 +89,12 @@ const WalletView = ({
     return true;
   }), [credentials, statusFilter, searchQuery]);
 
+  /** Build the verification URL from credential hash (matches CertificateRenderer) */
+  const getVerificationUrl = (hash: string) => {
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    return `${base}/verify?hash=${encodeURIComponent(hash)}`;
+  };
+
   const createPresentation = (cred: HolderCredential) => JSON.stringify({
     "@context": ["https://www.w3.org/2018/credentials/v1"],
     type: ["VerifiablePresentation"],
@@ -95,6 +102,7 @@ const WalletView = ({
     verifiableCredential: { ...(cred.credential_data as any), id: cred.id },
     credential_id: cred.id,
   });
+
 
   return (
     <>
@@ -353,7 +361,7 @@ const WalletView = ({
                     
                     {cred.status === "active" && (
                       <div className="flex flex-wrap gap-2 mb-4">
-                        <Button variant="outline" size="sm" className="h-8" onClick={() => onShowQR(createPresentation(cred), "Credential QR")}>
+                        <Button variant="outline" size="sm" className="h-8" onClick={() => onShowQR(getVerificationUrl(cred.credential_hash), "Credential QR")}>
                           <QrCode className="h-4 w-4 mr-1.5" /> QR
                         </Button>
                         <Button variant="outline" size="sm" className="h-8" onClick={() => onCopy(createPresentation(cred))}>
@@ -365,19 +373,8 @@ const WalletView = ({
                         }}>
                           <ExternalLink className="h-4 w-4 mr-1.5" /> Share
                         </Button>
-                        <CredentialExport credential={cred as any} holderDid={holderDid || ""} />
-                        <Button variant="outline" size="sm" className="h-8" onClick={() => generateCertificatePdf({ 
-                          credentialName: cred.credential_schemas?.name || "Credential", 
-                          credentialType: cred.credential_schemas?.credential_type || "", 
-                          holderName: holderName || "", 
-                          holderDid: holderDid || "", 
-                          issuedAt: cred.issued_at, 
-                          status: cred.status, 
-                          credentialHash: cred.credential_hash, 
-                          blockchainAnchor: cred.blockchain_anchor, 
-                          credentialData: cred.credential_data as Record<string, any> 
-                        })}>
-                          <Download className="h-4 w-4 mr-1.5" /> PDF
+                        <Button variant="outline" size="sm" className="h-8" onClick={() => setCertPreview(cred)}>
+                          <FileImage className="h-4 w-4 mr-1.5" /> Certificate
                         </Button>
                       </div>
                     )}
@@ -428,6 +425,34 @@ const WalletView = ({
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Visual Certificate Modal (holder side) */}
+      <CertificateRenderer
+        open={!!certPreview}
+        onOpenChange={(open) => !open && setCertPreview(null)}
+        certificate={
+          certPreview
+            ? {
+                credentialName: certPreview.credential_schemas?.name || "Credential",
+                credentialType: certPreview.credential_schemas?.credential_type || "certificate",
+                holderName:
+                  holderName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.name ||
+                  (certPreview.credential_data as any)?.credentialSubject?.studentName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.employeeName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.holderName ||
+                  (certPreview.credential_data as any)?.credentialSubject?.fullName ||
+                  "Credential Holder",
+                holderDid: holderDid || "",
+                issuedAt: certPreview.issued_at,
+                status: certPreview.status,
+                credentialHash: certPreview.credential_hash || "",
+                blockchainAnchor: certPreview.blockchain_anchor,
+                credentialData: (certPreview.credential_data as Record<string, any>) || {},
+              }
+            : null
+        }
+      />
     </>
   );
 };

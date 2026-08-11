@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,123 +6,123 @@
 
 @layer base {
   :root {
-    /* Minimalist Monochrome Design Tokens */
-    /* Pure Black & White Palette */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 0%;
-    
-    /* Card & Popover - Pure White */
+    /* ============================================
+       BITCOIN DEFI — "Digital Paper" (Light Mode)
+       Warm off-white void, Bitcoin orange energy
+       ============================================ */
+    --background: 37 3% 97%;
+    --foreground: 33 21% 8%;
+
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 0%;
-    
+    --card-foreground: 33 21% 8%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 0%;
-    
-    /* Primary - Black (IS the accent) */
-    --primary: 0 0% 0%;
-    --primary-foreground: 0 0% 100%;
-    
-    /* Secondary - White */
-    --secondary: 0 0% 100%;
-    --secondary-foreground: 0 0% 0%;
-    
-    /* Muted - Off-white & Dark Gray */
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 32%;
-    
-    /* Accent - Black */
-    --accent: 0 0% 0%;
-    --accent-foreground: 0 0% 100%;
-    
-    --destructive: 0 0% 0%;
+    --popover-foreground: 33 21% 8%;
+
+    /* Primary — Bitcoin Orange (#F7931A) */
+    --primary: 33 93% 54%;
+    --primary-foreground: 33 21% 8%;
+
+    --secondary: 33 30% 94%;
+    --secondary-foreground: 33 21% 8%;
+
+    --muted: 33 25% 94%;
+    --muted-foreground: 30 9% 42%;
+
+    --accent: 50 100% 50%;
+    --accent-foreground: 33 21% 8%;
+
+    --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 100%;
-    
-    /* Borders */
-    --border: 0 0% 0%;
-    --border-light: 0 0% 90%;
-    --input: 0 0% 0%;
-    --ring: 0 0% 0%;
-    
-    /* ZERO border radius - architectural precision */
-    --radius: 0px;
-    
+
+    --border: 35 12% 86%;
+    --input: 35 12% 86%;
+    --ring: 33 93% 54%;
+
+    --radius: 0.5rem;
+
     /* Typography */
-    --font-display: 'Playfair Display', Georgia, serif;
-    --font-body: 'Source Serif 4', Georgia, serif;
+    --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    --font-body: 'Inter', 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    
-    /* Role colors - Monochrome variants */
-    --issuer: 0 0% 15%;
+
+    /* Role colors — warm accent family */
+    --issuer: 21 90% 48%;
     --issuer-foreground: 0 0% 100%;
-    --issuer-muted: 0 0% 95%;
-    
-    --holder: 0 0% 20%;
+    --issuer-muted: 21 80% 92%;
+
+    --holder: 33 93% 54%;
     --holder-foreground: 0 0% 100%;
-    --holder-muted: 0 0% 95%;
-    
-    --verifier: 0 0% 25%;
+    --holder-muted: 33 80% 92%;
+
+    --verifier: 50 90% 45%;
     --verifier-foreground: 0 0% 100%;
-    --verifier-muted: 0 0% 95%;
-    
+    --verifier-muted: 50 80% 92%;
+
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 0 0% 0%;
-    --sidebar-primary: 0 0% 0%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 0%;
-    --sidebar-border: 0 0% 0%;
-    --sidebar-ring: 0 0% 0%;
+    --sidebar-foreground: 33 21% 8%;
+    --sidebar-primary: 33 93% 54%;
+    --sidebar-primary-foreground: 33 21% 8%;
+    --sidebar-accent: 33 30% 94%;
+    --sidebar-accent-foreground: 33 21% 8%;
+    --sidebar-border: 35 12% 86%;
+    --sidebar-ring: 33 93% 54%;
   }
 
   .dark {
-    /* Minimalist Monochrome - Dark Mode */
-    --background: 0 0% 0%;
+    /* ============================================
+       BITCOIN DEFI — "True Void" (Dark Mode)
+       #030304 void, Bitcoin orange + digital gold
+       ============================================ */
+    --background: 240 14% 1%;
     --foreground: 0 0% 100%;
-    
-    --card: 0 0% 5%;
+
+    --card: 220 3% 7%;
     --card-foreground: 0 0% 100%;
-    
-    --popover: 0 0% 5%;
+
+    --popover: 220 3% 7%;
     --popover-foreground: 0 0% 100%;
-    
-    /* Primary remains black (inverted on dark mode = white) */
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 0%;
-    
-    --secondary: 0 0% 5%;
+
+    --primary: 33 93% 54%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 14% 12%;
     --secondary-foreground: 0 0% 100%;
-    
-    --muted: 0 0% 8%;
-    --muted-foreground: 0 0% 60%;
-    
-    --accent: 0 0% 100%;
-    --accent-foreground: 0 0% 0%;
-    
-    --destructive: 0 0% 100%;
-    --destructive-foreground: 0 0% 0%;
-    
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 0 0% 100%;
-    
-    --issuer: 0 0% 80%;
-    --issuer-foreground: 0 0% 0%;
-    
-    --holder: 0 0% 85%;
-    --holder-foreground: 0 0% 0%;
-    
-    --verifier: 0 0% 90%;
-    --verifier-foreground: 0 0% 0%;
-    
-    --sidebar-background: 0 0% 3%;
+
+    --muted: 217 12% 13%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 50 100% 50%;
+    --accent-foreground: 240 14% 1%;
+
+    --destructive: 0 74% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 217 18% 17%;
+    --input: 217 18% 17%;
+    --ring: 33 93% 54%;
+
+    --issuer: 21 90% 48%;
+    --issuer-foreground: 0 0% 100%;
+    --issuer-muted: 21 90% 14%;
+
+    --holder: 33 93% 54%;
+    --holder-foreground: 0 0% 100%;
+    --holder-muted: 33 93% 14%;
+
+    --verifier: 50 100% 50%;
+    --verifier-foreground: 240 14% 1%;
+    --verifier-muted: 50 100% 12%;
+
+    --sidebar-background: 240 14% 2%;
     --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 0 0% 100%;
-    --sidebar-primary-foreground: 0 0% 0%;
-    --sidebar-accent: 0 0% 8%;
+    --sidebar-primary: 33 93% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 14% 12%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 0 0% 100%;
+    --sidebar-border: 217 18% 17%;
+    --sidebar-ring: 33 93% 54%;
   }
 }
 
@@ -138,10 +138,15 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
   }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.25);
+    color: var(--foreground);
+  }
 }
 
 @layer utilities {
-  .font-display {
+  .font-display, .font-heading {
     font-family: var(--font-display);
   }
   .font-body {
@@ -153,62 +158,228 @@
 }
 
 /* ============================================
-   MINIMALIST MONOCHROME STYLES
+   BITCOIN DEFI — SIGNATURE STYLES
+   Luminescent energy, mathematical precision,
+   layered depth, textured void.
    ============================================ */
 
-/* --- Textures --- */
+/* --- The Void Grid: fading blockchain network pattern --- */
+.bg-grid-pattern {
+  background-size: 50px 50px;
+  background-image:
+    linear-gradient(to right, rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at center, black 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 100%);
+}
 
-/* Primary: Horizontal Lines (global subtle texture) */
+/* Light-mode variant of the void grid (softer, warm ink) */
+:root:not(.dark) .bg-grid-pattern {
+  background-image:
+    linear-gradient(to right, rgba(30, 41, 59, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.12) 1px, transparent 1px);
+}
+
+/* --- Gradient text: digital gold on Bitcoin orange --- */
+.text-gradient-gold {
+  background: linear-gradient(to right, #F7931A, #FFD600);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* --- Holographic gradient: glass panel with a gold/orange sheen --- */
+.holographic-gradient {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(247, 147, 26, 0.06), rgba(255, 214, 0, 0.03) 50%, rgba(247, 147, 26, 0.06)),
+    var(--card);
+}
+
+/* --- Ambient radial blobs (energy fields) --- */
+.mesh-gradient {
+  background:
+    radial-gradient(ellipse 60% 40% at 15% 0%, rgba(247, 147, 26, 0.08), transparent 60%),
+    radial-gradient(ellipse 50% 45% at 85% 100%, rgba(255, 214, 0, 0.06), transparent 60%),
+    radial-gradient(ellipse 40% 35% at 50% 50%, rgba(234, 88, 12, 0.04), transparent 65%);
+}
+
+/* --- Dotted network pattern --- */
+.pattern-dots {
+  background-image: radial-gradient(hsl(var(--primary) / 0.28) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* --- Glass morphism --- */
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 50px -10px rgba(247, 147, 26, 0.08);
+}
+
+.glass-header {
+  background: hsl(var(--background) / 0.68);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+}
+
+/* Light-mode glass needs a touch more body */
+:root:not(.dark) .glass,
+:root:not(.dark) .glass-card {
+  background: rgba(255, 255, 255, 0.65);
+  box-shadow: 0 0 30px -12px rgba(234, 88, 12, 0.08);
+}
+
+/* --- Solid card: elevated dark-matter block --- */
+.solid-card {
+  border-radius: 1rem;
+  box-shadow: 0 0 40px -12px rgba(247, 147, 26, 0.06);
+}
+
+/* --- Terminal-style input --- */
+.input-solid {
+  border: 1px solid hsl(var(--input));
+  border-bottom-width: 2px;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding-left: 1rem;
+  transition: all 200ms ease;
+}
+
+.input-solid:focus-visible {
+  border-color: hsl(var(--primary));
+  border-bottom-width: 2px;
+  box-shadow: 0 10px 20px -10px rgba(247, 147, 26, 0.3);
+  outline: none;
+}
+
+:root:not(.dark) .input-solid {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* --- Glowing pulse for live indicators --- */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* --- Colored glow shadows (never pure black) --- */
+.glow-primary { box-shadow: 0 0 25px -6px rgba(247, 147, 26, 0.35); }
+.glow-issuer { box-shadow: 0 0 25px -6px rgba(234, 88, 12, 0.35); }
+.glow-holder { box-shadow: 0 0 25px -6px rgba(247, 147, 26, 0.35); }
+.glow-verifier { box-shadow: 0 0 25px -6px rgba(255, 214, 0, 0.3); }
+
+.hover\:glow-primary:hover { box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.35); }
+.hover\:glow-issuer:hover { box-shadow: 0 0 30px -5px rgba(234, 88, 12, 0.35); }
+.hover\:glow-holder:hover { box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.35); }
+.hover\:glow-verifier:hover { box-shadow: 0 0 30px -5px rgba(255, 214, 0, 0.3); }
+
+/* --- Admin badge glows --- */
+.badge-glow-admin { box-shadow: 0 0 12px -2px rgba(245, 158, 11, 0.45); }
+.badge-glow-issuer { box-shadow: 0 0 12px -2px rgba(234, 88, 12, 0.4); }
+.badge-glow-holder { box-shadow: 0 0 12px -2px rgba(247, 147, 26, 0.4); }
+.badge-glow-verifier { box-shadow: 0 0 12px -2px rgba(255, 214, 0, 0.35); }
+
+/* --- Floating animation for hero orb --- */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+/* --- Corner border accents: "selected node" --- */
+.corner-accent {
+  position: relative;
+}
+.corner-accent::before,
+.corner-accent::after {
+  content: "";
+  position: absolute;
+  width: 1.25rem;
+  height: 1.25rem;
+  pointer-events: none;
+  transition: all 300ms ease;
+}
+.corner-accent::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid rgba(247, 147, 26, 0.9);
+  border-left: 2px solid rgba(247, 147, 26, 0.9);
+  border-top-left-radius: 1rem;
+}
+.corner-accent::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid rgba(255, 214, 0, 0.9);
+  border-right: 2px solid rgba(255, 214, 0, 0.9);
+  border-bottom-right-radius: 1rem;
+}
+
+/* ============================================
+   LEGACY MONOCHROME HELPERS — RESTYLED
+   Kept for compatibility with existing pages.
+   ============================================ */
+
+/* --- Textures (used sparingly) --- */
 .texture-lines {
   background-image: repeating-linear-gradient(
     0deg,
     transparent,
     transparent 1px,
-    #000 1px,
-    #000 2px
+    hsl(var(--foreground) / 0.06) 1px,
+    hsl(var(--foreground) / 0.06) 2px
   );
   background-size: 100% 4px;
 }
 
-/* Secondary: Grid (editorial sections) */
 .texture-grid {
   background-image:
-    linear-gradient(#00000008 1px, transparent 1px),
-    linear-gradient(90deg, #00000008 1px, transparent 1px);
+    linear-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
-/* Noise Texture (global for paper-like quality) */
 .texture-noise {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
 
-/* Vertical Lines Texture (inverted sections) */
 .texture-lines-vertical {
   background-image: repeating-linear-gradient(
     90deg,
     transparent,
     transparent 1px,
-    #fff 1px,
-    #fff 2px
+    hsl(var(--foreground) / 0.06) 1px,
+    hsl(var(--foreground) / 0.06) 2px
   );
   background-size: 4px 100%;
 }
 
-/* --- Typography Scale --- */
-
+/* --- Typography scale --- */
 .text-display {
   font-size: clamp(2.5rem, 6vw, 6rem);
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.05;
   font-family: var(--font-display);
 }
 
 .text-headline {
   font-size: clamp(1.5rem, 3vw, 2.5rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.15;
   font-family: var(--font-display);
 }
@@ -225,7 +396,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Labels - Uppercase, tracked */
+/* Labels - uppercase, tracked */
 .text-label {
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -234,63 +405,44 @@
   letter-spacing: 0.1em;
 }
 
-/* --- Borders & Lines --- */
-
-/* Thick horizontal rules between sections */
-.hr-thick {
-  height: 4px;
-  background: var(--foreground);
-}
-
-/* Medium rule */
-.hr-medium {
-  height: 2px;
-  background: var(--foreground);
-}
-
-/* Thin border for cards/inputs */
-.border-thin {
-  border: 1px solid var(--foreground);
-}
-
-/* --- Buttons --- */
-
+/* --- Buttons (legacy helpers) --- */
 .btn-primary {
-  background: var(--foreground);
-  color: var(--background);
+  background: linear-gradient(to right, #EA580C, #F7931A);
+  color: #fff;
   border: none;
-  padding: 1rem 2rem;
+  border-radius: 9999px;
+  padding: 0.75rem 2rem;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  transition: all 100ms instant;
+  box-shadow: 0 0 20px -5px rgba(234, 88, 12, 0.5);
+  transition: all 300ms ease;
 }
 
 .btn-primary:hover {
-  background: var(--background);
-  color: var(--foreground);
-  outline: 2px solid var(--foreground);
-  outline-offset: 0;
+  transform: scale(1.03);
+  box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.6);
 }
 
 .btn-secondary {
   background: transparent;
   color: var(--foreground);
-  border: 2px solid var(--foreground);
-  padding: 1rem 2rem;
+  border: 2px solid hsl(var(--foreground) / 0.2);
+  border-radius: 9999px;
+  padding: 0.75rem 2rem;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  transition: all 100ms instant;
+  transition: all 300ms ease;
 }
 
 .btn-secondary:hover {
-  background: var(--foreground);
-  color: var(--background);
+  border-color: var(--foreground);
+  background: hsl(var(--foreground) / 0.1);
 }
 
 .btn-ghost {
@@ -303,81 +455,79 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  transition: all 200ms ease;
 }
 
 .btn-ghost:hover {
-  text-decoration-thickness: 2px;
+  color: #F7931A;
+  background: hsl(var(--foreground) / 0.08);
 }
 
-/* --- Cards --- */
-
-/* Standard Card - white with black border */
+/* --- Cards (legacy helpers) --- */
 .card-standard {
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
   padding: 1.5rem;
-  transition: all 100ms instant;
+  transition: all 300ms ease;
 }
 
 .card-standard:hover {
-  border-width: 2px;
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 30px -10px rgba(247, 147, 26, 0.2);
 }
 
-/* Inverted Card - black background, white text */
 .card-inverted {
   background: var(--foreground);
   color: var(--background);
   border: none;
+  border-radius: 1rem;
   padding: 1.5rem;
 }
 
-/* Borderless Card */
 .card-borderless {
   background: transparent;
   border: none;
   padding: 1.5rem;
 }
 
-/* --- Inputs --- */
-
+/* --- Inputs (legacy helper) --- */
 .input-standard {
-  background: var(--background);
+  background: transparent;
   border: none;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 2px solid hsl(var(--border));
   padding: 0.75rem 0;
   font-family: var(--font-mono);
   font-size: 0.875rem;
-  transition: all 100ms instant;
+  transition: all 200ms ease;
 }
 
 .input-standard:focus {
-  border-bottom-width: 4px;
+  border-bottom-color: hsl(var(--primary));
+  box-shadow: 0 10px 20px -10px rgba(247, 147, 26, 0.3);
   outline: none;
 }
 
 .input-standard::placeholder {
-  color: var(--muted-foreground);
-  font-style: italic;
+  color: hsl(var(--muted-foreground) / 0.7);
 }
 
-/* --- Stat Cards --- */
-
+/* --- Stat cards --- */
 .stat-card {
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
   padding: 1.5rem;
-  transition: all 100ms instant;
+  transition: all 300ms ease;
 }
 
 .stat-card:hover {
-  background: var(--foreground);
-  color: var(--background);
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 30px -10px rgba(247, 147, 26, 0.2);
+  transform: translateY(-2px);
 }
 
-/* --- Badge Styles --- */
-
+/* --- Badges (legacy helpers) --- */
 .badge-solid {
   display: inline-flex;
   align-items: center;
@@ -388,39 +538,42 @@
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #EA580C, #F7931A);
+  color: #fff;
 }
 
 .badge-mono {
   background: var(--foreground);
   color: var(--background);
+  border-radius: 9999px;
 }
 
-/* --- Role Indicators (Monochrome) --- */
-
+/* --- Role indicators --- */
 .role-indicator {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: var(--foreground);
+  border-radius: 9999px;
+  background: #F7931A;
+  box-shadow: 0 0 8px rgba(247, 147, 26, 0.6);
 }
 
-/* --- Focus States --- */
-
+/* --- Focus states --- */
 .focus-ring:focus-visible {
-  outline: 3px solid var(--foreground);
+  outline: 3px solid hsl(var(--primary));
   outline-offset: 3px;
 }
 
 .focus-ring-input:focus {
-  border-bottom-width: 4px;
+  border-bottom-color: hsl(var(--primary));
   outline: none;
 }
 
 /* --- Scrollbar --- */
-
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -428,22 +581,15 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-light);
+  background: hsl(var(--border));
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
-}
-
-/* --- Selection --- */
-
-::selection {
-  background: var(--foreground);
-  color: var(--background);
+  background: hsl(var(--primary) / 0.6);
 }
 
 /* --- Animations --- */
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -453,8 +599,7 @@
   animation: fade-in 0.3s ease-out forwards;
 }
 
-/* --- Layout Utilities --- */
-
+/* --- Layout utilities --- */
 .section-spacing {
   padding: 3rem 0;
 }
@@ -472,7 +617,6 @@
 }
 
 /* --- Container --- */
-
 .container-mono {
   max-width: 72rem;
   margin: 0 auto;
@@ -488,5 +632,15 @@
 @media (min-width: 1024px) {
   .container-mono {
     padding: 0 3rem;
+  }
+}
+
+/* --- Reduced motion: calm the cosmic drift --- */
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-glow-pulse,
+  .animate-bounce,
+  .animate-ping {
+    animation: none !important;
   }
 }

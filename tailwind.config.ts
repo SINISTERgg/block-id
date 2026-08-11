@@ -14,8 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["Playfair Display", "Georgia", "serif"],
-        body: ["Source Serif 4", "Georgia", "serif"],
+        display: ["Space Grotesk", "Inter", "sans-serif"],
+        heading: ["Space Grotesk", "Inter", "sans-serif"],
+        body: ["Inter", "Space Grotesk", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       colors: {
@@ -67,6 +68,14 @@ export default {
           foreground: "hsl(var(--verifier-foreground))",
           muted: "hsl(var(--verifier-muted))",
         },
+        bitcoin: {
+          orange: "#F7931A",
+          burnt: "#EA580C",
+          gold: "#FFD600",
+          void: "#030304",
+          matter: "#0F1115",
+          stardust: "#94A3B8",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -80,14 +89,20 @@ export default {
       },
       borderRadius: {
         none: "0px",
-        DEFAULT: "0px",
-        sm: "0px",
-        md: "0px",
-        lg: "0px",
-        xl: "0px",
-        "2xl": "0px",
-        "3xl": "0px",
-        full: "0px",
+        DEFAULT: "0.5rem",
+        sm: "0.375rem",
+        md: "0.5rem",
+        lg: "0.75rem",
+        xl: "1rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
+        full: "9999px",
+      },
+      boxShadow: {
+        "glow-orange": "0 0 20px -5px rgba(234, 88, 12, 0.5)",
+        "glow-orange-lg": "0 0 30px -5px rgba(247, 147, 26, 0.6)",
+        "glow-gold": "0 0 20px rgba(255, 214, 0, 0.3)",
+        "glow-card": "0 0 50px -10px rgba(247, 147, 26, 0.1)",
       },
       fontSize: {
         xs: ["0.75rem", { lineHeight: "1", letterSpacing: "0.05em" }],
@@ -125,11 +140,24 @@ export default {
           from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        float: {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-20px)" },
+        },
+        spin: {
+          to: { transform: "rotate(360deg)" },
+        },
+        "spin-reverse": {
+          to: { transform: "rotate(-360deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in-up": "fade-in-up 0.3s ease-out forwards",
+        float: "float 8s ease-in-out infinite",
+        "orbit-slow": "spin 10s linear infinite",
+        "orbit-reverse": "spin-reverse 15s linear infinite",
       },
     },
   },

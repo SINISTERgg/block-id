@@ -5,7 +5,7 @@ interface CredentialTypeSelectProps {
   onValueChange: (v: string) => void;
 }
 
-const CREDENTIAL_TYPES = ["degree", "diploma", "certificate", "transcript"] as const;
+const CREDENTIAL_TYPES = ["degree", "diploma", "certificate", "transcript", "license", "badge", "membership", "ticket"] as const;
 
 /**
  * Reusable select for degree / diploma / certificate / transcript.

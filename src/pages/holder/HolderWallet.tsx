@@ -90,7 +90,7 @@ const HolderWallet = () => {
   })();
 
   return (
-    <PortalLayout title="Holder Wallet" portalType="holder" icon={<User className="h-5 w-5" style={{ color: "hsl(var(--holder))" }} />} navItems={navItems}>
+    <PortalLayout title="Holder Wallet" portalType="holder" icon={<User className="h-5 w-5" />} navItems={navItems}>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}

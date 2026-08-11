@@ -61,24 +61,49 @@ export function generateCertificatePdf(cert: CertificateData) {
   doc.setTextColor(100, 116, 139);
   doc.text("This certifies that", w / 2, 75, { align: "center" });
 
-  // Holder name
+  // Holder name — pull from credentialSubject if possible
+  const credSubject = cert.credentialData?.credentialSubject as Record<string, any> | undefined;
+  const resolvedHolderName =
+    cert.holderName ||
+    credSubject?.name ||
+    credSubject?.studentName ||
+    credSubject?.employeeName ||
+    credSubject?.holderName ||
+    credSubject?.fullName ||
+    "Credential Holder";
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(30, 41, 59);
-  doc.text(cert.holderName || "Credential Holder", w / 2, 85, { align: "center" });
+  doc.text(resolvedHolderName, w / 2, 85, { align: "center" });
 
-  // Credential data fields
-  const entries = Object.entries(cert.credentialData).filter(
-    ([k]) => !["@context", "type", "id", "issuer", "issuanceDate", "credentialSubject"].includes(k)
-  );
+
+  // Credential data fields — flatten credentialSubject, skip complex objects
+  const skip = new Set([
+    "@context", "type", "id", "issuer", "issuanceDate", "expirationDate",
+    "proof", "credentialHash", "blockchain", "previousHash", "credentialSchema",
+    "credentialStatus",
+  ]);
+  const entries: [string, string][] = [];
 
   // Flatten credentialSubject if present
   const subject = cert.credentialData.credentialSubject;
   if (subject && typeof subject === "object") {
     Object.entries(subject).forEach(([k, v]) => {
-      if (k !== "id") entries.push([k, v]);
+      if (k === "id") return;
+      if (v === undefined || v === null || v === "") return;
+      if (typeof v === "object" && !Array.isArray(v)) return;
+      entries.push([k, Array.isArray(v) ? v.join(", ") : String(v)]);
     });
   }
+
+  // Top-level non-meta primitives
+  Object.entries(cert.credentialData).forEach(([k, v]) => {
+    if (skip.has(k) || k === "credentialSubject") return;
+    if (v === undefined || v === null || v === "") return;
+    if (typeof v === "object" && !Array.isArray(v)) return;
+    entries.push([k, Array.isArray(v) ? v.join(", ") : String(v)]);
+  });
 
   let yPos = 98;
   const colWidth = (w - 60) / 2;
