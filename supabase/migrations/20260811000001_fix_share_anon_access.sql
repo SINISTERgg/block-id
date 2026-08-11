@@ -4,6 +4,7 @@
 
 -- Drop the policy that only allows authenticated users
 DROP POLICY IF EXISTS "All can read credential_shares" ON public.credential_shares;
+DROP POLICY IF EXISTS "Anyone can read credential_shares by token" ON public.credential_shares;
 
 -- Recreate to allow both anon and authenticated users to read shares
 CREATE POLICY "Anyone can read credential_shares by token"

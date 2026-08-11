@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, useRef, createContext, useContext, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -13,7 +13,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string, organization: string, role: "issuer" | "holder" | "verifier" | "org_admin") => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,8 +26,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [role, setRole] = useState<string | null>(null);
   const [accountStatus, setAccountStatus] = useState<string | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string): Promise<string | null> => {
     const { data } = await supabase
       .from("profiles")
       .select("full_name, organization, did, biometric_registered, face_registered, account_status")
@@ -35,8 +36,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .single();
     if (data) {
       setProfile(data);
-      setAccountStatus((data as any).account_status ?? null);
+      const status = (data as any).account_status ?? null;
+      setAccountStatus(status);
+      return status;
     }
+    return null;
   };
 
   const fetchRole = async (userId: string) => {
@@ -48,45 +52,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (data) setRole(data.role);
   };
 
-  const fetchProfileAndRole = async (userId: string) => {
+  const fetchProfileAndRole = async (userId: string): Promise<string | null> => {
     setProfileLoading(true);
-    await Promise.all([fetchProfile(userId), fetchRole(userId)]);
+    const [status] = await Promise.all([fetchProfile(userId), fetchRole(userId)]);
     setProfileLoading(false);
+    return status ?? null;
   };
 
-  // Real-time subscription for profile updates
+  // Real-time subscription — keyed by user ID so it's only created ONCE per session
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
+
+    // Tear down any existing channel before creating a new one
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
 
     const channel = supabase
-      .channel("profile-updates")
-      .on("postgres_changes", { 
-        event: "UPDATE", 
-        schema: "public", 
+      .channel(`profile-status-${userId}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
         table: "profiles",
-        filter: `user_id=eq.${user.id}`
+        filter: `user_id=eq.${userId}`
       }, (payload) => {
-        const newStatus = payload.new?.account_status;
-        if (newStatus) {
-          setAccountStatus(newStatus);
+        const newRow = payload.new as any;
+        if (newRow?.account_status) {
+          setAccountStatus(newRow.account_status);
+          setProfile((prev) => prev ? { ...prev, ...newRow } : newRow);
+        } else {
+          // payload.new is empty (REPLICA IDENTITY not FULL yet) — fall back to DB fetch
+          fetchProfileAndRole(userId);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.warn("[useAuth] Realtime channel error — polling fallback will handle it");
+        }
+      });
+
+    channelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [user]);
+  }, [userId]); // Stable dep — only re-runs when user changes
 
-  const refreshProfile = async () => {
-    if (user) {
-      await fetchProfileAndRole(user.id);
-    }
+  const refreshProfile = async (): Promise<string | null> => {
+    if (!user) return null;
+    return fetchProfileAndRole(user.id);
   };
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -94,6 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
           setRole(null);
+          setAccountStatus(null);
           setProfileLoading(false);
         }
         setLoading(false);
@@ -101,17 +124,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(session);
         setUser(session.user);
       }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfileAndRole(session.user.id);
-      } else {
-        setProfileLoading(false);
-      }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -138,11 +150,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { error: "Signup failed. Please try again." };
     }
     
-    // Email confirmed - update profile and insert role
+    // Email confirmed - update profile and insert role.
+    // Issuers and verifiers must be approved by an admin before accessing the portal.
+    const needsApproval = role === "issuer" || role === "verifier";
     await supabase.from("profiles").update({ 
       organization, 
       full_name: fullName,
-      account_status: "approved"
+      account_status: needsApproval ? "pending" : "approved"
     }).eq("user_id", data.user.id);
     
     await supabase.from("user_roles").insert({

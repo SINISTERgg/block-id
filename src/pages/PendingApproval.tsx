@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, Shield, LogOut, RefreshCw, Fingerprint, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,62 +9,94 @@ import { motion } from "framer-motion";
 const getRolePath = (r: string) => r === "org_admin" ? "/admin" : `/${r}`;
 
 const PendingApproval = () => {
-  const { user, role, signOut, refreshProfile } = useAuth();
+  const { user, role, accountStatus, signOut } = useAuth();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(5);
+  const navigatingRef = useRef(false);
 
-  // Real-time subscription for profile updates
+  // Hard redirect — full page reload so useAuth starts fresh with the new status.
+  // Using navigate() causes ProtectedRoute to read stale React state and bounce back.
+  const doRedirect = useCallback(async (status: string) => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+
+    if (status === "approved") {
+      // Fetch role from DB fresh (don't trust potentially-stale context)
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user?.id)
+        .single();
+      const userRole = roleRow?.role || role || "holder";
+      // Full page reload — guarantees ProtectedRoute reads correct DB state
+      window.location.href = getRolePath(userRole);
+    } else if (status === "rejected") {
+      window.location.href = "/account-rejected";
+    }
+  }, [user?.id, role]);
+
+  // Poll the DB directly every 5s
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
-    const channel = supabase
-      .channel("pending-approval-updates")
-      .on("postgres_changes", { 
-        event: "UPDATE", 
-        schema: "public", 
-        table: "profiles",
-        filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        const newStatus = payload.new?.account_status;
-        if (newStatus) {
-          // Force a profile refresh when status changes
-          refreshProfile();
-        }
-      })
-      .subscribe();
+    const checkStatus = async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("account_status")
+        .eq("user_id", user.id)
+        .single();
 
-    return () => {
-      supabase.removeChannel(channel);
+      if (error) {
+        console.error("[PendingApproval] Poll error:", error.message);
+        return;
+      }
+
+      const status = data?.account_status;
+      console.log("[PendingApproval] Polled status:", status);
+
+      if (status && status !== "pending") {
+        doRedirect(status);
+      }
     };
-  }, [user, refreshProfile]);
 
-  // Auto-check every 30 seconds
-  useEffect(() => {
+    // Run immediately on mount
+    checkStatus();
+
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          handleRefresh();
-          return 30;
+          checkStatus();
+          return 5;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
-  // Redirect if already approved
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
+  // Also catch Realtime updates if they arrive
   useEffect(() => {
-    if (role) {
-      navigate(getRolePath(role), { replace: true });
+    if (accountStatus && accountStatus !== "pending" && !navigatingRef.current) {
+      doRedirect(accountStatus);
     }
-  }, [role, navigate]);
+  }, [accountStatus]);
 
   const handleRefresh = async () => {
     setChecking(true);
-    await refreshProfile();
-    setChecking(false);
-    setCountdown(30);
+    const { data } = await supabase
+      .from("profiles")
+      .select("account_status")
+      .eq("user_id", user?.id)
+      .single();
+    const status = data?.account_status;
+    if (status && status !== "pending") {
+      await doRedirect(status);
+    } else {
+      setChecking(false);
+      setCountdown(5);
+    }
   };
 
   const handleSignOut = async () => {
@@ -136,6 +168,7 @@ const PendingApproval = () => {
             <RefreshCw className={`h-3 w-3 ${checking ? "animate-spin" : ""}`} />
             <span>Auto-checking in {countdown}s</span>
           </div>
+
 
           {/* Actions */}
           <div className="flex flex-col gap-3 pt-2">

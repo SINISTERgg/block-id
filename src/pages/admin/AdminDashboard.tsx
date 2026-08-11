@@ -157,6 +157,19 @@ const updateUserStatus = async (
     .eq("user_id", userId);
   
   if (error) throw error;
+
+  // RLS can silently drop the update (0 rows affected). Verify it applied.
+  const { data: verifyProfile, error: verifyErr } = await supabase
+    .from("profiles")
+    .select("account_status")
+    .eq("user_id", userId)
+    .single();
+  if (verifyErr) throw new Error(`Failed to verify profile update: ${verifyErr.message}`);
+  if (!verifyProfile || verifyProfile.account_status !== status) {
+    throw new Error(
+      "Profile update was blocked (RLS). The admin role is missing update permissions. Apply the admin_approval_rls migration."
+    );
+  }
   
   // Check if user is an issuer and update trusted_issuers
   const { data: userRoles } = await supabase

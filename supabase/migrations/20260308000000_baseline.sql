@@ -220,19 +220,26 @@ AS $$
   )
 $$;
 
--- Auto-create profile on signup (sets account_status to approved)
+-- Auto-create profile on signup (issuers/verifiers start as pending until admin approval)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
 AS $$
 DECLARE
   _role text;
+  _status text;
 BEGIN
   _role := NEW.raw_user_meta_data->>'role';
 
-  -- All users are auto-approved, no admin approval needed
+  -- Issuers and verifiers require admin approval; holders are auto-approved
+  IF _role IN ('issuer', 'verifier') THEN
+    _status := 'pending';
+  ELSE
+    _status := 'approved';
+  END IF;
+
   INSERT INTO public.profiles (user_id, full_name, account_status)
-  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', ''), 'approved');
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'full_name', ''), _status);
 
   IF _role IS NOT NULL AND _role IN ('issuer', 'holder', 'verifier') THEN
     INSERT INTO public.user_roles (user_id, role)
@@ -336,6 +343,7 @@ CREATE POLICY "Users can read own profile" ON public.profiles FOR SELECT TO auth
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 CREATE POLICY "Issuers can read all profiles" ON public.profiles FOR SELECT TO authenticated USING (has_role(auth.uid(), 'issuer'::app_role));
 CREATE POLICY "Verifiers can read all profiles" ON public.profiles FOR SELECT TO authenticated USING (has_role(auth.uid(), 'verifier'::app_role));
+CREATE POLICY "Admins can update profiles" ON public.profiles FOR UPDATE TO authenticated USING (has_role(auth.uid(), 'org_admin'::app_role)) WITH CHECK (has_role(auth.uid(), 'org_admin'::app_role));
 
 -- credentials
 CREATE POLICY "Holders can read own credentials" ON public.credentials FOR SELECT TO authenticated USING (holder_id = auth.uid());
@@ -371,6 +379,7 @@ CREATE POLICY "Service role inserts audit logs" ON public.audit_logs FOR INSERT 
 CREATE POLICY "Anyone can read trusted issuers" ON public.trusted_issuers FOR SELECT USING (true);
 CREATE POLICY "Issuers can register themselves" ON public.trusted_issuers FOR INSERT WITH CHECK (has_role(auth.uid(), 'issuer'));
 CREATE POLICY "Issuers can update own entry" ON public.trusted_issuers FOR UPDATE USING (issuer_user_id = auth.uid());
+CREATE POLICY "Admins can update trusted_issuers" ON public.trusted_issuers FOR UPDATE TO authenticated USING (has_role(auth.uid(), 'org_admin'::app_role)) WITH CHECK (has_role(auth.uid(), 'org_admin'::app_role));
 
 -- status_lists
 CREATE POLICY "Issuers manage own status lists" ON public.status_lists FOR ALL USING (issuer_id = auth.uid()) WITH CHECK (issuer_id = auth.uid());

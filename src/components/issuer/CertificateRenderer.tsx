@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import jsPDF from "jspdf";
 import { Download, FileImage, Printer, Shield, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -203,18 +203,25 @@ const CertificateRenderer = ({ open, onOpenChange, certificate }: CertificateRen
     doc.setTextColor(99, 102, 241);
     doc.text("SCAN TO VERIFY", qrX + 16, qrY, { align: "center" });
 
-    // Generate QR as canvas and embed in PDF
-    const qrSvg = document.querySelector("#cert-qr-code svg") as SVGElement;
-    if (qrSvg) {
-      const svgData = new XMLSerializer().serializeToString(qrSvg);
-      const img = new Image();
-      img.src = "data:image/svg+xml;base64," + btoa(svgData);
-      // Fallback: draw a placeholder box with URL text
+    // Embed QR Code in PDF using the hidden canvas we rendered
+    const qrCanvas = document.getElementById("pdf-qr-canvas") as HTMLCanvasElement;
+    if (qrCanvas) {
+      try {
+        const qrDataUrl = qrCanvas.toDataURL("image/png");
+        doc.addImage(qrDataUrl, "PNG", qrX + 6, qrY + 4, 30, 30);
+      } catch (e) {
+        console.error("Failed to generate QR for PDF", e);
+        // Fallback text
+        doc.setFontSize(5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(verificationUrl.substring(0, 40), qrX + 16, qrY + 40, { align: "center" });
+      }
+    } else {
+      doc.setFontSize(5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(verificationUrl.substring(0, 40), qrX + 16, qrY + 40, { align: "center" });
     }
-    // Simple text-based QR placeholder for PDF (QR rendering in PDF requires canvas)
-    doc.setFontSize(5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(verificationUrl.substring(0, 40), qrX + 16, qrY + 40, { align: "center" });
+
 
     // Footer
     const footerY = h - 38;
@@ -390,19 +397,17 @@ const CertificateRenderer = ({ open, onOpenChange, certificate }: CertificateRen
               SCAN TO VERIFY
             </text>
 
-            {/* QR Code will be overlaid as foreignObject */}
-            <foreignObject x="710" y="295" width="110" height="110">
-              <div id="cert-qr-code" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <QRCodeSVG
-                  value={verificationUrl}
-                  size={100}
-                  bgColor="#1e293b"
-                  fgColor="#a5b4fc"
-                  level="M"
-                  includeMargin={false}
-                />
-              </div>
-            </foreignObject>
+            {/* QR Code as a nested SVG (foreignObject breaks standard image exports) */}
+            <svg x="715" y="295" width="100" height="100">
+              <QRCodeSVG
+                value={verificationUrl}
+                size={100}
+                bgColor="#1e293b"
+                fgColor="#a5b4fc"
+                level="M"
+                includeMargin={false}
+              />
+            </svg>
 
             <text x="765" y="420" textAnchor="middle" fill="#475569" fontSize="7" fontFamily="monospace">
               {verificationUrl.length > 40 ? verificationUrl.substring(0, 40) + "…" : verificationUrl}
@@ -447,6 +452,20 @@ const CertificateRenderer = ({ open, onOpenChange, certificate }: CertificateRen
             </text>
           </svg>
         </div>
+
+        {/* Hidden canvas for PDF Export to accurately capture the QR code */}
+        <div style={{ display: "none" }}>
+          <QRCodeCanvas
+            id="pdf-qr-canvas"
+            value={verificationUrl}
+            size={200}
+            bgColor="#1e293b"
+            fgColor="#a5b4fc"
+            level="M"
+            includeMargin={false}
+          />
+        </div>
+
 
         {/* Verification Link */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">

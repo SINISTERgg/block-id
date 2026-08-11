@@ -37,13 +37,13 @@ describe("ProtectedRoute", () => {
   });
 
   it("renders children when user is authenticated", () => {
-    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "holder" });
+    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "holder", accountStatus: "approved" });
     renderWithRouter(<ProtectedRoute><div>Protected Content</div></ProtectedRoute>);
     expect(screen.getByText("Protected Content")).toBeInTheDocument();
   });
 
   it("redirects to / when role does not match requiredRole", () => {
-    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "holder" });
+    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "holder", accountStatus: "approved" });
     renderWithRouter(
       <ProtectedRoute requiredRole="issuer"><div>Issuer Only</div></ProtectedRoute>
     );
@@ -51,11 +51,25 @@ describe("ProtectedRoute", () => {
   });
 
   it("renders children when requiredRole matches", () => {
-    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "issuer" });
+    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "issuer", accountStatus: "approved" });
     renderWithRouter(
       <ProtectedRoute requiredRole="issuer"><div>Issuer Dashboard</div></ProtectedRoute>
     );
     expect(screen.getByText("Issuer Dashboard")).toBeInTheDocument();
+  });
+
+  it("redirects pending issuer to /pending-approval", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "issuer", accountStatus: "pending" });
+    renderWithRouter(
+      <ProtectedRoute requiredRole="issuer"><div>Issuer Dashboard</div></ProtectedRoute>
+    );
+    expect(screen.queryByText("Issuer Dashboard")).not.toBeInTheDocument();
+  });
+
+  it("redirects rejected verifier to /account-rejected", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "1" }, loading: false, profileLoading: false, role: "verifier", accountStatus: "rejected" });
+    renderWithRouter(<ProtectedRoute><div>Verifier Dashboard</div></ProtectedRoute>);
+    expect(screen.queryByText("Verifier Dashboard")).not.toBeInTheDocument();
   });
 
   it("renders children when no requiredRole is specified", () => {

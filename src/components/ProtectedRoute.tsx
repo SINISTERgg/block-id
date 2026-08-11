@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
-  const { user, loading, profileLoading, role } = useAuth();
+  const { user, loading, profileLoading, role, accountStatus } = useAuth();
 
   // Wait until session AND profile/role are fully loaded before making routing decisions.
   // Without this guard, `role` is briefly null even for authenticated users (causing
@@ -23,6 +23,15 @@ const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
 
   if (!user) return <Navigate to="/auth" replace />;
   if (requiredRole && role !== requiredRole) return <Navigate to="/" replace />;
+
+  // Approval gate: issuers and verifiers must be admin-approved before accessing portals
+  if ((role === "issuer" || role === "verifier") && accountStatus !== "approved") {
+    if (accountStatus === "rejected") {
+      return <Navigate to="/account-rejected" replace />;
+    }
+    // pending or any other non-approved status
+    return <Navigate to="/pending-approval" replace />;
+  }
 
   return <>{children}</>;
 };
