@@ -4,6 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import DIDResolver from "@/components/DIDResolver";
 import TrustedIssuerRegistry from "@/components/TrustedIssuerRegistry";
+import LiveActivityFeed from "@/components/verifier/LiveActivityFeed";
+import VerifierOrgCard from "@/components/verifier/VerifierOrgCard";
+import AnchorChecker from "@/components/verifier/AnchorChecker";
 import { motion } from "framer-motion";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
@@ -69,8 +72,16 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
     aiConfidence: aiAnalyzedCount > 0 ? avgConfidence : null,
   };
 
+  const tooltipStyle = {
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: 8,
+    fontSize: 12,
+  } as const;
+
   return (
     <>
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {stats.map((stat, index) => (
           <motion.div
@@ -82,9 +93,7 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
             <Card className="solid-card">
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 ${stat.color} rounded-lg flex items-center justify-center ${
-                    stat.color === "bg-muted" ? "" : ""
-                  }`}>
+                  <div className={`w-10 h-10 ${stat.color} rounded-lg flex items-center justify-center`}>
                     <stat.icon className={`h-5 w-5 ${stat.color === "bg-muted" ? "text-muted-foreground" : "text-white"}`} />
                   </div>
                   <div>
@@ -100,6 +109,7 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
         ))}
       </div>
 
+      {/* Charts */}
       {records.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           <motion.div
@@ -120,7 +130,7 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
                     <BarChart data={monthlyVerifications}>
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
                       <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
-                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Bar dataKey="count" fill="hsl(var(--verifier))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -151,7 +161,7 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
                         ))}
                       </Pie>
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                      <Tooltip contentStyle={tooltipStyle} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -161,34 +171,43 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
         </div>
       )}
 
+      {/* Live activity + org profile */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.3 }}
+          className="lg:col-span-2"
+        >
+          <LiveActivityFeed records={records} />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.3 }}
+        >
+          <VerifierOrgCard />
+        </motion.div>
+      </div>
+
+      {/* Tools */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65, duration: 0.3 }}>
+          <AnchorChecker />
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7, duration: 0.3 }}>
+          <TrustedIssuerRegistry compact />
+        </motion.div>
+      </div>
+
+      {/* DID Resolver */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6, duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6"
+        transition={{ delay: 0.75, duration: 0.3 }}
+        className="mt-6"
       >
-        <Card className="solid-card">
-          <CardHeader className="pb-2 bg-muted/30">
-            <CardTitle className="font-display text-sm flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-verifier" />
-              DID Resolver
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DIDResolver compact />
-          </CardContent>
-        </Card>
-        <Card className="solid-card">
-          <CardHeader className="pb-2 bg-muted/30">
-            <CardTitle className="font-display text-sm flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-issuer" />
-              Trusted Issuers
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TrustedIssuerRegistry compact />
-          </CardContent>
-        </Card>
+        <DIDResolver compact />
       </motion.div>
     </>
   );

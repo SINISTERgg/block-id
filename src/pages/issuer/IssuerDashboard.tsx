@@ -32,7 +32,12 @@ const navItems = [
 
 const IssuerDashboard = () => {
   const location = useLocation();
-  const currentView = location.pathname === "/issuer/schemas" ? "schemas" : location.pathname === "/issuer/issue" ? "issue" : "dashboard";
+  const currentView =
+    location.pathname === "/issuer/schemas"
+      ? "schemas"
+      : location.pathname === "/issuer/issue"
+      ? "issue"
+      : "dashboard";
 
   const [isLoading, setIsLoading] = useState(true);
   const [schemas, setSchemas] = useState<IssuerSchema[]>([]);
@@ -121,8 +126,18 @@ const IssuerDashboard = () => {
   };
 
   // ── Issue credential ───────────────────────────────────────────────
-  const handleIssue = async ({ schemaId, holderDid, credentialData, expiresAt, signWithWallet }: {
-    schemaId: string; holderDid: string; credentialData: Record<string, any>; expiresAt: string; signWithWallet: boolean;
+  const handleIssue = async ({
+    schemaId,
+    holderDid,
+    credentialData,
+    expiresAt,
+    signWithWallet,
+  }: {
+    schemaId: string;
+    holderDid: string;
+    credentialData: Record<string, any>;
+    expiresAt: string;
+    signWithWallet: boolean;
   }) => {
     if (!user || !schemaId || !holderDid) return;
     try {
@@ -139,7 +154,7 @@ const IssuerDashboard = () => {
       const { data: session } = await supabase.auth.getSession();
       const authBearer = `Bearer ${session?.session?.access_token}`;
 
-      if (!authBearer || authBearer === 'Bearer undefined') {
+      if (!authBearer || authBearer === "Bearer undefined") {
         toast({ title: "Error", description: "Not authenticated. Please sign in again.", variant: "destructive" });
         return;
       }
@@ -156,11 +171,11 @@ const IssuerDashboard = () => {
           signer_address: signerAddr,
         }),
       });
-      
+
       if (!res.ok) {
         const errorText = await res.text();
         let errorMsg = errorText;
-        try { 
+        try {
           const errObj = JSON.parse(errorText);
           errorMsg = errObj.error || errObj.details || errorText;
         } catch {}
@@ -168,23 +183,17 @@ const IssuerDashboard = () => {
         toast({ title: "Error", description: `Failed (${res.status}): ${errorMsg}`, variant: "destructive" });
         return;
       }
-      
+
       const result = await res.json();
       if (result.error) { toast({ title: "Error", description: result.error, variant: "destructive" }); return; }
 
       const credData = result.credential;
-const credHash = credData?.credential_hash;
+      const credHash = credData?.credential_hash;
       if (!credHash) { toast({ title: "Error", description: "Failed to get credential hash", variant: "destructive" }); return; }
 
-      // Skip on-chain anchoring if contract not deployed
-      if (!walletAddress || !isContractReady) {
-        toast({ title: "Credential issued (off-chain)", description: "No wallet or contract - credential created without on-chain anchor." });
-        loadData();
-        return;
-      }
-
+      // ── On-chain anchoring ───────────────────────────────────────────
       if (walletAddress && isContractReady) {
-        // ── Browser wallet anchoring (MetaMask) ─────────────────────────────
+        // Browser wallet (MetaMask)
         const anchorResult = await anchor(credHash);
         if (anchorResult.success) {
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential`, {
@@ -202,17 +211,39 @@ const credHash = credData?.credential_hash;
             title: "Credential issued & anchored on-chain ✓",
             description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...`,
           });
+          loadData();
         } else {
-          toast({
-            title: anchorResult.error?.includes("rejected") ? "Anchoring skipped" : "Anchoring failed",
-            description: anchorResult.error?.includes("rejected")
-              ? "Credential created. Anchor it later from the Blockchain Explorer."
-              : anchorResult.error,
-            variant: anchorResult.error?.includes("rejected") ? "default" : "destructive",
-          });
+          const errMsg = anchorResult.error ?? "";
+          const isRejected = errMsg.includes("rejected") || errMsg.includes("denied");
+          const isInsufficientFunds =
+            errMsg.includes("insufficient funds") || errMsg.includes("insufficient_funds");
+
+          // Credential was already issued — refresh regardless
+          loadData();
+
+          if (isRejected) {
+            toast({
+              title: "Anchoring skipped",
+              description: "Credential issued ✓ — you can anchor it on-chain later from the Blockchain Explorer.",
+            });
+          } else if (isInsufficientFunds) {
+            toast({
+              title: "Credential issued ✓ — Wallet needs Sepolia ETH",
+              description:
+                "Your wallet has insufficient Sepolia ETH for gas fees. Get free testnet ETH at " +
+                "faucet.sepolia.dev or sepoliafaucet.com, then anchor from the Blockchain Explorer.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Anchoring failed",
+              description: `Credential issued ✓ — on-chain anchor failed: ${errMsg}`,
+              variant: "destructive",
+            });
+          }
         }
       } else if (!window.ethereum && isContractReady) {
-        // ── Server wallet fallback (mobile / no MetaMask) ───────────────────
+        // Server wallet fallback (mobile / no MetaMask)
         toast({ title: "Anchoring via server wallet…", description: "No wallet detected — using server wallet to anchor on Ethereum Sepolia." });
         const serverRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential-server`, {
           method: "POST",
@@ -228,18 +259,19 @@ const credHash = credData?.credential_hash;
         } else {
           toast({ title: "Server anchoring failed", description: serverResult.error ?? "Unknown error", variant: "destructive" });
         }
+        loadData();
       } else {
         toast({
-          title: "Credential created",
+          title: "Credential issued (off-chain)",
           description: isContractReady
             ? "Connect MetaMask to anchor on Ethereum Sepolia."
             : "Contract not deployed. Credential created without on-chain anchor.",
         });
+        loadData();
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
-    loadData();
   };
 
   // ── Revoke credential ──────────────────────────────────────────────

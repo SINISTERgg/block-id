@@ -564,6 +564,8 @@ export type Database = {
     }
     Functions: {
       generate_did: { Args: { _user_id: string }; Returns: string }
+      get_my_did: { Args: Record<PropertyKey, never>; Returns: string }
+      expire_stale_credentials: { Args: Record<PropertyKey, never>; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

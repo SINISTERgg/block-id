@@ -1,10 +1,10 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardSkeleton from "./components/ui/DashboardSkeleton";
@@ -35,6 +35,13 @@ const PageFallback = () => (
 
 const queryClient = new QueryClient();
 
+// Blockchain Explorer is available to issuer, holder, and admin portals only.
+const ExplorerRoute = ({ children }: { children: ReactNode }) => {
+  const { role } = useAuth();
+  if (role === "verifier") return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
@@ -54,7 +61,7 @@ const App = () => (
                 <Route path="/holder/*" element={<ProtectedRoute requiredRole="holder"><HolderWallet /></ProtectedRoute>} />
                 <Route path="/verifier" element={<ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>} />
                 <Route path="/verifier/*" element={<ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>} />
-                <Route path="/explorer" element={<ProtectedRoute><BlockchainExplorer /></ProtectedRoute>} />
+                <Route path="/explorer" element={<ProtectedRoute><ExplorerRoute><BlockchainExplorer /></ExplorerRoute></ProtectedRoute>} />
                 <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />
                 <Route path="/admin/*" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />

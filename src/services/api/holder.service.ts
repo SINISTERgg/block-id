@@ -22,20 +22,46 @@ export interface VerificationRequest {
 
 /**
  * Fetch all credentials held by the given user.
+ *
+ * Before returning, calls `expire_stale_credentials()` RPC to flip any
+ * past-due credentials from 'active' → 'expired' in the DB.
+ * A client-side override is also applied as a last-resort safety net in
+ * case the RPC hasn't run yet (e.g. first render before migration deploys).
  */
 export async function fetchHolderCredentials(
   holderId: string
 ): Promise<HolderCredential[]> {
+  // Sweep: mark any past-due credentials as expired in the DB.
+  // Fire-and-forget — we don't block the fetch on the result.
+  supabase.rpc("expire_stale_credentials").then(({ error }) => {
+    if (error) console.warn("[BlockID] expire_stale_credentials RPC failed:", error.message);
+  });
+
   const { data, error } = await supabase
     .from("credentials")
     .select(
-      "id, credential_data, credential_hash, blockchain_anchor, status, issued_at, credential_schemas(name, credential_type)"
+      "id, credential_data, credential_hash, blockchain_anchor, status, issued_at, expires_at, credential_schemas(name, credential_type)"
     )
     .eq("holder_id", holderId)
     .order("issued_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as HolderCredential[];
+
+  const now = Date.now();
+
+  // Client-side safety override: if expires_at has passed and status is
+  // still 'active' (RPC hasn't run yet), fix it in the returned object.
+  return ((data ?? []) as HolderCredential[]).map((cred) => {
+    if (
+      cred.status === "active" &&
+      (cred as any).expires_at &&
+      new Date((cred as any).expires_at).getTime() < now
+    ) {
+      return { ...cred, status: "expired" };
+    }
+    return cred;
+  });
 }
+
 
 /**
  * Fetch pending verification requests for the given holder DID.
@@ -56,7 +82,13 @@ export async function fetchPendingRequests(
 
 /**
  * Respond to a verification request (accept or decline).
- * When accepting, optionally attach credential data with time-limited access.
+ *
+ * The holder's RLS policy (added in migration 20260812000005) allows
+ * UPDATE on rows where holder_did matches the holder's own DID.
+ *
+ * We request a row count via `select("id")` to detect silent RLS blocks:
+ * Supabase returns 0 rows affected (not an error) when RLS blocks an UPDATE,
+ * which previously caused a false-success toast while the DB was unchanged.
  */
 export async function respondToRequest(
   requestId: string,
@@ -68,28 +100,40 @@ export async function respondToRequest(
   }
 ): Promise<void> {
   const now = new Date();
-  const updatePayload: Record<string, unknown> = {
+
+  const payload: Record<string, unknown> = {
     status: action,
     responded_at: now.toISOString(),
   };
 
   if (action === "accepted" && options?.sharedData) {
-    updatePayload.credential_id = options.credentialId || null;
-    updatePayload.shared_credential_data = options.sharedData;
-    updatePayload.storage_consent = options.storageConsent ?? false;
-    // Access expires in 4 hours unless storage consent is granted
+    payload.credential_id          = options.credentialId || null;
+    payload.shared_credential_data = options.sharedData;
+    payload.storage_consent        = options.storageConsent ?? false;
     if (!options.storageConsent) {
-      const expiresAt = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-      updatePayload.access_expires_at = expiresAt.toISOString();
+      payload.access_expires_at = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
     }
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("verification_requests")
-    .update(updatePayload)
-    .eq("id", requestId);
+    .update(payload)
+    .eq("id", requestId)
+    .select("id");                // request affected rows back
+
   if (error) throw error;
+
+  // 0 rows → RLS blocked the write (holder_did mismatch or request already gone)
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Could not update the request — it may have already been responded to, " +
+      "or your DID does not match the request's holder. Please refresh and try again."
+    );
+  }
 }
+
+
+
 
 /**
  * Subscribe to real-time credential changes for the given holder.

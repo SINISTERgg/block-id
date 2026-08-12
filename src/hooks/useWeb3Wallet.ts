@@ -98,10 +98,36 @@ export function useWeb3Wallet(
       if (didGeneratedRef.current || isAutoGeneratingDid) return;
       setIsAutoGeneratingDid(true);
       try {
+        // Guard: re-check the DB for an existing DID before calling the RPC.
+        // The profile load useEffect is async and may not have completed yet,
+        // so didGeneratedRef.current can be false even if a DID already exists.
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("did")
+          .eq("user_id", userId)
+          .single();
+
+        if (profile?.did) {
+          // DID already exists — mark as done without showing a toast
+          didGeneratedRef.current = true;
+          return;
+        }
+
         const { data, error } = await supabase.rpc("generate_did", {
           _user_id: userId,
         });
-        if (error) throw error;
+        if (error) {
+          // Unique violation means a concurrent call already set the DID — not an error
+          if (
+            error.message?.includes("unique") ||
+            error.message?.includes("duplicate key") ||
+            error.code === "23505"
+          ) {
+            didGeneratedRef.current = true;
+            return;
+          }
+          throw error;
+        }
         if (data) {
           didGeneratedRef.current = true;
           toast({

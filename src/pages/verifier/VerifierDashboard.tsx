@@ -6,16 +6,18 @@ import PortalLayout from "@/components/layout/PortalLayout";
 import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchVerificationRecords } from "@/services/api/verifier.service";
+import { fetchLatestVerificationRecords } from "@/services/api/verifier.service";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 import VerifierDashboardView from "./views/VerifierDashboardView";
 import VerifyView from "./views/VerifyView";
 import HistoryView from "./views/HistoryView";
+import AnalyticsView from "./views/AnalyticsView";
 
 const navItems = [
   { label: "Dashboard", path: "/verifier" },
   { label: "Verify", path: "/verifier/verify" },
   { label: "History", path: "/verifier/history" },
+  { label: "Analytics", path: "/verifier/analytics" },
 ];
 
 const VerifierDashboard = () => {
@@ -23,11 +25,12 @@ const VerifierDashboard = () => {
   const currentView =
     location.pathname === "/verifier/verify" ? "verify"
     : location.pathname === "/verifier/history" ? "history"
+    : location.pathname === "/verifier/analytics" ? "analytics"
     : "dashboard";
 
   const [records, setRecords] = useState<VerificationRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [historySearch, setHistorySearch] = useState("");
+  const [refreshSignal, setRefreshSignal] = useState(0);
 
   const { user } = useAuth();
 
@@ -35,8 +38,11 @@ const VerifierDashboard = () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const data = await fetchVerificationRecords(user.id);
+      const data = await fetchLatestVerificationRecords(user.id);
       setRecords(data);
+      setRefreshSignal((n) => n + 1);
+    } catch {
+      // keep previous data on failure
     } finally {
       setIsLoading(false);
     }
@@ -77,15 +83,14 @@ const VerifierDashboard = () => {
         transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
         className="space-y-8"
       >
-        {isLoading ? (
-          <DashboardSkeleton stats={4} showCharts={currentView === "dashboard"} listItems={currentView === "history" ? 5 : 3} />
+        {isLoading && records.length === 0 ? (
+          <DashboardSkeleton stats={4} showCharts={currentView === "dashboard" || currentView === "analytics"} listItems={currentView === "history" ? 5 : 3} />
         ) : (
           <>
             {currentView === "dashboard" && <VerifierDashboardView records={records} />}
             {currentView === "verify" && <VerifyView verifierId={user!.id} onRecordsRefresh={loadRecords} />}
-            {currentView === "history" && (
-              <HistoryView records={records} searchQuery={historySearch} onSearchChange={setHistorySearch} />
-            )}
+            {currentView === "history" && <HistoryView verifierId={user!.id} refreshSignal={refreshSignal} />}
+            {currentView === "analytics" && <AnalyticsView records={records} />}
           </>
         )}
       </motion.div>

@@ -110,15 +110,17 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                 })}
               </nav>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/explorer")}
-                className="shrink-0"
-                title="Blockchain Explorer"
-              >
-                <Link2 className="h-4 w-4" />
-              </Button>
+              {portalType !== "verifier" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/explorer")}
+                  className="shrink-0"
+                  title="Blockchain Explorer"
+                >
+                  <Link2 className="h-4 w-4" />
+                </Button>
+              )}
 
               {adminUser && (
                 <button

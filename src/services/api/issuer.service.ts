@@ -45,6 +45,8 @@ export async function fetchSchemas(issuerId: string): Promise<IssuerSchema[]> {
 
 /**
  * Fetch the most recent credentials issued by an issuer (max 200).
+ * Applies a client-side expiry override as a safety net for credentials
+ * whose expires_at has passed but whose status hasn't been swept yet.
  */
 export async function fetchCredentials(issuerId: string): Promise<IssuerCredential[]> {
   const { data, error } = await supabase
@@ -56,8 +58,20 @@ export async function fetchCredentials(issuerId: string): Promise<IssuerCredenti
     .order("issued_at", { ascending: false })
     .limit(200);
   if (error) throw error;
-  return (data ?? []) as IssuerCredential[];
+
+  const now = Date.now();
+  return ((data ?? []) as IssuerCredential[]).map((cred) => {
+    if (
+      cred.status === "active" &&
+      cred.expires_at &&
+      new Date(cred.expires_at).getTime() < now
+    ) {
+      return { ...cred, status: "expired" };
+    }
+    return cred;
+  });
 }
+
 
 /**
  * Create a new credential schema.
