@@ -22,15 +22,23 @@ import {
 import type { HolderCredential } from "@/services/api/holder.service";
 import WalletView from "./views/WalletView";
 import PresentView from "./views/PresentView";
+import SecurityView from "./views/SecurityView";
+import BadgesView from "./views/BadgesView";
 
 const navItems = [
   { label: "Wallet", path: "/holder" },
   { label: "Present", path: "/holder/present" },
+  { label: "Security", path: "/holder/security" },
+  { label: "Badges", path: "/holder/badges" },
 ];
 
 const HolderWallet = () => {
   const location = useLocation();
-  const currentView = location.pathname === "/holder/present" ? "present" : "wallet";
+  const currentView =
+    location.pathname === "/holder/present" ? "present"
+    : location.pathname === "/holder/security" ? "security"
+    : location.pathname === "/holder/badges" ? "badges"
+    : "wallet";
 
   const [credentials, setCredentials] = useState<HolderCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -159,6 +167,19 @@ const HolderWallet = () => {
                 onCopy={copyToClipboard}
                 onShareCred={handleShareCred}
                 isWalletConnected={!!walletAddress}
+              />
+            )}
+            {currentView === "security" && (
+              <SecurityView
+                userId={user?.id}
+                holderDid={profile?.did ?? undefined}
+                walletAddress={walletAddress ?? undefined}
+                credentials={credentials}
+              />
+            )}
+            {currentView === "badges" && (
+              <BadgesView
+                walletAddress={walletAddress ?? undefined}
               />
             )}
           </>

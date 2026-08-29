@@ -23,10 +23,13 @@ const BUNDLER_URL = import.meta.env.VITE_BUNDLER_URL as string | undefined;
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? 11155111);
 
 export const SMART_WALLET_REGISTRY_ABI = [
-  "function createAccount(address owner, uint256 salt) external returns (address)",
-  "function getAccountAddress(address owner, uint256 salt) external view returns (address)",
-  "function accountOf(address) external view returns (address)",
-  "function setGuardians(address account, address[] guardians, uint256 threshold) external",
+  // owner is implicitly msg.sender; salt is bytes32 for CREATE2
+  "function createAccount(bytes32 salt) external returns (address)",
+  "function getAccountAddress(address owner, bytes32 salt) external view returns (address)",
+  // keyed by OWNER address → account address
+  "function accountOf(address owner) external view returns (address)",
+  // setGuardians acts on msg.sender's account — no account arg
+  "function setGuardians(address[] calldata guardians, uint256 threshold) external",
   "function voteRecovery(address account, address newOwner) external",
   "function finalizeRecovery(address account, address newOwner) external",
   "function getGuardians(address account) external view returns (address[])",
@@ -55,7 +58,8 @@ function registryAddress(): string {
 export async function predictAccountAddress(owner: string, salt: bigint): Promise<string> {
   const provider = await getReadProvider();
   const registry = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, provider);
-  return (await registry.getAccountAddress(owner, salt)) as string;
+  const salt32 = "0x" + salt.toString(16).padStart(64, "0") as `0x${string}`;
+  return (await registry.getAccountAddress(owner, salt32)) as string;
 }
 
 /**
@@ -72,16 +76,21 @@ export async function ensureSmartAccount(
   const readProvider = await getReadProvider();
   const registryRead = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, readProvider);
 
-  const predicted = (await registryRead.getAccountAddress(owner, salt)) as string;
-  const existing = (await registryRead.accountOf(predicted)) as string;
+  // salt must be bytes32 — pad bigint to 32-byte hex
+  const salt32 = "0x" + salt.toString(16).padStart(64, "0") as `0x${string}`;
 
-  if (existing && existing.toLowerCase() === predicted.toLowerCase()) {
-    return { account: predicted, created: false };
+  const predicted = (await registryRead.getAccountAddress(owner, salt32)) as string;
+
+  // accountOf is keyed by OWNER address, not the predicted account address
+  const existing = (await registryRead.accountOf(owner)) as string;
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  if (existing && existing !== ZERO) {
+    return { account: existing, created: false };
   }
 
   if (BUNDLER_URL) {
     // ERC-4337 deployment path: initCode = factory ++ createAccount calldata
-    const createCallData = encodeCreateAccountCall(owner, salt);
+    const createCallData = encodeCreateAccountCall(salt32);
     const op = buildPackedUserOp({
       sender: predicted,
       initCode: registryAddress() + createCallData.slice(2),
@@ -90,21 +99,21 @@ export async function ensureSmartAccount(
     const signedOp = await signUserOperation(provider, op);
     await submitToBundler(signedOp);
   } else {
-    // Direct EOA-paid deployment fallback
+    // Direct EOA-paid deployment fallback (owner = msg.sender, salt = bytes32)
     const registryWrite = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, signer);
-    const tx = await registryWrite.createAccount(owner, salt);
+    const tx = await registryWrite.createAccount(salt32);
     await tx.wait();
   }
 
   return { account: predicted, created: true };
 }
 
-function encodeCreateAccountCall(owner: string, salt: bigint): string {
+function encodeCreateAccountCall(salt32: `0x${string}`): string {
   const iface = new Contract(
     registryAddress(),
     SMART_WALLET_REGISTRY_ABI
   ).interface;
-  return iface.encodeFunctionData("createAccount", [owner, salt]);
+  return iface.encodeFunctionData("createAccount", [salt32]);
 }
 
 /** Sign a UserOperation hash with the connected EOA key. */
@@ -196,13 +205,14 @@ export async function anchorCredentialViaSmartWallet(
 
 export async function setGuardians(
   provider: BrowserProvider,
-  account: string,
+  _account: string, // kept for API compatibility; contract uses msg.sender's account
   guardians: string[],
   threshold: number
 ): Promise<string> {
   const signer = await provider.getSigner();
   const registry = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, signer);
-  const tx = await registry.setGuardians(account, guardians, threshold);
+  // Contract's setGuardians acts on accountOf[msg.sender] — no account arg
+  const tx = await registry.setGuardians(guardians, threshold);
   await tx.wait();
   return tx.hash as string;
 }

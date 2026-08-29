@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { QrCode, Share2, ExternalLink, Inbox, CheckCircle2, XCircle, Loader2, Clock, FileCheck, ShieldCheck, Lock, Smartphone } from "lucide-react";
+import { QrCode, ExternalLink, Inbox, CheckCircle2, XCircle, Loader2, Clock, FileCheck, ShieldCheck, Lock, Smartphone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -143,14 +143,6 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred, is
       setRespondingId(null);
     }
   };
-
-  const createPresentation = (cred: HolderCredential) => JSON.stringify({
-    "@context": ["https://www.w3.org/2018/credentials/v1"],
-    type: ["VerifiablePresentation"],
-    holder: holderDid,
-    verifiableCredential: { ...(cred.credential_data as any), id: cred.id },
-    credential_id: cred.id,
-  });
 
   return (
     <>
@@ -346,11 +338,11 @@ const PresentView = ({ credentials, holderDid, onShowQR, onCopy, onShareCred, is
                   <span className="badge-solid bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-400">active</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="gap-1" onClick={() => onShowQR(createPresentation(cred), cred.credential_schemas?.name || "Credential")}>
-                    <QrCode className="h-3 w-3" /> Show QR
-                  </Button>
-                  <Button variant="outline" size="sm" className="gap-1" onClick={() => onCopy(createPresentation(cred))}>
-                    <Share2 className="h-3 w-3" /> Copy VP
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => {
+                    const subject = (cred.credential_data as any)?.credentialSubject;
+                    onShareCred(cred.id, cred.credential_schemas?.name || "Credential", subject ? Object.keys(subject) : []);
+                  }}>
+                    <QrCode className="h-3 w-3" /> Share & QR
                   </Button>
                   <Button variant="outline" size="sm" className="gap-1" onClick={() => {
                     const subject = (cred.credential_data as any)?.credentialSubject;

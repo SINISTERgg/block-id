@@ -13,7 +13,7 @@ export interface UserOpRequest {
   sender: string;
   nonce?: bigint;
   initCode?: string;
-  callData: string;
+  callData?: string;
   verificationGasLimit?: bigint;
   callGasLimit?: bigint;
   preVerificationGas?: bigint;
@@ -72,7 +72,10 @@ const DEFAULTS = {
 
 /** Build a fully-populated packed UserOperation with sane defaults. */
 export function buildPackedUserOp(req: UserOpRequest): PackedUserOperation {
-  if (!req.callData || req.callData === "0x") throw new Error("callData is required");
+  // Deploy-only UserOps have callData="0x" but carry initCode — both being absent is the error.
+  if ((!req.callData || req.callData === "0x") && (!req.initCode || req.initCode === "0x")) {
+    throw new Error("callData is required (or provide initCode for a deploy-only UserOp)");
+  }
   return {
     sender: req.sender,
     nonce: req.nonce ?? DEFAULTS.nonce,

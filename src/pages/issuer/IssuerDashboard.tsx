@@ -24,6 +24,7 @@ import DashboardView from "./views/DashboardView";
 import SchemasView from "./views/SchemasView";
 import IssueView from "./views/IssueView";
 import { supabase } from "@/integrations/supabase/client";
+import { mintSbtForCredential, isSbtConfigured } from "@/services/blockchain/sbt.service";
 
 const navItems = [
   { label: "Dashboard", path: "/issuer" },
@@ -231,6 +232,27 @@ const IssuerDashboard = () => {
             title: "Credential issued & anchored on-chain ✓",
             description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...`,
           });
+
+          // ── Best-effort SBT mint ───────────────────────────────────────────
+          if (isSbtConfigured()) {
+            try {
+              const { BrowserProvider } = await import("ethers");
+              const browserProvider = new BrowserProvider(window.ethereum!);
+              const signer = await browserProvider.getSigner();
+              const sbtResult = await mintSbtForCredential(signer as any, { credentialHash: credHash });
+              toast({
+                title: "🏅 Badge minted!",
+                description: `Token #${sbtResult.tokenId ?? "?"} — Tx: ${sbtResult.txHash?.substring(0, 18)}...`,
+              });
+            } catch (sbtErr: any) {
+              console.warn("SBT mint skipped:", sbtErr.message);
+              toast({
+                title: "Badge mint skipped",
+                description: "Credential anchored ✓ — badge minting failed (non-fatal). Check your SBT contract configuration.",
+              });
+            }
+          }
+
           loadData();
         } else {
           const errMsg = anchorResult.error ?? "";

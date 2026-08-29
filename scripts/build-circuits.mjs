@@ -24,21 +24,32 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const CIRCUITS_DIR = path.join(root, "circuits");
-const BUILD_DIR = path.join(root, "build", "circuits");
-const PUBLIC_ZKP = path.join(root, "public", "zkp");
-const POT_PATH = path.join(root, "cache", "pot15_final.ptau");
+process.chdir(root);
+
+const CIRCUITS_DIR = "circuits";
+const BUILD_DIR = path.join("build", "circuits");
+const PUBLIC_ZKP = path.join("public", "zkp");
+const POT_PATH = path.join("cache", "pot15_final.ptau");
 
 const ALL_CIRCUITS = ["age-verify", "attribute-range", "issuer-membership"];
 
+// Ensure ~/.cargo/bin is included in PATH (needed on Windows if terminal hasn't reloaded env)
+const cargoBin = path.join(process.env.USERPROFILE || process.env.HOME || "", ".cargo", "bin");
+if (fs.existsSync(cargoBin) && !process.env.PATH?.includes(cargoBin)) {
+  process.env.PATH = `${cargoBin}${path.delimiter}${process.env.PATH}`;
+}
+
 function run(cmd, args, opts = {}) {
-  console.log(`$ ${cmd} ${args.join(" ")}`);
-  execFileSync(cmd, args, { stdio: "inherit", ...opts });
+  const quotedArgs = process.platform === "win32"
+    ? args.map((a) => (typeof a === "string" && a.includes(" ") && !a.startsWith('"') ? `"${a}"` : a))
+    : args;
+  console.log(`$ ${cmd} ${quotedArgs.join(" ")}`);
+  execFileSync(cmd, quotedArgs, { stdio: "inherit", shell: process.platform === "win32", ...opts });
 }
 
 function has(cmd) {
   try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
+    execFileSync(cmd, ["--version"], { stdio: "ignore", shell: process.platform === "win32" });
     return true;
   } catch {
     return false;

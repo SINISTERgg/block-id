@@ -1,5 +1,32 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Fire-and-forget: call the AI verification edge function in the background
+ * after the holder accepts a request. Updates the verification_request row
+ * with the AI verdict (verified / rejected / review).
+ */
+async function triggerAiVerification(
+  requestId: string,
+  credentialData: Record<string, unknown>,
+  requestPurpose: string | null,
+  credentialType: string | null
+): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke("ai-verify-credential", {
+      body: {
+        request_id: requestId,
+        credential_data: credentialData,
+        request_purpose: requestPurpose,
+        credential_type: credentialType,
+      },
+    });
+    if (error) console.warn("[BlockID] AI verification non-fatal error:", error);
+  } catch (err) {
+    console.warn("[BlockID] AI verification call failed (non-fatal):", err);
+  }
+}
+
+
 export interface HolderCredential {
   id: string;
   credential_data: unknown;
