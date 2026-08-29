@@ -9,6 +9,10 @@ export interface IssuerSchema {
   version: number;
   parent_schema_id: string | null;
   is_latest: boolean;
+  /** Content Identifier of the schema JSON-LD pinned on IPFS (null = not pinned) */
+  ipfs_cid?: string | null;
+  /** Timestamp of the most recent successful IPFS pin */
+  ipfs_pinned_at?: string | null;
 }
 
 export interface IssuerCredential {

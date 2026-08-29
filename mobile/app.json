@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "BlockID",
+    "slug": "blockid",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "blockid",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "id.blockid.mobile"
+    },
+    "android": {
+      "package": "id.blockid.mobile"
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}

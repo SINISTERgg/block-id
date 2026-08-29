@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2, Trash2, Layout } from "lucide-react";
+import { Plus, GitBranch, ArrowRightLeft, AlertTriangle, Loader2, Trash2, Layout, CloudUpload, Link2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import SchemaFieldEditor from "@/components/issuer/SchemaFieldEditor";
 import SchemaBuilder from "@/components/issuer/SchemaBuilder";
 import CredentialTypeSelect from "@/components/issuer/CredentialTypeSelect";
 import type { IssuerCredential, IssuerSchema, SchemaFieldDef } from "@/services/api/issuer.service";
+import { getSchemaGatewayUrl } from "@/services/ipfs/ipfs.service";
 
 interface SchemasViewProps {
   schemas: IssuerSchema[];
@@ -17,9 +18,11 @@ interface SchemasViewProps {
   onNewVersion: (base: IssuerSchema, name: string, type: string, fields: SchemaFieldDef[]) => Promise<void>;
   onMigrate: (target: IssuerSchema) => Promise<void>;
   onDelete: (schema: IssuerSchema) => Promise<void>;
+  onPinToIpfs: (schema: IssuerSchema) => Promise<void>;
+  pinningSchemaId: string | null;
 }
 
-const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, onDelete }: SchemasViewProps) => {
+const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, onDelete, onPinToIpfs, pinningSchemaId }: SchemasViewProps) => {
   const [isSchemaDialogOpen, setIsSchemaDialogOpen] = useState(false);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
   const [versioningSchema, setVersioningSchema] = useState<IssuerSchema | null>(null);
@@ -153,6 +156,18 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, 
                     ))}
                   </div>
                 )}
+                {typeof s.ipfs_cid === "string" && s.ipfs_cid && (
+                  <a
+                    href={getSchemaGatewayUrl(s.ipfs_cid)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                    title={`IPFS CID: ${s.ipfs_cid}`}
+                  >
+                    <Link2 className="h-3 w-3" />
+                    IPFS · {s.ipfs_cid.slice(0, 12)}…{s.ipfs_cid.slice(-6)}
+                  </a>
+                )}
                 {s.is_latest && (
                   <div className="flex gap-2 mt-3">
                     <Button variant="outline" size="sm" className="gap-1 flex-1" onClick={() => openVersionDialog(s)}>
@@ -163,6 +178,24 @@ const SchemasView = ({ schemas, credentials, onCreate, onNewVersion, onMigrate, 
                         <ArrowRightLeft className="h-3 w-3" /> Migrate ({getMigratableCount(s)})
                       </Button>
                     )}
+                  </div>
+                )}
+                {!s.ipfs_cid && (
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 flex-1"
+                      onClick={() => onPinToIpfs(s)}
+                      disabled={pinningSchemaId === s.id}
+                    >
+                      {pinningSchemaId === s.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <CloudUpload className="h-3 w-3" />
+                      )}
+                      {pinningSchemaId === s.id ? "Pinning…" : "Pin to IPFS"}
+                    </Button>
                   </div>
                 )}
                 <div className="flex gap-2 mt-3">

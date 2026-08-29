@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPinataConfigured, pinJsonToIpfs } from "../_shared/ipfs.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,6 +35,57 @@ async function logAudit(supabase: any, userId: string, action: string, entityTyp
     entity_id: entityId,
     metadata,
   });
+}
+
+/**
+ * Phase 3 — Decentralized storage: best-effort pin the schema JSON-LD to IPFS
+ * on first issuance so every credential references a content-addressed schema.
+ * Failures never block issuance; pinning can be retried via pin-to-ipfs.
+ */
+async function ensureSchemaPinned(supabase: any, userId: string, schema: any): Promise<string | null> {
+  try {
+    if (!isPinataConfigured() || schema.ipfs_cid) return null;
+
+    const doc = {
+      "@context": [
+        "https://www.w3.org/2018/credentials/v1",
+        "https://w3id.org/security/suites/ed25519-2020/v1",
+      ],
+      type: "JsonSchemaValidator2018",
+      schemaId: schema.id,
+      name: schema.name,
+      credentialType: schema.credential_type,
+      version: schema.version ?? 1,
+      issuer: `did:decentraid:issuer:${userId}`,
+      fields: Array.isArray(schema.fields) ? schema.fields : [],
+      created: schema.created_at ?? new Date().toISOString(),
+    };
+
+    const pin = await pinJsonToIpfs(
+      doc,
+      `blockid-schema-${schema.name}-v${schema.version ?? 1}`,
+      { app: "blockid", kind: "credential_schema", schema_id: schema.id, version: String(schema.version ?? 1) }
+    );
+
+    const pinnedAt = new Date().toISOString();
+    await supabase
+      .from("credential_schemas")
+      .update({ ipfs_cid: pin.cid, ipfs_pinned_at: pinnedAt })
+      .eq("id", schema.id);
+
+    await logAudit(supabase, userId, "schema_pinned_ipfs", "schema", schema.id, {
+      schema_name: schema.name,
+      cid: pin.cid,
+      gateway_url: pin.gatewayUrl,
+      triggered_by: "issuance",
+    });
+
+    console.log("Schema pinned to IPFS:", pin.cid);
+    return pin.cid;
+  } catch (e) {
+    console.warn("IPFS schema pinning skipped:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 async function issueOne(
@@ -208,7 +260,9 @@ serve(async (req) => {
         failed: errors.length,
       });
 
-      return new Response(JSON.stringify({ issued: results.length, errors, credentials: results }), {
+      const schemaIpfsCid = results.length > 0 ? await ensureSchemaPinned(supabase, user.id, schema) : null;
+
+      return new Response(JSON.stringify({ issued: results.length, errors, credentials: results, schema_ipfs_cid: schemaIpfsCid }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -216,7 +270,8 @@ serve(async (req) => {
     // Single issuance
     try {
       const credential = await issueOne(supabase, user.id, schema, holder_did, credential_data || {}, expires_at || null, issuer_signature || null, signer_address || null);
-      return new Response(JSON.stringify({ credential }), {
+      const schemaIpfsCid = await ensureSchemaPinned(supabase, user.id, schema);
+      return new Response(JSON.stringify({ credential, schema_ipfs_cid: schemaIpfsCid }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } catch (issueError) {

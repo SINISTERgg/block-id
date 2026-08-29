@@ -18,6 +18,7 @@ import {
   revokeCredential as revokeCredentialDb,
   deleteSchema,
 } from "@/services/api/issuer.service";
+import { pinSchemaToIpfs } from "@/services/ipfs/ipfs.service";
 import type { IssuerSchema, IssuerCredential, SchemaFieldDef } from "@/services/api/issuer.service";
 import DashboardView from "./views/DashboardView";
 import SchemasView from "./views/SchemasView";
@@ -122,6 +123,25 @@ const IssuerDashboard = () => {
       loadData();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  // ── IPFS schema pinning (Phase 3) ──────────────────────────────────
+  const [pinningSchemaId, setPinningSchemaId] = useState<string | null>(null);
+  const handlePinToIpfs = async (schema: IssuerSchema) => {
+    if (!user) return;
+    setPinningSchemaId(schema.id);
+    try {
+      const result = await pinSchemaToIpfs(schema.id);
+      toast({
+        title: result.already_pinned ? "Already pinned to IPFS" : "Schema pinned to IPFS ✓",
+        description: `CID: ${result.cid}`,
+      });
+      loadData();
+    } catch (err: any) {
+      toast({ title: "IPFS pinning failed", description: err.message, variant: "destructive" });
+    } finally {
+      setPinningSchemaId(null);
     }
   };
 
@@ -316,6 +336,8 @@ const IssuerDashboard = () => {
                 onNewVersion={handleNewVersion}
                 onMigrate={handleMigrate}
                 onDelete={handleDeleteSchema}
+                onPinToIpfs={handlePinToIpfs}
+                pinningSchemaId={pinningSchemaId}
               />
             )}
             {currentView === "issue" && (

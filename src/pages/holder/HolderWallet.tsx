@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { User } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
@@ -7,10 +7,13 @@ import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import QRCodeDisplay from "@/components/QRCodeDisplay";
 import ShareCredentialDialog from "@/components/ShareCredentialDialog";
 import Web3WalletCard from "@/components/Web3WalletCard";
+import SmartWalletCard from "@/components/wallet/SmartWalletCard";
+import TrustScoreCard from "@/components/wallet/TrustScoreCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useWeb3Wallet } from "@/hooks/useWeb3Wallet";
 import { useCredentialNotifications } from "@/hooks/useCredentialNotifications";
+import { computeTrustScore } from "@/lib/ml/trustScore";
 import {
   fetchHolderCredentials,
   subscribeToHolderCredentials,
@@ -71,8 +74,8 @@ const HolderWallet = () => {
       const did = await generateDidService(user.id);
       toast({ title: "DID Generated", description: did });
       await refreshProfile();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     }
   };
 
@@ -88,6 +91,30 @@ const HolderWallet = () => {
     if (credentials.length > 0) score += 50;
     return score;
   })();
+
+  // Phase 6 — explainable ML trust score over the holder's strongest active credential.
+  const trustResult = useMemo(() => {
+    const active = credentials.filter((c) => c.status === "active");
+    if (!walletAddress && active.length === 0) return null;
+
+    const best = [...active].sort((a, b) => {
+      const anchored = Number(!!b.blockchain_anchor) - Number(!!a.blockchain_anchor);
+      if (anchored !== 0) return anchored;
+      return Date.parse(b.issued_at) - Date.parse(a.issued_at);
+    })[0];
+
+    return computeTrustScore({
+      signatureValid: !!profile?.did,
+      anchoredOnChain: !!best?.blockchain_anchor,
+      notRevoked: best ? best.status !== "revoked" : true,
+      notExpired: best ? best.status !== "expired" : true,
+      issuerReputation: 70,
+      zkProofVerified: false,
+      credentialAgeDays: best
+        ? Math.max(0, (Date.now() - Date.parse(best.issued_at)) / 86_400_000)
+        : undefined,
+    });
+  }, [credentials, walletAddress, profile?.did]);
 
   return (
     <PortalLayout title="Holder Wallet" portalType="holder" icon={<User className="h-5 w-5" />} navItems={navItems}>
@@ -120,6 +147,8 @@ const HolderWallet = () => {
                 />
                 {/* Web3 card stays in wallet view shell */}
                 <Web3WalletCard userId={user?.id} onConnected={refreshProfile} />
+                <SmartWalletCard eoaAddress={walletAddress ?? undefined} />
+                <TrustScoreCard result={trustResult} />
               </>
             )}
             {currentView === "present" && (

@@ -1,1403 +1,540 @@
-# DecentraID — Comprehensive Project Documentation
+# BLOCKID — Comprehensive Project Documentation
 
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
 2. [Technology Stack](#2-technology-stack)
-3. [Architecture](#3-architecture)
+3. [System Architecture](#3-system-architecture)
 4. [Application Routes & Navigation](#4-application-routes--navigation)
-5. [Authentication & Authorization](#5-authentication--authorization)
-6. [Database Schema](#6-database-schema)
+5. [Authentication, RBAC & User Approval Workflow](#5-authentication-rbac--user-approval-workflow)
+6. [Database Schema Specification (13 Tables)](#6-database-schema-specification-13-tables)
 7. [Row-Level Security (RLS) Policies](#7-row-level-security-rls-policies)
 8. [Database Functions & Triggers](#8-database-functions--triggers)
-9. [Edge Functions (Backend API)](#9-edge-functions-backend-api)
-10. [Portal 1: Issuer Dashboard](#10-portal-1-issuer-dashboard)
-11. [Portal 2: Holder Wallet](#11-portal-2-holder-wallet)
-12. [Portal 3: Verifier Dashboard](#12-portal-3-verifier-dashboard)
-13. [Credential Sharing & Selective Disclosure](#13-credential-sharing--selective-disclosure)
-14. [Blockchain Explorer](#14-blockchain-explorer)
-15. [Trust Infrastructure](#15-trust-infrastructure)
-16. [OpenID4VC (OID4VCI / OID4VP)](#16-openid4vc-oid4vci--oid4vp)
-17. [Privacy & GDPR Compliance](#17-privacy--gdpr-compliance)
-18. [Multi-Factor Verification](#18-multi-factor-verification)
-19. [Credential Export & Interoperability](#19-credential-export--interoperability)
-20. [Notification System](#20-notification-system)
-21. [AI Integration](#21-ai-integration)
-22. [Audit Trail](#22-audit-trail)
-23. [PDF Certificate Generation](#23-pdf-certificate-generation)
-24. [PWA & Offline Support](#24-pwa--offline-support)
-25. [Design System](#25-design-system)
-26. [Component Inventory](#26-component-inventory)
-27. [Security Considerations](#27-security-considerations)
-28. [Data Flow Diagrams](#28-data-flow-diagrams)
+9. [Deno Edge Functions API Specification (9 Microservices)](#9-deno-edge-functions-api-specification-9-microservices)
+10. [Smart Contract Architecture (`CredentialRegistry.sol`)](#10-smart-contract-architecture-credentialregistrysol)
+11. [Portal 1: Issuer Dashboard (`/issuer`)](#11-portal-1-issuer-dashboard-issuer)
+12. [Portal 2: Holder Wallet (`/holder`)](#12-portal-2-holder-wallet-holder)
+13. [Portal 3: Verifier Portal (`/verifier`)](#13-portal-3-verifier-portal-verifier)
+14. [Portal 4: Admin & Governance (`/admin`)](#14-portal-4-admin--governance-admin)
+15. [Credential Sharing & Selective Disclosure](#15-credential-sharing--selective-disclosure)
+16. [OpenID4VC Protocol Suite (OID4VCI & OID4VP)](#16-openid4vc-protocol-suite-oid4vci--oid4vp)
+17. [Blockchain Explorer & Audit Trail](#17-blockchain-explorer--audit-trail)
+18. [Trusted Issuer Registry & Trust Infrastructure](#18-trusted-issuer-registry--trust-infrastructure)
+19. [AI Verification & Anomaly Engine (Google Gemini)](#19-ai-verification--anomaly-engine-google-gemini)
+20. [WebAuthn Biometric Passkey Protection](#20-webauthn-biometric-passkey-protection)
+21. [Dynamic Visual Certificates & PDF Generator](#21-dynamic-visual-certificates--pdf-generator)
+22. [Privacy & GDPR Compliance (Art. 17 & Art. 20)](#22-privacy--gdpr-compliance-art-17--art-20)
+23. [PWA & Offline Service Worker Infrastructure](#23-pwa--offline-service-worker-infrastructure)
+24. [Testing & Quality Assurance Suite (101 Vitest Tests)](#24-testing--quality-assurance-suite-101-vitest-tests)
+25. [Multi-Phase Roadmap (Phase 0 – Phase 8)](#25-multi-phase-roadmap-phase-0--phase-8)
 
 ---
 
 ## 1. Project Overview
 
-**DecentraID** is a decentralized identity platform for the education sector implementing W3C Verifiable Credentials, Decentralized Identifiers (DIDs), and OpenID4VC protocols. It enables educational institutions to issue tamper-proof digital credentials, students to store and share them with selective disclosure, and organizations to verify authenticity — including cross-wallet exchange with external identity wallets.
+**BLOCKID** is an enterprise-grade, decentralized **Self-Sovereign Identity (SSI)** platform designed for academic institutions, enterprises, and identity providers. Built upon **W3C Verifiable Credentials**, **W3C Decentralized Identifiers (DIDs)**, **OpenID4VC standards**, and **Ethereum/Polygon smart contract anchoring**, BLOCKID eliminates credential fraud and streamlines identity verification without compromising user privacy.
 
-### Key Capabilities
+### Core Value Propositions
 
-| Category             | Features                                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| **Standards**        | W3C Verifiable Credentials, W3C DID Documents, OpenID4VCI, OpenID4VP, StatusList2021             |
-| **Cryptography**     | SHA-256 hash chain, wallet-signed credentials (EcdsaSecp256k1), WebAuthn biometrics              |
-| **Privacy**          | Selective disclosure, GDPR consent management, data export (Art. 20), right to erasure (Art. 17) |
-| **Trust**            | Trusted Issuer Registry, DID resolution, multi-factor verification                               |
-| **Interoperability** | JSON-LD export, JWT-VC export, OID4VCI credential offers, OID4VP presentation requests           |
-| **Intelligence**     | AI-powered verification risk assessment (Google Gemini)                                          |
-| **Infrastructure**   | Polygon blockchain anchoring, real-time notifications, PWA offline support                       |
-
-### User Roles
-
-| Role         | Description                                                                                        | Portal      |
-| ------------ | -------------------------------------------------------------------------------------------------- | ----------- |
-| **Issuer**   | Educational institutions that create schemas, issue credentials, and manage trust registry entries | `/issuer`   |
-| **Holder**   | Students/individuals who receive, store, selectively share, and export credentials                 | `/holder`   |
-| **Verifier** | Organizations that verify credentials via VP, OID4VP, or DID resolution                            | `/verifier` |
+- **Cryptographic Trust**: Every issued credential is hashed via SHA-256 and anchored on EVM blockchains (Ethereum Sepolia / Polygon Amoy).
+- **Non-Custodial Data Ownership**: Holders store and manage their own credentials with zero central custody.
+- **Selective Disclosure**: Share only essential credential fields (e.g., proving degree completion without revealing grades or DOB).
+- **Time-Limited Sharing**: Granular expiration controls (1 hour, 24 hours, 7 days, 30 days) for shared credential links.
+- **AI Risk Intelligence**: Real-time multi-dimensional risk scoring powered by Google Gemini AI.
+- **GDPR Compliance**: Native support for data portability (Art. 20) and right to erasure (Art. 17) via cryptographically verifiable consent logs.
 
 ---
 
 ## 2. Technology Stack
 
-### Frontend
+### Client Layer (Frontend)
+- **Framework**: React 18.3 + Vite 6.3
+- **Language**: TypeScript 5.8
+- **UI Framework & Primitives**: Tailwind CSS 3.4, shadcn/ui, Radix UI primitives
+- **Animations**: Framer Motion 12.36
+- **State & Query Management**: TanStack React Query v5.83
+- **Data Visualization**: Recharts 2.15
+- **PDF Export**: jsPDF 4.2
+- **QR Code Rendering**: `qrcode.react` 4.2
+- **Iconography**: Lucide React 0.462
+- **PWA Capabilities**: `vite-plugin-pwa` 0.21
 
-| Technology               | Purpose                                             |
-| ------------------------ | --------------------------------------------------- |
-| **React 18**             | UI framework                                        |
-| **TypeScript**           | Type safety                                         |
-| **Vite**                 | Build tool with PWA plugin                          |
-| **Tailwind CSS**         | Utility-first styling with design tokens            |
-| **shadcn/ui**            | Component library (Radix UI primitives)             |
-| **React Router v6**      | Client-side routing                                 |
-| **TanStack React Query** | Server state management                             |
-| **Recharts**             | Charts and analytics visualization                  |
-| **qrcode.react**         | QR code generation (credential offers, VP requests) |
-| **jsPDF**                | PDF certificate generation                          |
-| **Lucide React**         | Icon library                                        |
-| **vite-plugin-pwa**      | Service worker & offline caching                    |
+### Backend & Cloud Layer (Supabase BaaS)
+- **Database**: PostgreSQL with Row-Level Security (RLS)
+- **Serverless Compute**: 9 Deno Edge Functions
+- **Authentication**: Supabase Auth (Email/Password with admin approval workflow)
+- **Realtime**: WebSocket subscriptions for live credential and notification updates
 
-### Backend (Lovable Cloud)
+### Blockchain & Cryptography
+- **Networks**: Ethereum Sepolia (Chain ID 11155111), Polygon Amoy (Chain ID 80002), Localhost
+- **Smart Contract Language**: Solidity 0.8.19
+- **Development Tooling**: Hardhat 3.2, `@nomicfoundation/hardhat-ethers`
+- **Web3 Interface**: ethers.js 6.16, MetaMask Extension
+- **DID Schemes**: `did:ethr:sepolia`, `did:ethr:amoy`, `did:key`
+- **Standards**: W3C Verifiable Credentials Data Model 1.1, OpenID4VCI, OpenID4VP
 
-| Technology             | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| **PostgreSQL + RLS**   | Database with row-level security (12 tables, 30+ policies)    |
-| **Authentication**     | Email/password with email verification                        |
-| **Edge Functions**     | 5 Deno serverless functions for credential lifecycle + OID4VC |
-| **Realtime**           | WebSocket subscriptions for live notifications                |
-| **Lovable AI Gateway** | AI-powered credential analysis (Gemini)                       |
-
-### Fonts
-
-- **Display**: Space Grotesk (headings, titles, emphasis)
-- **Body**: Inter (paragraphs, form labels, general text)
+### Testing & Quality Assurance
+- **Unit & Integration Runner**: Vitest 3.1
+- **DOM Testing**: `@testing-library/react` 16.0, JSDOM 20.0
+- **Contract Test Suite**: Hardhat native runner (`scripts/test-contract.js`)
+- **CI/CD**: GitHub Actions workflow (`.github/workflows/ci.yml`)
 
 ---
 
-## 3. Architecture
+## 3. System Architecture
 
-<div style="font-family: sans-serif; background: #1e1e24; color: #fff; padding: 20px; border-radius: 8px;">
-  <h3 style="color: #4ade80; margin-top: 0;">Frontend (React SPA + PWA)</h3>
-  <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-    <div style="background: #2d2d3a; padding: 10px; border-radius: 4px; flex: 1; text-align: center;">Landing</div>
-    <div style="background: #2d2d3a; padding: 10px; border-radius: 4px; flex: 1; text-align: center;">Auth/Reset</div>
-    <div style="background: #2d2d3a; padding: 10px; border-radius: 4px; flex: 1; text-align: center;">Shared View</div>
-    <div style="background: #2d2d3a; padding: 10px; border-radius: 4px; flex: 1; text-align: center;">Explorer</div>
-  </div>
-  <div style="display: flex; gap: 10px;">
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #60a5fa;">Issuer Portal</h4>
-      <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0;">
-        <li>Schemas (v)</li>
-        <li>Issue (sign)</li>
-        <li>Batch CSV</li>
-        <li>OID4VCI Offer</li>
-        <li>Revoke</li>
-        <li>Trust Registry</li>
-        <li>Audit Trail</li>
-        <li>Analytics</li>
-      </ul>
-    </div>
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #a78bfa;">Holder Wallet</h4>
-      <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0;">
-        <li>DID Mgmt</li>
-        <li>Biometrics</li>
-        <li>Selective Disclosure</li>
-        <li>Export VC</li>
-        <li>MFA Verify</li>
-        <li>Privacy/GDPR</li>
-        <li>Web3 Wallet</li>
-      </ul>
-    </div>
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #f472b6;">Verifier Portal</h4>
-      <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0;">
-        <li>Verify VP</li>
-        <li>OID4VP Request</li>
-        <li>DID Resolver</li>
-        <li>Trust Registry</li>
-        <li>AI Analysis</li>
-        <li>History</li>
-        <li>Analytics</li>
-      </ul>
-    </div>
-  </div>
-</div>
-<div style="text-align: center; color: #888; margin: 10px 0; font-size: 20px;">⬇️ Supabase JS Client ⬇️</div>
-<div style="font-family: sans-serif; background: #1e1e24; color: #fff; padding: 20px; border-radius: 8px;">
-  <h3 style="color: #fb923c; margin-top: 0;">Backend (Lovable Cloud)</h3>
-  <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #cbd5e1;">Authentication</h4>
-      <p style="font-size: 14px; margin: 0;">(Email/Pass)</p>
-    </div>
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #cbd5e1;">PostgreSQL + RLS</h4>
-      <p style="font-size: 14px; margin: 0;">12 tables, 30+ policies</p>
-    </div>
-  </div>
-  <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-    <h4 style="margin-top: 0; color: #fcd34d;">Edge Functions (Deno)</h4>
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-      <div style="background: #3f3f4e; padding: 10px; border-radius: 4px; flex: 1; min-width: 200px;">
-        <strong style="color: #fff;">issue-credential</strong>
-        <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0; color: #cbd5e1;"><li>W3C VC + proof</li><li>Wallet signing</li><li>Hash chain</li></ul>
-      </div>
-      <div style="background: #3f3f4e; padding: 10px; border-radius: 4px; flex: 1; min-width: 200px;">
-        <strong style="color: #fff;">verify-credential</strong>
-        <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0; color: #cbd5e1;"><li>Hash integrity</li><li>Status check</li><li>AI analysis</li></ul>
-      </div>
-      <div style="background: #3f3f4e; padding: 10px; border-radius: 4px; flex: 1; min-width: 200px;">
-        <strong style="color: #fff;">resolve-did</strong>
-        <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0; color: #cbd5e1;"><li>did:decentraid</li><li>did:ethr</li><li>Trust metadata</li></ul>
-      </div>
-      <div style="background: #3f3f4e; padding: 10px; border-radius: 4px; flex: 1; min-width: 200px;">
-        <strong style="color: #fff;">oid4vci / oid4vp</strong>
-        <ul style="padding-left: 20px; font-size: 14px; margin-bottom: 0; color: #cbd5e1;"><li>Credential Offer</li><li>Auth Request/Response</li></ul>
-      </div>
-    </div>
-  </div>
-  <div style="display: flex; gap: 10px;">
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #cbd5e1;">Realtime Channels</h4>
-      <p style="font-size: 14px; margin: 0;">(credentials, notifications)</p>
-    </div>
-    <div style="background: #2d2d3a; padding: 15px; border-radius: 4px; flex: 1;">
-      <h4 style="margin-top: 0; color: #cbd5e1;">Lovable AI Gateway</h4>
-      <p style="font-size: 14px; margin: 0;">(Gemini 3 Flash) Credential analysis</p>
-    </div>
-  </div>
-</div>
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            BLOCKID Web App (React)                          │
+├─────────────────┬────────────────┬─────────────────┬────────────────────────┤
+│ Issuer Portal   │ Holder Wallet  │ Verifier Portal │ Admin & Audit Portal   │
+│ (`/issuer`)     │ (`/holder`)    │ (`/verifier`)   │ (`/admin`, `/audit`)   │
+└────────┬────────┴───────┬────────┴────────┬────────┴──────────┬─────────────┘
+         │                │                 │                   │
+         ▼                ▼                 ▼                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Supabase BaaS Engine                              │
+│                                                                             │
+│  ├── Auth System & Role Guard                                               │
+│  ├── PostgreSQL Database (13 Core Tables)                                  │
+│  ├── Row-Level Security (RLS Policies)                                      │
+│  ├── Realtime Engine (Pub/Sub WebSockets)                                   │
+│  └── 9 Deno Edge Functions:                                                 │
+│      ├── issue-credential          ├── anchor-credential                    │
+│      ├── verify-credential         ├── anchor-credential-server             │
+│      ├── manage-schemas            ├── resolve-did                          │
+│      ├── oid4vci                   ├── oid4vp                               │
+│      └── admin-users                                                        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    EVM Blockchain Layer (Smart Contracts)                   │
+│                                                                             │
+│  CredentialRegistry.sol (Solidity 0.8.19)                                   │
+│  ├── anchorCredential(hash)                                                 │
+│  ├── anchorCredentialBatch(hashes[1..100])                                  │
+│  ├── revokeCredential(hash)                                                 │
+│  ├── getCredentialStatus(hash) → (anchored, revoked, issuer, block...)     │
+│  ├── getCredentialBatch(hashes[1..100])                                     │
+│  └── isValid(hash) → bool                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 4. Application Routes & Navigation
 
-| Route             | Component            | Access            | Description                                                |
-| ----------------- | -------------------- | ----------------- | ---------------------------------------------------------- |
-| `/`               | `Landing`            | Public            | Homepage with portal cards; auto-redirects logged-in users |
-| `/auth`           | `Auth`               | Public            | Login, signup, forgot password flows                       |
-| `/reset-password` | `ResetPassword`      | Public            | Password reset form (from email link)                      |
-| `/issuer`         | `IssuerDashboard`    | Issuer only       | Full issuer management portal                              |
-| `/issuer/*`       | `IssuerDashboard`    | Issuer only       | Sub-routes: schemas, issue                                 |
-| `/holder`         | `HolderWallet`       | Holder only       | Full holder wallet portal                                  |
-| `/holder/*`       | `HolderWallet`       | Holder only       | Sub-routes: biometrics, present                            |
-| `/verifier`       | `VerifierDashboard`  | Verifier only     | Full verifier portal                                       |
-| `/verifier/*`     | `VerifierDashboard`  | Verifier only     | Sub-routes: verify, history                                |
-| `/explorer`       | `BlockchainExplorer` | Any authenticated | Hash chain visualization                                   |
-| `/audit`          | `AuditLog`           | Any authenticated | Audit trail viewer                                         |
-| `/shared/:token`  | `SharedCredential`   | Public (no auth)  | Time-limited credential view with selective disclosure     |
-| `*`               | `NotFound`           | Public            | 404 page                                                   |
+All routes are declared in `src/App.tsx` and protected by `ProtectedRoute.tsx`.
 
-### Route Protection
-
-- `ProtectedRoute` component wraps portal routes
-- Checks `user` (authenticated) and `role` (matches `requiredRole` prop)
-- Unauthenticated users → redirect to `/auth`
-- Wrong role → redirect to `/`
-
----
-
-## 5. Authentication & Authorization
-
-### Authentication Flow
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">1. User signs up → selects role (issuer/holder/verifier)
-2. Auth creates user → stores role in metadata
-3. Database trigger `handle_new_user` fires:
-   a. Creates profile in `profiles` table
-   b. Inserts role into `user_roles` table
-   c. If role is "holder", generates a DID via `generate_did()`
-4. Confirmation email sent → user verifies
-5. User logs in → `useAuth` hook fetches profile + role
-6. Auto-redirect to role-specific portal (e.g., `/holder`)
-</code>
-  </pre>
-</div>
-
-### Auth Context (`useAuth` hook)
-
-| Property           | Type              | Description                                       |
-| ------------------ | ----------------- | ------------------------------------------------- |
-| `user`             | `User \| null`    | Auth user object                                  |
-| `session`          | `Session \| null` | Active session                                    |
-| `loading`          | `boolean`         | Auth state loading                                |
-| `profile`          | `object \| null`  | User profile (name, org, DID, biometrics, wallet) |
-| `role`             | `string \| null`  | User role from `user_roles` table                 |
-| `signUp()`         | function          | Create account with role metadata                 |
-| `signIn()`         | function          | Email/password login                              |
-| `signOut()`        | function          | Clear session and state                           |
-| `refreshProfile()` | function          | Re-fetch profile and role                         |
-
-### Password Reset Flow
-
-1. User clicks "Forgot password?" → enters email
-2. `resetPasswordForEmail()` sends link with `redirectTo: /reset-password`
-3. User clicks email link → lands on `/reset-password`
-4. Page detects `type=recovery` in URL hash or `PASSWORD_RECOVERY` event
-5. User enters new password → `updateUser({ password })` called
-6. Redirect to `/auth`
+| Route Path | View Component | Access Role | Description |
+|---|---|---|---|
+| `/` | `Landing.tsx` | Public | Platform introduction, feature breakdown, CTA |
+| `/auth` | `Auth.tsx` | Public | Sign-in and sign-up form |
+| `/reset-password` | `ResetPassword.tsx` | Public | Password recovery flow |
+| `/issuer` | `IssuerDashboard.tsx` | `issuer` | Issuer portal main view |
+| `/issuer/issue` | `IssueView.tsx` | `issuer` | Credential issuance & batch form |
+| `/issuer/schemas` | `SchemasView.tsx` | `issuer` | Schema builder & manager |
+| `/holder` | `HolderWallet.tsx` | `holder` | Holder wallet main view |
+| `/holder/present` | `PresentView.tsx` | `holder` | Credential presentation & share builder |
+| `/verifier` | `VerifierDashboard.tsx` | `verifier` | Verifier main dashboard |
+| `/verifier/verify` | `VerifyView.tsx` | `verifier` | Credential verification engine |
+| `/verifier/history` | `HistoryView.tsx` | `verifier` | Past verification records |
+| `/verifier/analytics`| `AnalyticsView.tsx` | `verifier` | Analytics & verification statistics |
+| `/admin` | `AdminDashboard.tsx` | `org_admin` | Organization & user approval portal |
+| `/explorer` | `BlockchainExplorer.tsx` | Protected | In-app EVM anchor lookup tool |
+| `/audit` | `AuditLog.tsx` | Protected | Immutable audit log viewer |
+| `/shared/:token` | `SharedCredential.tsx` | Public | Time-limited shared credential viewer |
+| `/pending-approval`| `PendingApproval.tsx` | Authenticated | Screen shown while user account awaits admin approval |
+| `/account-rejected`| `AccountRejected.tsx` | Authenticated | Screen shown if user approval is denied |
 
 ---
 
-## 6. Database Schema
+## 5. Authentication, RBAC & User Approval Workflow
 
-### Tables (12 total)
+### Supported Roles
+1. `issuer`: Educational institutions, employers, certification authorities.
+2. `holder`: Students, employees, individuals.
+3. `verifier`: Employers, background screening agencies, third parties.
+4. `org_admin`: System administrators managing users and platform governance.
+5. `auditor`: Compliance officers reviewing audit trails and data consent records.
 
-#### `profiles`
+### User Approval Flow
+```text
+User Sign-Up → Profile Created (status: 'pending')
+                    │
+                    ▼
+     Admin Portal (`/admin`) Review
+      ├── Approve → status: 'approved' → Full Portal Access Granted
+      └── Reject  → status: 'rejected' → Redirected to `/account-rejected`
+```
 
-Stores extended user information. Created automatically on signup via trigger.
+---
 
-| Column                 | Type          | Nullable | Default             | Description              |
-| ---------------------- | ------------- | -------- | ------------------- | ------------------------ |
-| `id`                   | `uuid`        | No       | `gen_random_uuid()` | Primary key              |
-| `user_id`              | `uuid`        | No       | —                   | References auth users    |
-| `full_name`            | `text`        | No       | `''`                | Display name             |
-| `organization`         | `text`        | Yes      | `''`                | Institution/company      |
-| `did`                  | `text`        | Yes      | `null`              | Decentralized Identifier |
-| `wallet_address`       | `text`        | Yes      | `null`              | Polygon wallet address   |
-| `biometric_registered` | `boolean`     | Yes      | `false`             | WebAuthn enrolled        |
-| `face_registered`      | `boolean`     | Yes      | `false`             | Face capture completed   |
-| `created_at`           | `timestamptz` | No       | `now()`             | —                        |
-| `updated_at`           | `timestamptz` | No       | `now()`             | —                        |
+## 6. Database Schema Specification (13 Tables)
 
-#### `user_roles`
+PostgreSQL schema managed via `supabase/migrations/`.
 
-Stores user role assignments. Separate table to prevent privilege escalation.
+### 1. `user_roles`
+Stores role assignments for users.
+- `id` (UUID, PK)
+- `user_id` (UUID, FK -> `auth.users`)
+- `role` (ENUM: `issuer`, `holder`, `verifier`, `org_admin`, `auditor`)
+- `created_at` (TIMESTAMPTZ)
 
-| Column    | Type            | Nullable | Default             | Description                       |
-| --------- | --------------- | -------- | ------------------- | --------------------------------- |
-| `id`      | `uuid`          | No       | `gen_random_uuid()` | Primary key                       |
-| `user_id` | `uuid`          | No       | —                   | References auth users             |
-| `role`    | `app_role` enum | No       | —                   | `issuer`, `holder`, or `verifier` |
+### 2. `profiles`
+User profile details and approval status.
+- `id` (UUID, PK, FK -> `auth.users`)
+- `email` (TEXT)
+- `full_name` (TEXT)
+- `organization_name` (TEXT)
+- `did` (TEXT, UNIQUE)
+- `approval_status` (TEXT: `pending`, `approved`, `rejected`)
+- `approved_by` (UUID)
+- `approved_at` (TIMESTAMPTZ)
+- `created_at` (TIMESTAMPTZ)
 
-**Unique constraint**: `(user_id, role)`
+### 3. `credential_schemas`
+JSON Schema definitions created by issuers.
+- `id` (UUID, PK)
+- `issuer_id` (UUID, FK -> `profiles.id`)
+- `name` (TEXT)
+- `version` (TEXT)
+- `description` (TEXT)
+- `schema_json` (JSONB)
+- `ipfs_cid` (TEXT)
+- `created_at` (TIMESTAMPTZ)
 
-#### `credential_schemas`
+### 4. `status_lists`
+W3C StatusList2021 revocation bitmaps.
+- `id` (UUID, PK)
+- `issuer_id` (UUID, FK -> `profiles.id`)
+- `encoded_list` (TEXT)
+- `created_at` (TIMESTAMPTZ)
 
-Defines credential types with versioning support.
+### 5. `credentials`
+Issued W3C Verifiable Credentials.
+- `id` (UUID, PK)
+- `credential_id` (TEXT, UNIQUE)
+- `issuer_id` (UUID, FK -> `profiles.id`)
+- `holder_id` (UUID, FK -> `profiles.id`)
+- `holder_did` (TEXT)
+- `schema_id` (UUID, FK -> `credential_schemas.id`)
+- `credential_subject` (JSONB)
+- `credential_hash` (TEXT)
+- `signature` (TEXT)
+- `status` (TEXT: `active`, `revoked`, `expired`)
+- `issuance_date` (TIMESTAMPTZ)
+- `expiration_date` (TIMESTAMPTZ)
+- `block_number` (BIGINT)
+- `transaction_hash` (TEXT)
+- `created_at` (TIMESTAMPTZ)
 
-| Column             | Type          | Nullable | Default             | Description                              |
-| ------------------ | ------------- | -------- | ------------------- | ---------------------------------------- |
-| `id`               | `uuid`        | No       | `gen_random_uuid()` | Primary key                              |
-| `issuer_id`        | `uuid`        | No       | —                   | Creator's user ID                        |
-| `name`             | `text`        | No       | —                   | Schema name                              |
-| `credential_type`  | `text`        | No       | `'certificate'`     | degree, diploma, certificate, transcript |
-| `fields`           | `jsonb`       | No       | `'[]'`              | Field definitions array                  |
-| `version`          | `integer`     | No       | `1`                 | Schema version number                    |
-| `parent_schema_id` | `uuid`        | Yes      | `null`              | FK → previous schema version             |
-| `is_latest`        | `boolean`     | No       | `true`              | Whether this is the current version      |
-| `created_at`       | `timestamptz` | No       | `now()`             | —                                        |
+### 6. `credential_shares`
+Time-limited credential share tokens.
+- `id` (UUID, PK)
+- `credential_id` (UUID, FK -> `credentials.id`)
+- `holder_id` (UUID, FK -> `profiles.id`)
+- `share_token` (TEXT, UNIQUE)
+- `disclosed_fields` (JSONB)
+- `expires_at` (TIMESTAMPTZ)
+- `created_at` (TIMESTAMPTZ)
 
-#### `credentials`
+### 7. `verification_requests`
+OID4VP presentation requests sent by verifiers.
+- `id` (UUID, PK)
+- `verifier_id` (UUID, FK -> `profiles.id`)
+- `holder_id` (UUID, FK -> `profiles.id`)
+- `required_schema_id` (UUID, FK -> `credential_schemas.id`)
+- `status` (TEXT: `pending`, `accepted`, `rejected`, `expired`)
+- `response_data` (JSONB)
+- `created_at` (TIMESTAMPTZ)
 
-Core table storing issued verifiable credentials with blockchain anchoring and wallet signatures.
+### 8. `notifications`
+System notifications delivered to users via Realtime.
+- `id` (UUID, PK)
+- `user_id` (UUID, FK -> `profiles.id`)
+- `title` (TEXT)
+- `message` (TEXT)
+- `type` (TEXT)
+- `read` (BOOLEAN)
+- `created_at` (TIMESTAMPTZ)
 
-| Column              | Type          | Nullable | Default             | Description                                |
-| ------------------- | ------------- | -------- | ------------------- | ------------------------------------------ |
-| `id`                | `uuid`        | No       | `gen_random_uuid()` | Primary key                                |
-| `schema_id`         | `uuid`        | Yes      | —                   | FK → `credential_schemas.id`               |
-| `issuer_id`         | `uuid`        | No       | —                   | Issuing user's ID                          |
-| `holder_did`        | `text`        | No       | —                   | Holder's DID string                        |
-| `holder_id`         | `uuid`        | Yes      | —                   | Holder's user ID (if registered)           |
-| `credential_data`   | `jsonb`       | No       | `'{}'`              | Full W3C VC JSON (proof + blockchain)      |
-| `credential_hash`   | `text`        | No       | —                   | SHA-256 hash of VC + prev_hash             |
-| `prev_hash`         | `text`        | Yes      | —                   | Previous credential's hash (chain linking) |
-| `blockchain_anchor` | `text`        | Yes      | —                   | Polygon blockchain reference               |
-| `status`            | `text`        | No       | `'active'`          | `active`, `revoked`, `expired`             |
-| `issuer_signature`  | `text`        | Yes      | —                   | Wallet signature (EcdsaSecp256k1)          |
-| `signer_address`    | `text`        | Yes      | —                   | Signing wallet address                     |
-| `status_list_id`    | `uuid`        | Yes      | —                   | FK → `status_lists.id`                     |
-| `status_list_index` | `integer`     | Yes      | —                   | Index in StatusList2021 bitstring          |
-| `issued_at`         | `timestamptz` | No       | `now()`             | —                                          |
-| `expires_at`        | `timestamptz` | Yes      | —                   | Optional expiration                        |
-| `revoked_at`        | `timestamptz` | Yes      | —                   | When revoked                               |
+### 9. `audit_logs`
+Immutable audit records.
+- `id` (UUID, PK)
+- `user_id` (UUID)
+- `action` (TEXT)
+- `entity_type` (TEXT)
+- `entity_id` (TEXT)
+- `details` (JSONB)
+- `ip_address` (TEXT)
+- `created_at` (TIMESTAMPTZ)
 
-**`credential_data` structure** (W3C VC):
+### 10. `trusted_issuers`
+Accredited issuer registry entries.
+- `id` (UUID, PK)
+- `issuer_id` (UUID, FK -> `profiles.id`)
+- `name` (TEXT)
+- `did` (TEXT)
+- `status` (TEXT: `trusted`, `suspended`, `revoked`)
+- `accreditation_details` (JSONB)
+- `created_at` (TIMESTAMPTZ)
 
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    json
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-json">{
-  "@context": ["https://www.w3.org/2018/credentials/v1", "https://w3id.org/security/suites/ed25519-2020/v1"],
-  "type": ["VerifiableCredential", "certificate"],
-  "issuer": "did:decentraid:issuer:&lt;userId&gt;",
-  "issuanceDate": "2026-03-08T12:00:00Z",
-  "credentialSubject": { "id": "did:decentraid:&lt;hash&gt;", "studentName": "John Doe" },
-  "credentialSchema": { "id": "&lt;schemaId&gt;", "type": "certificate", "version": 1 },
-  "proof": {
-    "type": "EcdsaSecp256k1Signature2019",
-    "created": "2026-03-08T12:00:00Z",
-    "verificationMethod": "did:ethr:polygon:&lt;address&gt;#controller",
-    "proofPurpose": "assertionMethod",
-    "proofValue": "&lt;wallet_signature&gt;",
-    "signedBy": "&lt;wallet_address&gt;"
-  },
-  "blockchain": {
-    "network": "polygon",
-    "chainId": 137,
-    "txHash": "0x...",
-    "blockNumber": 60123456,
-    "contractAddress": "0x...",
-    "explorerUrl": "https://polygonscan.com/tx/..."
-  }
-}
-</code>
-  </pre>
-</div>
-
-#### `credential_shares`
-
-Time-limited sharing tokens with selective disclosure support.
-
-| Column             | Type          | Nullable | Default                               | Description                                 |
-| ------------------ | ------------- | -------- | ------------------------------------- | ------------------------------------------- |
-| `id`               | `uuid`        | No       | `gen_random_uuid()`                   | Primary key                                 |
-| `credential_id`    | `uuid`        | No       | —                                     | FK → `credentials.id`                       |
-| `holder_id`        | `uuid`        | No       | —                                     | Share creator's user ID                     |
-| `token`            | `text`        | No       | `encode(gen_random_bytes(32), 'hex')` | Unique share token                          |
-| `disclosed_fields` | `jsonb`       | Yes      | `null`                                | Array of field names to reveal (null = all) |
-| `expires_at`       | `timestamptz` | No       | —                                     | When the link expires                       |
-| `created_at`       | `timestamptz` | No       | `now()`                               | —                                           |
-
-#### `verification_requests`
-
-Records verification attempts and AI analysis results.
-
-| Column            | Type          | Nullable | Default             | Description                       |
-| ----------------- | ------------- | -------- | ------------------- | --------------------------------- |
-| `id`              | `uuid`        | No       | `gen_random_uuid()` | Primary key                       |
-| `verifier_id`     | `uuid`        | No       | —                   | Verifying user's ID               |
-| `credential_id`   | `uuid`        | Yes      | —                   | FK → `credentials.id`             |
-| `holder_did`      | `text`        | Yes      | —                   | DID of credential holder          |
-| `credential_type` | `text`        | Yes      | —                   | Type of credential verified       |
-| `purpose`         | `text`        | Yes      | `''`                | Verification purpose              |
-| `status`          | `text`        | No       | `'pending'`         | `pending`, `verified`, `rejected` |
-| `ai_analysis`     | `jsonb`       | Yes      | —                   | AI risk assessment results        |
-| `verified_at`     | `timestamptz` | Yes      | —                   | When verification completed       |
-| `created_at`      | `timestamptz` | No       | `now()`             | —                                 |
-
-#### `notifications`
-
-In-app notification system for credential lifecycle events.
-
-| Column          | Type          | Nullable | Default             | Description                                                     |
-| --------------- | ------------- | -------- | ------------------- | --------------------------------------------------------------- |
-| `id`            | `uuid`        | No       | `gen_random_uuid()` | Primary key                                                     |
-| `user_id`       | `uuid`        | No       | —                   | Recipient user ID                                               |
-| `title`         | `text`        | No       | —                   | Notification title                                              |
-| `message`       | `text`        | No       | `''`                | Notification body                                               |
-| `type`          | `text`        | No       | `'info'`            | `credential_issued`, `credential_revoked`, `credential_expired` |
-| `credential_id` | `uuid`        | Yes      | —                   | FK → `credentials.id`                                           |
-| `read`          | `boolean`     | No       | `false`             | Read status                                                     |
-| `created_at`    | `timestamptz` | No       | `now()`             | —                                                               |
-
-#### `audit_logs`
-
-Comprehensive audit trail for all platform operations.
-
-| Column        | Type          | Nullable | Default             | Description                            |
-| ------------- | ------------- | -------- | ------------------- | -------------------------------------- |
-| `id`          | `uuid`        | No       | `gen_random_uuid()` | Primary key                            |
-| `user_id`     | `uuid`        | No       | —                   | Actor user ID                          |
-| `action`      | `text`        | No       | —                   | Action type (see list below)           |
-| `entity_type` | `text`        | No       | —                   | `credential`, `schema`, `verification` |
-| `entity_id`   | `uuid`        | Yes      | —                   | Related entity ID                      |
-| `metadata`    | `jsonb`       | Yes      | `'{}'`              | Action-specific details                |
-| `ip_address`  | `text`        | Yes      | —                   | Client IP                              |
-| `created_at`  | `timestamptz` | No       | `now()`             | —                                      |
-
-**Audit actions**: `credential_issued`, `credential_revoked`, `credential_verified`, `schema_created`, `batch_issuance`, `oid4vci_credential_issued`, `oid4vp_presentation_received`
-
-#### `trusted_issuers`
-
-Registry of verified credential issuers.
-
-| Column                | Type          | Nullable | Default             | Description                       |
-| --------------------- | ------------- | -------- | ------------------- | --------------------------------- |
-| `id`                  | `uuid`        | No       | `gen_random_uuid()` | Primary key                       |
-| `issuer_did`          | `text`        | No       | —                   | Issuer's DID (unique)             |
-| `issuer_user_id`      | `uuid`        | Yes      | —                   | Platform user ID                  |
-| `organization_name`   | `text`        | No       | —                   | Organization display name         |
-| `domain`              | `text`        | Yes      | —                   | Organization domain               |
-| `verification_status` | `text`        | No       | `'pending'`         | `pending`, `verified`, `rejected` |
-| `trust_level`         | `text`        | No       | `'standard'`        | `standard`, `elevated`, `high`    |
-| `metadata`            | `jsonb`       | Yes      | `'{}'`              | Additional trust data             |
-| `verified_by`         | `uuid`        | Yes      | —                   | Verifier who approved             |
-| `verified_at`         | `timestamptz` | Yes      | —                   | When verified                     |
-
-#### `status_lists`
-
-StatusList2021 bitstring revocation lists.
-
-| Column          | Type      | Nullable | Default             | Description          |
-| --------------- | --------- | -------- | ------------------- | -------------------- |
-| `id`            | `uuid`    | No       | `gen_random_uuid()` | Primary key          |
-| `issuer_id`     | `uuid`    | No       | —                   | Owning issuer        |
-| `encoded_list`  | `text`    | No       | `''`                | Encoded bitstring    |
-| `purpose`       | `text`    | No       | `'revocation'`      | List purpose         |
-| `status_size`   | `integer` | No       | `1`                 | Bits per entry       |
-| `total_entries` | `integer` | No       | `131072`            | Max entries (128K)   |
-| `next_index`    | `integer` | No       | `0`                 | Next available index |
-
-#### `consent_records`
-
+### 11. `consent_records`
 GDPR consent tracking.
+- `id` (UUID, PK)
+- `holder_id` (UUID, FK -> `profiles.id`)
+- `verifier_id` (UUID)
+- `purpose` (TEXT)
+- `granted_at` (TIMESTAMPTZ)
+- `revoked_at` (TIMESTAMPTZ)
 
-| Column         | Type          | Nullable | Default             | Description                                         |
-| -------------- | ------------- | -------- | ------------------- | --------------------------------------------------- |
-| `id`           | `uuid`        | No       | `gen_random_uuid()` | Primary key                                         |
-| `user_id`      | `uuid`        | No       | —                   | Consenting user                                     |
-| `consent_type` | `text`        | No       | —                   | `data_storage`, `biometric_processing`, `analytics` |
-| `purpose`      | `text`        | No       | `''`                | Description of purpose                              |
-| `granted`      | `boolean`     | No       | `true`              | Whether consent granted                             |
-| `revoked_at`   | `timestamptz` | Yes      | —                   | When consent revoked                                |
-| `created_at`   | `timestamptz` | No       | `now()`             | —                                                   |
+### 12. `data_deletion_requests`
+GDPR Art. 17 right-to-erasure logs.
+- `id` (UUID, PK)
+- `user_id` (UUID, FK -> `profiles.id`)
+- `status` (TEXT: `requested`, `processing`, `completed`)
+- `requested_at` (TIMESTAMPTZ)
 
-#### `data_deletion_requests`
-
-GDPR right-to-erasure requests.
-
-| Column         | Type          | Nullable | Default             | Description                          |
-| -------------- | ------------- | -------- | ------------------- | ------------------------------------ |
-| `id`           | `uuid`        | No       | `gen_random_uuid()` | Primary key                          |
-| `user_id`      | `uuid`        | No       | —                   | Requesting user                      |
-| `reason`       | `text`        | Yes      | —                   | Deletion reason                      |
-| `status`       | `text`        | No       | `'pending'`         | `pending`, `processing`, `completed` |
-| `requested_at` | `timestamptz` | No       | `now()`             | —                                    |
-| `processed_at` | `timestamptz` | Yes      | —                   | When processed                       |
-
-#### `oid4vc_sessions`
-
-OpenID4VC session tracking for credential offers and presentation requests.
-
-| Column                    | Type          | Nullable | Default             | Description                                  |
-| ------------------------- | ------------- | -------- | ------------------- | -------------------------------------------- |
-| `id`                      | `uuid`        | No       | `gen_random_uuid()` | Primary key                                  |
-| `session_type`            | `text`        | No       | —                   | `credential_offer` or `presentation_request` |
-| `user_id`                 | `uuid`        | No       | —                   | Creating user                                |
-| `status`                  | `text`        | No       | `'pending'`         | `pending`, `claimed`, `completed`, `expired` |
-| `schema_id`               | `uuid`        | Yes      | —                   | FK → `credential_schemas.id`                 |
-| `credential_data`         | `jsonb`       | Yes      | `'{}'`              | Pre-filled credential data                   |
-| `pre_authorized_code`     | `text`        | Yes      | —                   | Unique code for OID4VCI flow                 |
-| `presentation_definition` | `jsonb`       | Yes      | —                   | OID4VP presentation definition               |
-| `response_data`           | `jsonb`       | Yes      | —                   | VP response or credential ID                 |
-| `metadata`                | `jsonb`       | Yes      | `'{}'`              | Additional session data                      |
-| `expires_at`              | `timestamptz` | No       | —                   | Session expiration                           |
-| `created_at`              | `timestamptz` | No       | `now()`             | —                                            |
-
-### Enum Type
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    sql
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-sql">CREATE TYPE public.app_role AS ENUM ('issuer', 'holder', 'verifier');
-</code>
-  </pre>
-</div>
+### 13. `oid4vc_sessions`
+Active OpenID4VCI and OID4VP protocol sessions.
+- `id` (UUID, PK)
+- `session_type` (TEXT: `issuance`, `presentation`)
+- `state_token` (TEXT, UNIQUE)
+- `nonce` (TEXT)
+- `payload` (JSONB)
+- `expires_at` (TIMESTAMPTZ)
+- `created_at` (TIMESTAMPTZ)
 
 ---
 
 ## 7. Row-Level Security (RLS) Policies
 
-All tables have RLS enabled.
-
-### `profiles`
-
-| Policy                          | Command | Rule                               |
-| ------------------------------- | ------- | ---------------------------------- |
-| Users can read own profile      | SELECT  | `user_id = auth.uid()`             |
-| Users can update own profile    | UPDATE  | `user_id = auth.uid()`             |
-| Issuers can read all profiles   | SELECT  | `has_role(auth.uid(), 'issuer')`   |
-| Verifiers can read all profiles | SELECT  | `has_role(auth.uid(), 'verifier')` |
-
-### `user_roles`
-
-| Policy                    | Command | Rule                   |
-| ------------------------- | ------- | ---------------------- |
-| Users can read own roles  | SELECT  | `user_id = auth.uid()` |
-| Users can insert own role | INSERT  | `user_id = auth.uid()` |
-
-### `credentials`
-
-| Policy                             | Command | Rule                                                                           |
-| ---------------------------------- | ------- | ------------------------------------------------------------------------------ |
-| Holders can read own credentials   | SELECT  | `holder_id = auth.uid()`                                                       |
-| Issuers can read own issued        | SELECT  | `issuer_id = auth.uid()`                                                       |
-| Issuers can create credentials     | INSERT  | `issuer_id = auth.uid()`                                                       |
-| Issuers can update own credentials | UPDATE  | `issuer_id = auth.uid()`                                                       |
-| Verifiers can read credentials     | SELECT  | `has_role(auth.uid(), 'verifier')`                                             |
-| Read credentials via share token   | SELECT  | `id IN (SELECT credential_id FROM credential_shares WHERE expires_at > now())` |
-
-### `credential_schemas`
-
-| Policy                     | Command | Rule                     |
-| -------------------------- | ------- | ------------------------ |
-| Anyone can read schemas    | SELECT  | `true` (public)          |
-| Issuers can manage schemas | ALL     | `issuer_id = auth.uid()` |
-
-### `credential_shares`
-
-| Policy                        | Command | Rule                     |
-| ----------------------------- | ------- | ------------------------ |
-| Holders can manage own shares | ALL     | `holder_id = auth.uid()` |
-| Public can read by token      | SELECT  | `true` (public)          |
-
-### `audit_logs`
-
-| Policy                          | Command | Rule                             |
-| ------------------------------- | ------- | -------------------------------- |
-| Users can read own audit logs   | SELECT  | `user_id = auth.uid()`           |
-| Issuers can read all audit logs | SELECT  | `has_role(auth.uid(), 'issuer')` |
-| Service role inserts audit logs | INSERT  | `true` (edge functions only)     |
-
-### `trusted_issuers`
-
-| Policy                          | Command | Rule                             |
-| ------------------------------- | ------- | -------------------------------- |
-| Anyone can read trusted issuers | SELECT  | `true` (public)                  |
-| Issuers can register themselves | INSERT  | `has_role(auth.uid(), 'issuer')` |
-| Issuers can update own entry    | UPDATE  | `issuer_user_id = auth.uid()`    |
-
-### `status_lists`
-
-| Policy                          | Command | Rule                     |
-| ------------------------------- | ------- | ------------------------ |
-| Issuers manage own status lists | ALL     | `issuer_id = auth.uid()` |
-| Anyone can read status lists    | SELECT  | `true` (public)          |
-
-### `consent_records` / `data_deletion_requests`
-
-| Policy                   | Command | Rule                   |
-| ------------------------ | ------- | ---------------------- |
-| Users manage own records | ALL     | `user_id = auth.uid()` |
-
-### `oid4vc_sessions`
-
-| Policy                    | Command | Rule                   |
-| ------------------------- | ------- | ---------------------- |
-| Users manage own sessions | ALL     | `user_id = auth.uid()` |
-| Public read (for wallets) | SELECT  | `true`                 |
-
-### `notifications` / `verification_requests`
-
-Standard per-user read/write policies as before.
+All 13 tables enforce strict PostgreSQL RLS policies to guarantee data isolation:
+- **Profiles**: Users can read all profiles (for DID resolution), but can only update their own profile. Admin users can update approval status.
+- **Credentials**: Issuers can view credentials they issued; holders can view credentials issued to their DID; verifiers can view credentials shared with them via token.
+- **Credential Shares**: Holders can manage their shares; anonymous/public users can read unexpired shares by token matching.
+- **Audit Logs**: Authenticated users can view logs pertaining to their actions; org_admins can view all audit records.
 
 ---
 
 ## 8. Database Functions & Triggers
 
-### `handle_new_user()` — Trigger on `auth.users` INSERT
-
-1. Creates `profiles` row with `user_id` and `full_name`
-2. Inserts role into `user_roles` from metadata
-3. If holder, calls `generate_did()` to assign a DID
-
-### `generate_did(_user_id uuid)` — Returns DID
-
-Generates `did:decentraid:<32_hex>` using `gen_random_bytes(16)`.
-
-### `has_role(_user_id uuid, _role app_role)` — Returns Boolean
-
-Security-definer function for RLS policies. Prevents recursive checks.
-
-### `notify_credential_issued()` — Trigger on `credentials` INSERT
-
-Creates notification for holder when credential issued.
-
-### `notify_credential_status_change()` — Trigger on `credentials` UPDATE
-
-Creates notifications for revocation/expiration events.
-
-### `check_credential_expiration()` — Trigger on `credentials` UPDATE
-
-Auto-sets status to `expired` when `expires_at < now()`.
+Stored procedures defined in migrations:
+1. `has_role(_user_id UUID, _role app_role) -> BOOLEAN`: Checks user role membership.
+2. `handle_new_user() -> TRIGGER`: Automatically creates `profile` and `user_roles` records on sign-up.
+3. `generate_did(_user_id UUID) -> TEXT`: Derives deterministic `did:ethr` identifier for user wallet address.
+4. `get_my_did() -> TEXT`: Helper view returning current authenticated user's DID.
+5. `auto_expire_credential() -> TRIGGER`: Trigger that flags credentials as expired when `expiration_date` passes.
+6. `expire_stale_credentials() -> VOID`: Cron-executable procedure for batch credential expiration cleanup.
+7. `notify_credential_issued() -> TRIGGER`: Fires a notification and audit log when a new credential is written.
+8. `notify_credential_status_change() -> TRIGGER`: Emits real-time event when credential status toggles to revoked.
 
 ---
 
-## 9. Edge Functions (Backend API)
+## 9. Deno Edge Functions API Specification (9 Microservices)
 
-### `issue-credential`
+Located in `supabase/functions/`:
 
-**Endpoint**: `POST /functions/v1/issue-credential`
-**Auth**: Bearer JWT
+| Function Name | Endpoint | Description |
+|---|---|---|
+| `admin-users` | `/functions/v1/admin-users` | List, approve, or reject user registrations |
+| `anchor-credential` | `/functions/v1/anchor-credential` | Relay client-signed anchor transaction to EVM RPC |
+| `anchor-credential-server` | `/functions/v1/anchor-credential-server` | Automated server-side wallet anchoring |
+| `issue-credential` | `/functions/v1/issue-credential` | Issue, format, and sign W3C credential JSON |
+| `manage-schemas` | `/functions/v1/manage-schemas` | CRUD operations for credential schemas |
+| `oid4vci` | `/functions/v1/oid4vci` | Handle OpenID for VC Issuance credential offers |
+| `oid4vp` | `/functions/v1/oid4vp` | Handle OpenID for Verifiable Presentations |
+| `resolve-did` | `/functions/v1/resolve-did` | Resolve `did:ethr` and `did:key` DIDs |
+| `verify-credential` | `/functions/v1/verify-credential` | Validate VC signatures, expiry, and on-chain anchor |
 
-Supports single and batch issuance with optional wallet signing.
+---
 
-**Request Body**:
+## 10. Smart Contract Architecture (`CredentialRegistry.sol`)
 
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    json
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-json">{
-  "schema_id": "uuid",
-  "holder_did": "did:decentraid:...",
-  "credential_data": { "studentName": "John", "grade": "A" },
-  "expires_at": "2027-01-01T00:00:00Z",
-  "issuer_signature": "0x...",
-  "signer_address": "0x..."
+Located at `contracts/CredentialRegistry.sol`.
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+contract CredentialRegistry {
+    struct Credential {
+        address issuer;
+        uint256 blockAnchored;
+        uint256 anchoredAt;   // Unix timestamp
+        uint256 revokedAt;    // Unix timestamp (0 if active)
+        bool revoked;
+    }
+
+    mapping(bytes32 => Credential) public credentials;
+
+    event CredentialAnchored(bytes32 indexed hash, address indexed issuer, uint256 blockNumber, uint256 timestamp);
+    event CredentialRevoked(bytes32 indexed hash, address indexed issuer, uint256 blockNumber, uint256 timestamp);
+
+    function anchorCredential(bytes32 hash) external;
+    function anchorCredentialBatch(bytes32[] calldata hashes) external;
+    function revokeCredential(bytes32 hash) external;
+    function getCredentialStatus(bytes32 hash) external view returns (bool anchored, bool revoked, address issuer, uint256 blockAnchored, uint256 anchoredAt, uint256 revokedAt);
+    function getCredentialBatch(bytes32[] calldata hashes) external view returns (bool[] memory anchored, bool[] memory revoked, address[] memory issuers, uint256[] memory blockNumbers, uint256[] memory timestamps);
+    function isValid(bytes32 hash) external view returns (bool);
 }
-</code>
-  </pre>
-</div>
-
-**Batch** — same but with `batch: [{ holder_did, credential_data, ... }]`
-
-**Process**:
-
-1. Authenticate issuer via JWT
-2. Fetch schema; lookup holder by DID
-3. Chain-link via `prev_hash`
-4. Build W3C VC with proof (wallet-signed or simulated)
-5. SHA-256 hash computation
-6. Polygon blockchain anchor generation
-7. Insert credential + audit log
-
-### `verify-credential`
-
-**Endpoint**: `POST /functions/v1/verify-credential`
-
-**Checks**: Hash integrity → revocation → expiration → blockchain → wallet signature → AI analysis (Gemini)
-
-**Response includes**: `valid`, `hash_integrity`, `not_revoked`, `not_expired`, `blockchain_info`, `signature`, `ai_analysis`
-
-### `resolve-did`
-
-**Endpoint**: `POST /functions/v1/resolve-did`
-
-Resolves W3C DID Documents for three DID methods:
-
-| Method                       | Format       | Resolution                               |
-| ---------------------------- | ------------ | ---------------------------------------- |
-| `did:decentraid:issuer:<id>` | Issuer DID   | Profile + wallet + trust registry status |
-| `did:decentraid:<hex>`       | Holder DID   | Profile + biometric auth methods         |
-| `did:ethr:polygon:<addr>`    | Ethereum DID | Wallet address + linked platform DID     |
-
-Returns standard DID Document with `verificationMethod`, `authentication`, `assertionMethod`, and `service` arrays.
-
-### `oid4vci`
-
-**Endpoints**:
-| Path | Method | Description |
-|------|--------|-------------|
-| `/offer` | POST | Create credential offer (issuer, authenticated) |
-| `/.well-known` | GET | Issuer metadata (public) |
-| `/token` | POST | Exchange pre-authorized code for access token |
-| `/credential` | POST | Fetch issued credential (bearer token) |
-
-**Flow**: Issuer creates offer → wallet scans QR → exchanges code for token → fetches VC in `ldp_vc` or `jwt_vc_json` format.
-
-### `oid4vp`
-
-**Endpoints**:
-| Path | Method | Description |
-|------|--------|-------------|
-| `/request` | POST | Create presentation request (verifier, authenticated) |
-| `/response` | POST | Receive VP from wallet (direct_post) |
-| `/status` | GET | Poll session status |
-
-**Flow**: Verifier creates request → wallet scans QR → wallet posts VP → verifier polls for result.
+```
 
 ---
 
-## 10. Portal 1: Issuer Dashboard
+## 11. Portal 1: Issuer Dashboard (`/issuer`)
 
-**Route**: `/issuer` | **File**: `src/pages/issuer/IssuerDashboard.tsx`
-
-### Features
-
-- **Statistics**: Schemas, Issued, On-Chain, Revoked, Expired counts
-- **Analytics**: Issuance trend bar chart, type distribution pie chart
-- **Create Schema**: Name, type, JSON fields, auto-versioning (v1, v2, ...)
-- **Issue Credential**: Holder DID, schema selection, dynamic form, optional expiration, wallet signing toggle (MetaMask/Polygon)
-- **Batch Issuance**: CSV upload with `holder_did` column, preview, progress tracking
-- **OID4VCI Offer**: Generate QR code / URI for external wallet credential pickup
-- **Revoke Credentials**: One-click revocation with audit logging
-- **Trusted Issuer Registry**: Register organization, view trust status
-- **Quick Links**: Audit trail, blockchain explorer
+The Issuer Dashboard allows credential authorities to:
+- Formally define schemas via `SchemaBuilder.tsx`.
+- Fill credential fields, perform cryptographic key signing, and trigger on-chain anchoring via `IssueView.tsx`.
+- Execute batch issuance CSV pipelines via `BatchIssuanceDialog.tsx`.
+- Render dynamic SVG certificates and export dark-mode PDFs via `CertificateRenderer.tsx`.
+- Revoke active credentials directly on-chain via `useOnChainRevocation.ts`.
 
 ---
 
-## 11. Portal 2: Holder Wallet
+## 12. Portal 2: Holder Wallet (`/holder`)
 
-**Route**: `/holder` | **File**: `src/pages/holder/HolderWallet.tsx`
-
-### Features
-
-- **Security Score**: 0-100% based on DID + WebAuthn + Face enrollment
-- **DID Management**: Generate, display, copy, QR code
-- **Web3 Wallet**: MetaMask connection on Polygon network
-- **Biometric Enrollment**: WebAuthn (fingerprint/Face ID), face capture via camera
-- **Credential Cards**: View all credentials with status, share, QR, export actions
-- **Selective Disclosure Sharing**: Choose specific fields to reveal when creating share links
-- **Credential Export**: Download as JSON-LD (W3C) or JWT-VC format
-- **Multi-Factor Verification**: 3-factor check (DID + WebAuthn + wallet signature)
-- **Privacy Center (GDPR)**: Consent management, data export, deletion requests
-- **Active Share Links**: Manage all active/expired share links
-- **Real-Time Updates**: Live notifications for credential lifecycle events
+The Holder Wallet provides non-custodial credential management:
+- View all held credentials in `WalletView.tsx`.
+- Inspect on-chain anchor block numbers and transaction hashes (`OnChainStatusBadge.tsx`).
+- Configure selective disclosure parameters and share links in `PresentView.tsx`.
+- Lock wallet access using WebAuthn passkeys (`BiometricLockModal.tsx`).
+- Monitor proactive expiration banners for credentials expiring within 30 days.
 
 ---
 
-## 12. Portal 3: Verifier Dashboard
+## 13. Portal 3: Verifier Portal (`/verifier`)
 
-**Route**: `/verifier` | **File**: `src/pages/verifier/VerifierDashboard.tsx`
-
-### Features
-
-- **Statistics**: Verified, Pending, Rejected counts, AI confidence average
-- **Analytics**: Verification trend, results distribution charts
-- **Verify Credential**: Paste VP JSON → hash check, revocation, expiration, blockchain, wallet signature, AI analysis
-- **Request Presentation**: Send verification request to holder by DID
-- **OID4VP Request**: Generate QR code for external wallet VP presentation with real-time polling
-- **DID Resolver**: Resolve any `did:decentraid:` or `did:ethr:polygon:` to W3C DID Document
-- **Trusted Issuer Registry**: View verified issuers with trust levels
-- **Verification History**: Full list with AI analysis indicators
+The Verifier Portal empowers third parties to:
+- Verify credential authenticity via direct hash lookup or file upload (`VerifyView.tsx`).
+- Receive real-time live verification events (`LiveActivityFeed.tsx`).
+- Send structured presentation requests (OID4VP) to holders (`OID4VPRequestDialog.tsx`).
+- Perform bulk credential verification (`BulkVerifyDialog.tsx`).
+- View verification trends and analytics charts (`AnalyticsView.tsx`).
 
 ---
 
-## 13. Credential Sharing & Selective Disclosure
+## 14. Portal 4: Admin & Governance (`/admin`)
 
-### Standard Share Flow
-
-1. Holder clicks share → selects expiry (1h / 24h / 7d / 30d)
-2. **Selective disclosure mode**: Toggle to choose specific fields to reveal
-3. Token generated (32 random bytes, hex-encoded)
-4. Share record with `disclosed_fields` array inserted
-5. QR code + copyable URL generated
-
-### Shared View (`/shared/:token`)
-
-- Publicly accessible (no auth)
-- Checks expiration
-- If `disclosed_fields` set: only reveals selected fields, shows "••• Redacted" for hidden fields
-- If `disclosed_fields` null: reveals all fields
-- Displays credential metadata, blockchain anchor, hash
+System Administrators can:
+- Review pending user accounts, inspect organization credentials, and approve/reject access (`AdminDashboard.tsx`).
+- Maintain accredited issuer listings in `TrustedIssuerRegistry.tsx`.
+- Monitor global audit logs and privacy compliance requests.
 
 ---
 
-## 14. Blockchain Explorer
+## 15. Credential Sharing & Selective Disclosure
 
-**Route**: `/explorer` | **File**: `src/pages/BlockchainExplorer.tsx`
-
-- **Stats**: Total blocks, active, chain integrity %, latest block date
-- **Search**: Filter by hash, tx hash, DID, credential name
-- **Visual Hash Chain**: Blocks with chain connectors showing `prev_hash` links
-- **Expandable Details**: Full hash, previous hash, holder DID, blockchain info, proof details
-
----
-
-## 15. Trust Infrastructure
-
-### Trusted Issuer Registry (`TrustedIssuerRegistry.tsx`)
-
-- Issuers register their organization with name, domain, DID
-- Verification statuses: `pending`, `verified`, `rejected`
-- Trust levels: `standard`, `elevated`, `high`
-- Public read access for verifiers and holders
-
-### DID Resolution (`DIDResolver.tsx` + `resolve-did` edge function)
-
-- Input any DID → resolves to W3C DID Document
-- Shows verification methods, authentication, services
-- Includes trust metadata for issuer DIDs
-
-### StatusList2021
-
-- Bitstring-based revocation lists (128K entries per list)
-- O(1) revocation status lookup
-- W3C StatusList2021 compliant
+BLOCKID implements privacy-preserving credential sharing:
+1. Holder selects credential fields to reveal (e.g., `fullName`, `degree`, masking `gpa` and `birthDate`).
+2. Holder chooses token expiration (1 hour, 24 hours, 7 days, 30 days).
+3. A unique cryptographically secure `share_token` is written to `credential_shares`.
+4. Verifier accesses `/shared/:share_token` to view the selectively disclosed fields alongside the tamper-proof blockchain hash.
 
 ---
 
-## 16. OpenID4VC (OID4VCI / OID4VP)
+## 16. OpenID4VC Protocol Suite (OID4VCI & OID4VP)
 
-### OID4VCI — Credential Issuance to External Wallets
-
-**Component**: `OID4VCIOfferDialog.tsx`
-**Edge Function**: `oid4vci`
-
-**Protocol**: Pre-Authorized Code Flow
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Issuer creates offer → QR code displayed
-     ↓
-External wallet scans → reads credential_offer
-     ↓
-Wallet calls /token with pre-authorized_code
-     ↓
-Receives access_token + c_nonce
-     ↓
-Wallet calls /credential with Bearer token
-     ↓
-Receives VC in ldp_vc or jwt_vc_json format
-</code>
-  </pre>
-</div>
-
-**Credential Offer URI format**:
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">openid-credential-offer://?credential_offer={"credential_issuer":"...","credentials":["certificate"],"grants":{"urn:ietf:params:oauth:grant-type:pre-authorized_code":{"pre-authorized_code":"..."}}}
-</code>
-  </pre>
-</div>
-
-**Compatible wallets**: Sphereon, Walt.id, MATTR, and other OID4VCI-compliant wallets.
-
-### OID4VP — Verifiable Presentation from External Wallets
-
-**Component**: `OID4VPRequestDialog.tsx`
-**Edge Function**: `oid4vp`
-
-**Protocol**: Authorization Request with direct_post response
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Verifier creates request → QR code displayed
-     ↓
-External wallet scans → reads presentation_definition
-     ↓
-Wallet selects matching credentials
-     ↓
-Wallet POSTs vp_token to /response (direct_post)
-     ↓
-Verifier polls /status → receives VP data
-</code>
-  </pre>
-</div>
-
-**Authorization Request URI format**:
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">openid4vp://?client_id=...&amp;response_type=vp_token&amp;response_uri=...&amp;response_mode=direct_post&amp;presentation_definition={...}
-</code>
-  </pre>
-</div>
-
-**Session lifecycle**: `pending` → `claimed` (OID4VCI) / `completed` → tracked in `oid4vc_sessions` table.
+- **OpenID for VC Issuance (OID4VCI)**: Issuers generate QR codes containing credential offer URIs. Holders scan the QR with their wallet to claim credentials directly (`OID4VCIOfferDialog.tsx`).
+- **OpenID for Verifiable Presentations (OID4VP)**: Verifiers specify requested schema fields. Holders approve presentation requests, generating a signed presentation payload (`OID4VPRequestDialog.tsx`).
 
 ---
 
-## 17. Privacy & GDPR Compliance
+## 17. Blockchain Explorer & Audit Trail
 
-### Privacy Center (`PrivacyCenter.tsx`)
-
-Accessible from Holder Wallet.
-
-#### Consent Management
-
-- Track consent for: data storage, biometric processing, analytics
-- Grant/revoke individual consent types
-- Stored in `consent_records` table with timestamps
-
-#### Data Export (Article 20)
-
-- Export all personal data as JSON download
-- Includes: profile, credentials, consent records, notifications
-
-#### Right to Erasure (Article 17)
-
-- Submit data deletion request with optional reason
-- Tracked in `data_deletion_requests` table
-- Status workflow: `pending` → `processing` → `completed`
+- **Blockchain Explorer (`/explorer`)**: In-app EVM explorer displaying live contract events, block numbers, transaction hashes, and issuer addresses.
+- **Audit Log (`/audit`)**: Complete history of credential issuance, sharing, verification, and revocation events.
 
 ---
 
-## 18. Multi-Factor Verification
+## 18. Trusted Issuer Registry & Trust Infrastructure
 
-**Component**: `MultiFactorVerification.tsx`
-
-Three-factor verification combining:
-
-| Factor              | Method         | Description                                               |
-| ------------------- | -------------- | --------------------------------------------------------- |
-| 1. DID Ownership    | Platform check | Verifies user has a registered DID                        |
-| 2. Biometric        | WebAuthn       | `navigator.credentials.get()` with platform authenticator |
-| 3. Wallet Signature | MetaMask       | `personal_sign` of verification challenge on Polygon      |
-
-All three factors must pass for full verification. Each factor shows individual pass/fail status.
+The **Trusted Issuer Registry** (`TrustedIssuerRegistry.tsx`) acts as an on-chain/on-database trust anchor listing accredited institutions, public keys, and accreditation levels.
 
 ---
 
-## 19. Credential Export & Interoperability
+## 19. AI Verification & Anomaly Engine (Google Gemini)
 
-**Component**: `CredentialExport.tsx`
-
-### Export Formats
-
-| Format      | Extension | Standard | Description                                                       |
-| ----------- | --------- | -------- | ----------------------------------------------------------------- |
-| **JSON-LD** | `.jsonld` | W3C VC   | Full verifiable credential with `@context`, StatusList2021 status |
-| **JWT-VC**  | `.jwt`    | IETF     | Compact JWT token format (header.payload.signature)               |
-
-Both formats include credential subject, schema reference, issuance date, and status information. JWT-VC exports are unsigned (marked `UNSIGNED_EXPORT`) for portability — real signing happens via wallet.
+Integrated via `src/services/ai/credential-ai.service.ts` and `CredentialAIAssistant.tsx`:
+- Evaluates **8 risk dimensions**: Signature Integrity, Blockchain Anchor, Issuer Trust, Schema Compliance, Expiration Risk, Revocation Risk, Subject Anomaly, and Data Consistency.
+- Provides natural language findings, anomaly alerts, and recommendations.
 
 ---
 
-## 20. Notification System
+## 20. WebAuthn Biometric Passkey Protection
 
-### Architecture
-
-1. **Database Triggers** → `notify_credential_issued()`, `notify_credential_status_change()`
-2. **Realtime Subscription** → `NotificationBell` component subscribes to INSERT events
-3. **Toast Notifications** → `useCredentialNotifications` hook shows instant toasts
-
-### NotificationBell Component
-
-- Bell icon with unread count badge
-- Dropdown panel with up to 20 notifications
-- Per-type icons (Shield for issued, AlertTriangle for revoked, Clock for expired)
-- "Mark all read" button
+Implemented via `webauthnService.ts` and `BiometricLockModal.tsx`:
+- Allows holders to register WebAuthn passkeys (FaceID / TouchID / YubiKey).
+- Requires biometric authentication before presenting sensitive credentials or revealing private keys.
 
 ---
 
-## 21. AI Integration
+## 21. Dynamic Visual Certificates & PDF Generator
 
-### Provider
-
-- **Lovable AI Gateway** → Google Gemini 3 Flash Preview
-- **Auth**: `LOVABLE_API_KEY` (pre-configured)
-
-### Usage in `verify-credential`
-
-Analyzes credential data, hash validity, blockchain anchoring, expiration, and wallet signature to produce:
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    json
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-json">{
-  "risk_level": "low|medium|high",
-  "confidence": 0-100,
-  "findings": ["Credential properly anchored on Polygon", "Wallet signature verified", ...]
-}
-</code>
-  </pre>
-</div>
+- **SVG Renderer** (`CertificateRenderer.tsx`): High-resolution visual certificate template with embedded QR codes.
+- **PDF Generator** (`generateCertificatePdf.ts`): Client-side dark-mode PDF document exporter built on `jsPDF`.
 
 ---
 
-## 22. Audit Trail
+## 22. Privacy & GDPR Compliance (Art. 17 & Art. 20)
 
-**Route**: `/audit` | **File**: `src/pages/AuditLog.tsx`
-
-Comprehensive logging of all platform operations:
-
-| Action                         | Logged By        | Metadata                                  |
-| ------------------------------ | ---------------- | ----------------------------------------- |
-| `credential_issued`            | Edge function    | holder_did, schema, wallet signing status |
-| `credential_revoked`           | Issuer dashboard | credential_id                             |
-| `credential_verified`          | Edge function    | result, AI confidence                     |
-| `schema_created`               | Issuer dashboard | name, type, version                       |
-| `batch_issuance`               | Edge function    | total, issued, failed counts              |
-| `oid4vci_credential_issued`    | OID4VCI function | holder_did, format                        |
-| `oid4vp_presentation_received` | OID4VP function  | holder, credentials count                 |
-
-**Access**: Users see own logs; issuers see all logs.
+Available through `PrivacyCenter.tsx`:
+- **GDPR Article 20 (Data Portability)**: Export all held credentials and wallet keys as standard JSON-LD files.
+- **GDPR Article 17 (Right to Erasure)**: Submit formal data deletion requests tracked in `data_deletion_requests`.
 
 ---
 
-## 23. PDF Certificate Generation
+## 23. PWA & Offline Service Worker Infrastructure
 
-**File**: `src/lib/generateCertificatePdf.ts` | **Library**: jsPDF
-
-Generates landscape A4 PDF with:
-
-- Teal border with accent line
-- "CERTIFICATE OF CREDENTIAL" title
-- Credential name, type, holder name
-- Dynamic data fields (up to 8, in 2 columns)
-- Footer: DID, issue date, hash, blockchain anchor, verification badge
+Configured via `vite-plugin-pwa`:
+- Installable as a desktop and mobile PWA.
+- Service worker caches core application assets and held credentials for offline access.
 
 ---
 
-## 24. PWA & Offline Support
+## 24. Testing & Quality Assurance Suite (127 Vitest Tests)
 
-**Configuration**: `vite-plugin-pwa` in `vite.config.ts`
+Automated test suite verified clean via `npm test`:
 
-- **Service Worker**: Workbox with `GenerateSW` strategy
-- **Caching**: Runtime caching for API calls, images, fonts
-- **Manifest**: App name "DecentraID", theme color `#1a8a7a`, icons (192px, 512px)
-- **Offline**: Holder wallet accessible offline with cached credentials
-- **Install**: Native install prompt on supported browsers
+| Test File | Test Count | Scope |
+|---|---|---|
+| `credential-ai.service.test.ts` | 39 | AI risk calculation, dimension scoring, fallback engine |
+| `crypto.test.ts` | 23 | Canonical JSON normalization & SHA-256 hash calculation |
+| `ipfs.test.ts` | 24 | CID extraction/validation, gateway URL resolution, schema JSON-LD builder |
+| `permissions.test.ts` | 20 | RBAC matrix enforcement across all 5 roles |
+| `generateCertificatePdf.test.ts` | 12 | PDF rendering logic, QR embedding, layout geometry |
+| `ProtectedRoute.test.tsx` | 9 | Route protection guards, auth redirects, pending state |
 
----
-
-## 25. Design System
-
-### Color Palette (HSL tokens)
-
-#### Portal-Specific Colors
-
-| Portal   | Token        | HSL           | Usage  |
-| -------- | ------------ | ------------- | ------ |
-| Issuer   | `--issuer`   | `220 70% 55%` | Blue   |
-| Holder   | `--holder`   | `175 60% 38%` | Teal   |
-| Verifier | `--verifier` | `262 60% 55%` | Purple |
-
-Each has `-foreground` and `-muted` variants. Full dark mode support.
-
-### Typography
-
-- **Display** (`font-display`): Space Grotesk
-- **Body** (`font-body`): Inter
-
-### Button Variants
-
-- `variant="issuer"` — Blue
-- `variant="holder"` — Teal
-- `variant="verifier"` — Purple
-
-### Animations
-
-- `animate-fade-in`: Fade + translate (0.4s)
-- `animate-slide-up`: Slide up (0.5s)
-- `animate-pulse-subtle`: Gentle pulse (2s infinite)
+Smart contract test runner (`npm run test:contract` / `CredentialRegistry.test.js`) validates contract anchor, batch operation, and revocation constraints.
 
 ---
 
-## 26. Component Inventory
+## 25. Decentralized Storage & IPFS Pinning
 
-### Pages (10)
+Schemas are content-addressed on IPFS so credentials survive independent of the central database.
 
-| File                     | Description                    |
-| ------------------------ | ------------------------------ |
-| `Landing.tsx`            | Homepage with portal cards     |
-| `Auth.tsx`               | Login, signup, forgot password |
-| `ResetPassword.tsx`      | Password reset                 |
-| `IssuerDashboard.tsx`    | Issuer management portal       |
-| `HolderWallet.tsx`       | Holder wallet portal           |
-| `VerifierDashboard.tsx`  | Verifier portal                |
-| `BlockchainExplorer.tsx` | Hash chain visualization       |
-| `AuditLog.tsx`           | Audit trail viewer             |
-| `SharedCredential.tsx`   | Public shared credential view  |
-| `NotFound.tsx`           | 404 page                       |
-
-### Custom Components (16)
-
-| File                          | Description                           |
-| ----------------------------- | ------------------------------------- |
-| `ProtectedRoute.tsx`          | Auth + role guard                     |
-| `PortalLayout.tsx`            | Shared portal layout                  |
-| `SchemaForm.tsx`              | Dynamic form from schema fields       |
-| `BatchIssuanceDialog.tsx`     | CSV batch issuance                    |
-| `ShareCredentialDialog.tsx`   | Selective disclosure sharing          |
-| `ActiveShareLinks.tsx`        | Share link management                 |
-| `QRCodeDisplay.tsx`           | Generic QR code dialog                |
-| `NotificationBell.tsx`        | Notification dropdown                 |
-| `NavLink.tsx`                 | Navigation link helper                |
-| `TrustedIssuerRegistry.tsx`   | Trust registry UI                     |
-| `DIDResolver.tsx`             | DID document resolution               |
-| `Web3WalletCard.tsx`          | MetaMask wallet connection            |
-| `CredentialExport.tsx`        | JSON-LD / JWT-VC export               |
-| `MultiFactorVerification.tsx` | 3-factor MFA check                    |
-| `PrivacyCenter.tsx`           | GDPR consent & data rights            |
-| `OID4VCIOfferDialog.tsx`      | OID4VCI credential offer generator    |
-| `OID4VPRequestDialog.tsx`     | OID4VP presentation request generator |
-
-### Hooks (5)
-
-| Hook                         | Description                           |
-| ---------------------------- | ------------------------------------- |
-| `useAuth`                    | Auth context provider + consumer      |
-| `useWeb3Wallet`              | MetaMask wallet management on Polygon |
-| `useCredentialNotifications` | Realtime toast notifications          |
-| `useToast`                   | Toast notification system             |
-| `useMobile`                  | Mobile viewport detection             |
-
-### Edge Functions (5)
-
-| Function            | Description                                    |
-| ------------------- | ---------------------------------------------- |
-| `issue-credential`  | W3C VC issuance with wallet signing + batch    |
-| `verify-credential` | Multi-check verification with AI analysis      |
-| `resolve-did`       | W3C DID Document resolution                    |
-| `oid4vci`           | OpenID4VCI credential offer + token + issuance |
-| `oid4vp`            | OpenID4VP presentation request + response      |
+- **Edge Functions**:
+  - `pin-to-ipfs`: Pins a schema's canonical JSON-LD document to IPFS via Pinata; stores the CID in `credential_schemas.ipfs_cid`, writes a `schema_pinned_ipfs` audit entry, and is idempotent (re-pinning returns the existing CID). Owner-only authorization.
+  - `fetch-from-ipfs`: Resolves any CID / `ipfs://` URI from a configurable gateway with timeout and size guard rails.
+- **Auto-Pinning**: `issue-credential` best-effort pins the schema on first issuance — issuance never fails due to IPFS unavailability.
+- **Client Utilities**: `src/lib/ipfs.ts` (CIDv0/CIDv1 parsing & validation, gateway resolution) mirrored by `supabase/functions/_shared/ipfs.ts`; UI access via the issuer Schemas view ("Pin to IPFS" action + gateway link badge).
+- **Configuration**: Set `PINATA_JWT` (or `PINATA_API_KEY`/`PINATA_SECRET_API_KEY`) as Supabase Edge Function secrets; optionally override `IPFS_GATEWAY_URL`.
 
 ---
 
-## 27. Security Considerations
+## 26. Multi-Phase Roadmap (Phase 0 – Phase 8)
 
-### Authentication & Authorization
-
-- Email/password with email verification required
-- Role-based access via separate `user_roles` table (prevents privilege escalation)
-- `has_role()` security-definer function prevents RLS recursion
-- Edge functions verify JWT server-side; use service role for privileged operations
-
-### Cryptographic Security
-
-- SHA-256 hash chain prevents credential tampering
-- Wallet signatures (EcdsaSecp256k1) via MetaMask on Polygon
-- WebAuthn biometric authentication (platform authenticators)
-- Share tokens: 32 random bytes (256 bits entropy)
-- Pre-authorized codes: SHA-256 hashed with user ID + timestamp + UUID
-
-### Data Protection
-
-- All 12 tables have RLS enabled (30+ policies)
-- Users access only their own data (with specific cross-role exceptions)
-- Credentials are never deleted (only revoked via StatusList2021)
-- Audit trail records all operations permanently
-- GDPR-compliant consent tracking and data export
-
-### Known Limitations
-
-- Blockchain anchoring is simulated (not connected to actual Polygon network)
-- Wallet signatures are real (via MetaMask) but proof verification is simulated
-- Face capture stores only a boolean flag, not actual biometric data
-- WebAuthn credentials are created but not used for ongoing session auth
-- JWT-VC exports are unsigned (portability-focused)
-- OID4VCI/OID4VP are specification-aligned but simplified (no DPoP, no complex proof types)
-
----
-
-## 28. Data Flow Diagrams
-
-### Credential Issuance (with Wallet Signing)
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Issuer fills form + enables wallet signing
-        ↓
-MetaMask signs message (personal_sign)
-        ↓
-POST /issue-credential with signature + signer_address
-        ↓
-  1. Authenticate issuer (JWT)
-  2. Fetch schema + lookup holder
-  3. Build W3C VC with EcdsaSecp256k1Signature2019 proof
-  4. SHA-256(VC + prev_hash) → credential_hash
-  5. Generate Polygon anchor (simulated)
-  6. INSERT credential + audit_log
-  7. Trigger: notify_credential_issued()
-        ↓
-Response: credential with blockchain + signature info
-</code>
-  </pre>
-</div>
-
-### OID4VCI Cross-Wallet Issuance
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Issuer creates offer (schema + data)
-        ↓
-POST /oid4vci/offer → pre_authorized_code + QR
-        ↓
-External wallet scans QR
-        ↓
-Wallet POST /oid4vci/token { pre-authorized_code }
-        ↓
-Receives access_token
-        ↓
-Wallet POST /oid4vci/credential { format }
-        ↓
-Receives VC (ldp_vc or jwt_vc_json)
-        ↓
-Session marked 'completed' + audit logged
-</code>
-  </pre>
-</div>
-
-### OID4VP Cross-Wallet Verification
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Verifier creates request (credential_types, purpose)
-        ↓
-POST /oid4vp/request → presentation_definition + QR
-        ↓
-External wallet scans QR
-        ↓
-Wallet selects matching credentials
-        ↓
-Wallet POST /oid4vp/response { vp_token, state }
-        ↓
-Session marked 'completed' + verification_request created
-        ↓
-Verifier polls GET /oid4vp/status → receives VP data
-</code>
-  </pre>
-</div>
-
-### Selective Disclosure Sharing
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Holder selects credential → toggles selective mode
-        ↓
-Chooses fields to disclose (e.g., only "degree" and "university")
-        ↓
-INSERT credential_share with disclosed_fields: ["degree", "university"]
-        ↓
-Generate share URL + QR
-        ↓
-Recipient opens /shared/:token
-        ↓
-Only selected fields shown; others display "••• Redacted"
-</code>
-  </pre>
-</div>
-
-### Credential Verification (Full Pipeline)
-
-<div style="background: #1e1e24; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333;">
-  <div style="background: #2d2d3a; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #a1a1aa; border-bottom: 1px solid #333;">
-    code
-  </div>
-  <pre style="margin: 0; padding: 15px; overflow-x: auto; color: #e5e7eb; font-size: 13px;">
-<code class="language-">Verifier pastes VP JSON → POST /verify-credential
-        ↓
-  1. Extract credential_id from VP
-  2. Fetch credential + schema
-  3. Recompute SHA-256 hash → compare (hash_integrity)
-  4. Check status !== 'revoked' (not_revoked)
-  5. Check expires_at &gt; now() (not_expired)
-  6. Verify blockchain anchor exists
-  7. Check wallet signature (if EcdsaSecp256k1)
-  8. Call Gemini AI → risk_level, confidence, findings
-  9. INSERT verification_request + audit_log
-        ↓
-Response: { valid, hash_integrity, not_revoked, not_expired,
-            blockchain_info, signature, ai_analysis }
-</code>
-  </pre>
-</div>
-
----
-
-_Generated: March 8, 2026_
-_Platform: DecentraID — Decentralized Identity for Education_
-_Built with: Lovable + React + Lovable Cloud_
-_Standards: W3C VC, W3C DID, OpenID4VCI, OpenID4VP, StatusList2021_
-
----
-
-## 29. Literature Survey & Theoretical Foundation
-
-<div style="font-family: sans-serif; color: #e2e8f0; line-height: 1.6; background: #0f172a; padding: 25px; border-radius: 8px;">
-
-<h3 style="color: #38bdf8; margin-top: 0;">Overview</h3>
-<p>This project is built on the foundation of several cutting-edge academic papers and W3C standards regarding decentralized identity.</p>
-
-<table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: #1e293b; color: #f8fafc; border-radius: 8px; overflow: hidden;">
-  <thead>
-    <tr style="background-color: #334155; border-bottom: 2px solid #475569;">
-      <th style="padding: 15px; text-align: left; width: 25%;">Author(s) & Year</th>
-      <th style="padding: 15px; text-align: left; width: 35%;">Title / Standard</th>
-      <th style="padding: 15px; text-align: left; width: 40%;">Relevance to Project</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr style="border-bottom: 1px solid #334155;">
-      <td style="padding: 15px;"><strong>Ferdous, M. S., et al. (2019)</strong></td>
-      <td style="padding: 15px;"><em>A Survey of Technologies for Blockchain-Based Identity Management</em></td>
-      <td style="padding: 15px;">Provides the academic foundation for why we use a decentralized ledger (Polygon) to prevent forgery and central points of failure.</td>
-    </tr>
-    <tr style="border-bottom: 1px solid #334155;">
-      <td style="padding: 15px;"><strong>Sporny, M., et al. (W3C, 2022)</strong></td>
-      <td style="padding: 15px;"><em>Verifiable Credentials Data Model & DIDs v1.0</em></td>
-      <td style="padding: 15px;">These are the exact technical specifications the platform implements. Defines how we bind user keys and structure JSON-LD proofs.</td>
-    </tr>
-    <tr>
-      <td style="padding: 15px;"><strong>Weyl, E., Ohlhaver, P., & Buterin, V. (2022)</strong></td>
-      <td style="padding: 15px;"><em>Decentralized Society: Finding Web3's Soul</em></td>
-      <td style="padding: 15px;">Theoretical blueprint for the Composite Identity Protocol, using non-transferable SBTs as a master digital passport.</td>
-    </tr>
-  </tbody>
-</table>
-
-<div style="display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap;">
-  <div style="flex: 1; min-width: 300px; background: #1e293b; padding: 20px; border-top: 4px solid #3b82f6; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-    <h4 style="margin-top: 0; color: #60a5fa;">W3C Verification Flow Diagram</h4>
-    <p style="font-size: 14px; margin-bottom: 15px; color: #cbd5e1;">The platform implements a decentralized verification flow without "phoning home" to the issuer.</p>
-    
-    <div style="display: flex; flex-direction: column; gap: 10px;">
-      <div style="background: #334155; padding: 10px; border-radius: 4px; text-align: center; color: #e2e8f0; font-family: monospace;">1. Holder -> shares VP -> Verifier</div>
-      <div style="text-align: center; color: #94a3b8;">↓</div>
-      <div style="background: #334155; padding: 10px; border-radius: 4px; text-align: center; color: #e2e8f0; font-family: monospace;">2. Verifier -> extracts DID -> fetches DID Doc</div>
-      <div style="text-align: center; color: #94a3b8;">↓</div>
-      <div style="background: #334155; padding: 10px; border-radius: 4px; text-align: center; color: #e2e8f0; font-family: monospace;">3. Verifier -> extracts PubKey -> validates EcdsaSecp256k1 Signature</div>
-    </div>
-  </div>
-  
-  <div style="flex: 1; min-width: 300px; background: #1e293b; padding: 20px; border-top: 4px solid #10b981; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-    <h4 style="margin-top: 0; color: #34d399;">HTML Code Snippet Example</h4>
-    <p style="font-size: 14px; margin-bottom: 15px; color: #cbd5e1;">Example structure for rendering a credential directly to HTML.</p>
-    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 4px; overflow: hidden;">
-      <div style="background: #1e293b; padding: 5px 10px; border-bottom: 1px solid #334155; font-family: monospace; font-size: 12px; color: #94a3b8;">credential.html</div>
-      <pre style="margin: 0; padding: 15px; overflow-x: auto; font-family: 'Fira Code', monospace; font-size: 13px; color: #e2e8f0;">
-<span style="color: #5eead4;">&lt;div</span> <span style="color: #93c5fd;">class</span>=<span style="color: #fca5a5;">"credential-card"</span><span style="color: #5eead4;">&gt;</span>
-  <span style="color: #5eead4;">&lt;h1&gt;</span>University Degree<span style="color: #5eead4;">&lt;/h1&gt;</span>
-  <span style="color: #5eead4;">&lt;p&gt;</span>Issued to: 
-    <span style="color: #5eead4;">&lt;span</span> <span style="color: #93c5fd;">class</span>=<span style="color: #fca5a5;">"did"</span><span style="color: #5eead4;">&gt;</span>did:decentraid:123<span style="color: #5eead4;">&lt;/span&gt;</span>
-  <span style="color: #5eead4;">&lt;/p&gt;</span>
-<span style="color: #5eead4;">&lt;/div&gt;</span></pre>
-    </div>
-  </div>
-</div>
-
-</div>
+| Phase | Description | Status |
+|---|---|---|
+| **Phase 0** | **Testing & CI/CD Infrastructure** | ✅ Complete (127 tests passing) |
+| **Phase 3** | **Decentralized Storage & IPFS** | ✅ Complete (Pinata pin/fetch functions + schema CIDs + auto-pin on issuance) |
+| **Phase 1** | **Zero-Knowledge Proofs (ZK-SNARKs)** | ⏳ Next Up (Circom & Groth16 Verifier) |
+| **Phase 2** | **Account Abstraction (ERC-4337)** | ⏳ Pending (Paymaster Gasless Sponsor) |
+| **Phase 4** | **Universal Interoperability & SIWE** | ⏳ Pending (Sign-In With Ethereum) |
+| **Phase 7** | **Soulbound Tokens (EIP-5192)** | ⏳ Pending (Non-transferable NFTs) |
+| **Phase 6** | **Advanced AI & On-Device ML** | ⏳ Pending (TensorFlow.js & OCR) |
+| **Phase 5** | **Native Mobile (React Native)** | ⏳ Pending (Expo & NFC credentials) |
+| **Phase 8** | **Biometric Proof Pipeline** | ⏳ Pending (On-chain biometric hashes) |
