@@ -124,6 +124,8 @@ export async function respondToRequest(
     credentialId?: string;
     sharedData?: Record<string, unknown>;
     storageConsent?: boolean;
+    purpose?: string | null;
+    credentialType?: string | null;
   }
 ): Promise<void> {
   const now = new Date();
@@ -157,9 +159,39 @@ export async function respondToRequest(
       "or your DID does not match the request's holder. Please refresh and try again."
     );
   }
+
+  // ── Background AI verification (fire-and-forget) ──────────────────────────
+  if (action === "accepted" && options?.sharedData) {
+    triggerAiVerification(
+      requestId,
+      options.sharedData,
+      options.purpose ?? null,
+      options.credentialType ?? null,
+    );
+  }
 }
 
 
+export interface AiVerificationResult {
+  verdict: "verified" | "rejected" | "review";
+  confidence: number;
+  summary: string;
+  checks: { label: string; pass: boolean; detail: string }[];
+  engine: string;
+  evaluated_at: string;
+}
+
+/** Fetch the AI analysis result for a given verification request (null if not yet evaluated). */
+export async function fetchRequestAiResult(
+  requestId: string
+): Promise<AiVerificationResult | null> {
+  const { data } = await supabase
+    .from("verification_requests")
+    .select("ai_analysis")
+    .eq("id", requestId)
+    .single();
+  return (data?.ai_analysis as AiVerificationResult) ?? null;
+}
 
 
 /**
