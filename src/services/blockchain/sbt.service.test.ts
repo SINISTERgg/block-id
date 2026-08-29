@@ -191,10 +191,18 @@ describe("read helpers against a mocked contract", () => {
   });
 
   it("throws a descriptive error when no address is configured", async () => {
-    getReadProviderMock.mockResolvedValue({ provider: true });
-    const { getSbtForCredential } = await import("./sbt.service");
-    await expect(getSbtForCredential(HASH32)).rejects.toThrow(/not configured/);
-    expect(ContractMock).not.toHaveBeenCalled();
+    const origEnv = import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS;
+    try {
+      delete (import.meta.env as any).VITE_SOULBOUND_CREDENTIAL_ADDRESS;
+      getReadProviderMock.mockResolvedValue({ provider: true });
+      const { getSbtForCredential } = await import("./sbt.service");
+      await expect(getSbtForCredential(HASH32)).rejects.toThrow(/not configured/);
+      expect(ContractMock).not.toHaveBeenCalled();
+    } finally {
+      if (origEnv !== undefined) {
+        (import.meta.env as any).VITE_SOULBOUND_CREDENTIAL_ADDRESS = origEnv;
+      }
+    }
   });
 });
 

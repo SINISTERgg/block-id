@@ -41,12 +41,13 @@ export const SOULBOUND_ABI = [
 const SBTS_IFACE = new Interface([...SOULBOUND_ABI]);
 
 /** True when an SBT contract address is configured (env or explicit). */
-export function isSbtConfigured(address: string | null | undefined = SBT_ADDRESS_ENV): boolean {
-  return !!address && address !== "0x0000000000000000000000000000000000000000";
+export function isSbtConfigured(address?: string | null): boolean {
+  const addr = arguments.length > 0 ? address : (import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS as string | undefined);
+  return !!addr && addr !== "0x0000000000000000000000000000000000000000";
 }
 
 function sbtAddress(explicit?: string): string {
-  const addr = explicit ?? SBT_ADDRESS_ENV;
+  const addr = explicit ?? (import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS as string | undefined);
   if (!isSbtConfigured(addr)) throw new Error("Soulbound credential contract not configured");
   return addr!;
 }

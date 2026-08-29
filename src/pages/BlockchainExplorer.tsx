@@ -102,7 +102,6 @@ const OnChainDetailsPanel = ({ credentialHash, storedTxHash }: { credentialHash:
   useEffect(() => {
     if (!IS_CONTRACT_DEPLOYED || !credentialHash) { setLoading(false); return; }
     let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
 
     const fetchOnChainData = async () => {
       try {
@@ -120,7 +119,7 @@ const OnChainDetailsPanel = ({ credentialHash, storedTxHash }: { credentialHash:
       }
     };
 
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (!cancelled) {
         setLoading(false);
       }
