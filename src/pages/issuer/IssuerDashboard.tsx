@@ -164,10 +164,14 @@ const IssuerDashboard = () => {
     try {
       let issuerSignature: string | null = null;
       let signerAddr: string | null = null;
-      if (signWithWallet && walletAddress) {
+      if (signWithWallet) {
+        if (!walletAddress) {
+          toast({ title: "Wallet not connected", description: "Connect MetaMask first, then try again.", variant: "destructive" });
+          return;
+        }
         const message = `DecentraID Credential Issuance\nSchema: ${schemaId}\nHolder: ${holderDid}\nTimestamp: ${new Date().toISOString()}`;
         const sig = await signMessage(message);
-        if (!sig) return;
+        if (!sig) return; // user cancelled MetaMask signature
         issuerSignature = sig;
         signerAddr = walletAddress;
       }
@@ -217,7 +221,8 @@ const IssuerDashboard = () => {
         // Browser wallet (MetaMask)
         const anchorResult = await anchor(credHash);
         if (anchorResult.success) {
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential`, {
+          // Save the anchor record to Supabase (best-effort — tx is already on-chain)
+          const anchorRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/anchor-credential`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: authBearer },
             body: JSON.stringify({
@@ -228,6 +233,13 @@ const IssuerDashboard = () => {
               anchored_at: Math.floor(Date.now() / 1000),
             }),
           });
+          if (!anchorRes.ok) {
+            const anchorErr = await anchorRes.json().catch(() => ({}));
+            // 409 = already anchored — that's fine
+            if (anchorRes.status !== 409) {
+              console.warn("anchor-credential record failed:", anchorErr);
+            }
+          }
           toast({
             title: "Credential issued & anchored on-chain ✓",
             description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...`,

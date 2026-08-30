@@ -9,10 +9,13 @@
  */
 import { BrowserProvider, Contract, formatEther, getBytes, parseEther } from "ethers";
 import {
+  ENTRY_POINT_V06,
   ENTRY_POINT_V07,
   buildPackedUserOp,
   encodeExecuteCall,
   getUserOpHash,
+  unpackAccountGasLimits,
+  unpackGasFees,
 } from "@/lib/accountAbstraction";
 import { getReadProvider } from "./provider";
 
@@ -43,7 +46,9 @@ export const SIMPLE_ACCOUNT_ABI = [
   "function owner() external view returns (address)",
 ] as const;
 
-export const ENTRY_POINT = ENTRY_POINT_V07;
+export const ENTRY_POINT =
+  (import.meta.env.VITE_ENTRY_POINT_ADDRESS as string | undefined) ||
+  ENTRY_POINT_V06;
 
 export function isSmartWalletConfigured(): boolean {
   return !!REGISTRY_ADDRESS && REGISTRY_ADDRESS !== "0x0000000000000000000000000000000000000000";
@@ -88,22 +93,14 @@ export async function ensureSmartAccount(
     return { account: existing, created: false };
   }
 
-  if (BUNDLER_URL) {
-    // ERC-4337 deployment path: initCode = factory ++ createAccount calldata
-    const createCallData = encodeCreateAccountCall(salt32);
-    const op = buildPackedUserOp({
-      sender: predicted,
-      initCode: registryAddress() + createCallData.slice(2),
-      callData: "0x", // deploy-only op
-    });
-    const signedOp = await signUserOperation(provider, op);
-    await submitToBundler(signedOp);
-  } else {
-    // Direct EOA-paid deployment fallback (owner = msg.sender, salt = bytes32)
-    const registryWrite = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, signer);
-    const tx = await registryWrite.createAccount(salt32);
-    await tx.wait();
-  }
+  // Deploy smart account via the registry contract:
+  // Initial account creation requires on-chain deployment. Because counterfactual
+  // accounts have zero balance prior to deployment and require a sponsoring paymaster
+  // for bundler deployment, invoking createAccount directly via the owner's MetaMask
+  // signer ensures reliable, immediate on-chain deployment on Sepolia.
+  const registryWrite = new Contract(registryAddress(), SMART_WALLET_REGISTRY_ABI, signer);
+  const tx = await registryWrite.createAccount(salt32);
+  await tx.wait();
 
   return { account: predicted, created: true };
 }
@@ -128,7 +125,7 @@ export async function signUserOperation(
   return { ...op, signature };
 }
 
-/** Submit a signed PackedUserOperation to the bundler (eth_sendUserOperation). */
+/** Submit a signed UserOperation to the bundler (eth_sendUserOperation). */
 export async function submitToBundler(signedOp: {
   sender: string;
   nonce: bigint;
@@ -142,6 +139,9 @@ export async function submitToBundler(signedOp: {
 }): Promise<string> {
   if (!BUNDLER_URL) throw new Error("No bundler configured (VITE_BUNDLER_URL)");
 
+  const [verificationGasLimit, callGasLimit] = unpackAccountGasLimits(signedOp.accountGasLimits);
+  const [maxPriorityFeePerGas, maxFeePerGas] = unpackGasFees(signedOp.gasFees);
+
   const serialized = JSON.stringify({
     jsonrpc: "2.0",
     id: Date.now(),
@@ -150,12 +150,14 @@ export async function submitToBundler(signedOp: {
       {
         sender: signedOp.sender,
         nonce: "0x" + signedOp.nonce.toString(16),
-        initCode: signedOp.initCode,
-        callData: signedOp.callData,
-        accountGasLimits: signedOp.accountGasLimits,
+        initCode: signedOp.initCode || "0x",
+        callData: signedOp.callData || "0x",
+        callGasLimit: "0x" + callGasLimit.toString(16),
+        verificationGasLimit: "0x" + verificationGasLimit.toString(16),
         preVerificationGas: "0x" + signedOp.preVerificationGas.toString(16),
-        gasFees: signedOp.gasFees,
-        paymasterAndData: signedOp.paymasterAndData,
+        maxFeePerGas: "0x" + maxFeePerGas.toString(16),
+        maxPriorityFeePerGas: "0x" + maxPriorityFeePerGas.toString(16),
+        paymasterAndData: signedOp.paymasterAndData || "0x",
         signature: signedOp.signature,
       },
       ENTRY_POINT,

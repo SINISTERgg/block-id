@@ -6,6 +6,9 @@
  */
 import { AbiCoder, keccak256, getCreate2Address, Interface, toBeHex, zeroPadValue } from "ethers";
 
+/** Canonical EntryPoint v0.6 deployment (Sepolia, Polygon, Mainnet, etc.). */
+export const ENTRY_POINT_V06 = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
+
 /** Canonical EntryPoint v0.7 deployment (same address on all chains). */
 export const ENTRY_POINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
 

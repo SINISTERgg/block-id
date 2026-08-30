@@ -1,4 +1,4 @@
-# Logs
+# ── Logs ─────────────────────────────────────────────────────────────────────
 logs
 *.log
 npm-debug.log*
@@ -6,25 +6,21 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+hardhat.log
 
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules
+mobile/node_modules
+
+# ── Build output ──────────────────────────────────────────────────────────────
 dist
 dist-ssr
-*.local
+build
 
-# Editor directories and files
-.vscode/*
-!.vscode/settings.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw
-.stitch/designs/DESIGN.md
+# ── TypeScript incremental build cache ────────────────────────────────────────
+*.tsbuildinfo
 
-# Environment (contains private keys — NEVER commit)
+# ── Environment (contains private keys — NEVER commit) ────────────────────────
 .env
 .env.local
 .env.development
@@ -32,6 +28,7 @@ dist-ssr
 .env.staging
 *.env
 
+# ── Supabase local dev ────────────────────────────────────────────────────────
 supabase/.temp
 supabase/.temp/*
 supabase/.env
@@ -39,33 +36,51 @@ supabase/.env.local
 supabase/.env.development
 supabase/.env.production
 
-# Deployment artifacts
-deployments
-deployments/*
+# ── Hardhat / contract artifacts ──────────────────────────────────────────────
 artifacts
 artifacts/*
 cache
 cache/*
+deployments
+deployments/*
 
-# Contract test artifacts (node-based, not vitest)
+# ── Scratch / temp scripts ────────────────────────────────────────────────────
+scratch_*.ps1
+scratch_*.js
+scratch_*.ts
+
+# ── Implementation plans (local docs, not for repo) ───────────────────────────
+implementation plans phase2/
+
+# ── Progress tracker ──────────────────────────────────────────────────────────
+progress/
+
+# ── Contract test artifacts ───────────────────────────────────────────────────
 test
 test/*
 
-# Implementation plans (local docs)
-implementation plans phase2/
-M
-# Stitch design files
+# ── Stitch design files ───────────────────────────────────────────────────────
 .stitch/*
+.stitch/designs/DESIGN.md
 
-# Build output
-nul
+# ── Editor directories and files ──────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# OS files
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
 Thumbs.db
 Desktop.ini
+*.local
 
-#Test scripts
+# ── Misc ──────────────────────────────────────────────────────────────────────
+nul
+
+# ── Test scripts ──────────────────────────────────────────────────────────────
 scripts/test-contract.js
-
-#Progress tracker
-progress/

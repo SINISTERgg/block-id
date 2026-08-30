@@ -95,9 +95,13 @@ export function useSmartWallet(eoaAddress: string | undefined) {
       }
       return account;
     } catch (err: any) {
+      const message =
+        err?.code === "ACTION_REJECTED" || err?.info?.error?.code === 4001
+          ? "Transaction rejected in wallet."
+          : err?.shortMessage ?? err?.message ?? "Unknown error";
       toast({
         title: "Deployment failed",
-        description: err?.message ?? "Unknown error",
+        description: message,
         variant: "destructive",
       });
       return null;
