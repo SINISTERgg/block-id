@@ -28,46 +28,34 @@ const SharedCredential = () => {
     const fetchShared = async () => {
       if (!token) { setError("Invalid link"); setLoading(false); return; }
 
-      // Try to fetch with disclosed_fields; fall back without it if column missing
-      let share: any = null;
-      let fetchErr: any = null;
-
-      const withFields = await supabase
-        .from("credential_shares")
-        .select("expires_at, credential_id, disclosed_fields")
-        .eq("token", token)
+      // Token-gated lookup via SECURITY DEFINER RPC (see migration
+      // 20260919000002_secure_share_tokens.sql) — the token is the
+      // capability; it is validated server-side against credential_shares.
+      const { data, error } = await supabase
+        .rpc("get_shared_credential", { p_token: token })
         .single();
 
-      if (withFields.error?.message?.includes("disclosed_fields")) {
-        // Column doesn't exist yet in DB — retry without it
-        const withoutFields = await supabase
-          .from("credential_shares")
-          .select("expires_at, credential_id")
-          .eq("token", token)
-          .single();
-        share = withoutFields.data;
-        fetchErr = withoutFields.error;
-      } else {
-        share = withFields.data;
-        fetchErr = withFields.error;
+      if (error || !data) {
+        setError("Share link not found or invalid");
+        setLoading(false);
+        return;
       }
 
-      if (fetchErr || !share) { setError("Share link not found or invalid"); setLoading(false); return; }
-      if (new Date(share.expires_at) < new Date()) { setError("This share link has expired"); setLoading(false); return; }
-
-
-      const { data: cred } = await supabase
-        .from("credentials")
-        .select("credential_data, credential_hash, blockchain_anchor, status, issued_at, credential_schemas(name, credential_type)")
-        .eq("id", share.credential_id)
-        .single();
-
-      if (!cred) { setError("Credential not found"); setLoading(false); return; }
+      const credential = {
+        credential_data: data.credential_data,
+        credential_hash: data.credential_hash,
+        blockchain_anchor: data.blockchain_anchor,
+        status: data.status,
+        issued_at: data.issued_at,
+        credential_schemas: data.schema_name
+          ? { name: data.schema_name, credential_type: data.schema_type }
+          : null,
+      };
 
       setData({
-        credential: cred as any,
-        expiresAt: share.expires_at,
-        disclosedFields: (share as any).disclosed_fields as string[] | null,
+        credential,
+        expiresAt: data.expires_at,
+        disclosedFields: data.disclosed_fields as string[] | null,
       });
       setLoading(false);
     };

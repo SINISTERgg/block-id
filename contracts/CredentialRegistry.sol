@@ -27,11 +27,22 @@ contract CredentialRegistry {
     /// @dev hash → Credential storage
     mapping(bytes32 => Credential) public credentials;
 
+    /// @dev hash → Poseidon holderCommitment (0 if not anchored with holder commitment)
+    mapping(bytes32 => uint256) public holderCommitments;
+
     // ─── Events ──────────────────────────────────────────────────────────────
 
     event CredentialAnchored(
         bytes32 indexed hash,
         address indexed issuer,
+        uint256 blockNumber,
+        uint256 timestamp
+    );
+
+    event CredentialAnchoredWithHolder(
+        bytes32 indexed hash,
+        address indexed issuer,
+        uint256 holderCommitment,
         uint256 blockNumber,
         uint256 timestamp
     );
@@ -46,13 +57,11 @@ contract CredentialRegistry {
     // ─── Write functions ──────────────────────────────────────────────────────
 
     /**
-     * @notice Anchor a credential hash on-chain.
+     * @notice Anchor a credential hash on-chain with an optional Poseidon holder commitment.
      * @param hash The bytes32 SHA-256 hash of the canonical credential JSON.
-     *
-     * Requirements:
-     * - `hash` must not already be anchored.
+     * @param holderCommitment Poseidon(secret) of the holder (pass 0 if uncommitted).
      */
-    function anchorCredential(bytes32 hash) external {
+    function anchorCredential(bytes32 hash, uint256 holderCommitment) public {
         require(
             credentials[hash].blockAnchored == 0,
             "CredentialRegistry: already anchored"
@@ -64,7 +73,19 @@ contract CredentialRegistry {
             revokedAt: 0,
             revoked: false
         });
+        if (holderCommitment != 0) {
+            holderCommitments[hash] = holderCommitment;
+            emit CredentialAnchoredWithHolder(hash, msg.sender, holderCommitment, block.number, block.timestamp);
+        }
         emit CredentialAnchored(hash, msg.sender, block.number, block.timestamp);
+    }
+
+    /**
+     * @notice Anchor a credential hash on-chain (backwards-compatible).
+     * @param hash The bytes32 SHA-256 hash of the canonical credential JSON.
+     */
+    function anchorCredential(bytes32 hash) external {
+        anchorCredential(hash, 0);
     }
 
     /**

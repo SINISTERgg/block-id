@@ -33,6 +33,9 @@ contract SmartWalletRegistry {
     /// @dev account → recovery threshold
     mapping(address => uint256) public recoveryThreshold;
 
+    /// @dev account → guardians have been configured (recovery flow armed)
+    mapping(address => bool) public guardiansConfigured;
+
     /// @dev account → newOwner → votes cast so far
     mapping(address => mapping(address => uint256)) public recoveryVotes;
 
@@ -52,6 +55,8 @@ contract SmartWalletRegistry {
     error NotGuardian();
     error AlreadyVoted();
     error ThresholdNotReached();
+    error RecoveryNotArmed();
+    error BadRecoveryTarget();
     error NotThisRegistry();
 
     constructor(address _entryPoint) {
@@ -122,6 +127,7 @@ contract SmartWalletRegistry {
             ++i;
         }
         recoveryThreshold[account] = threshold;
+        guardiansConfigured[account] = true;
         emit GuardiansUpdated(account, guardians.length, threshold);
     }
 
@@ -133,6 +139,8 @@ contract SmartWalletRegistry {
 
     /// A guardian casts a vote to hand `account` over to `newOwner`.
     function voteRecovery(address account, address newOwner) external {
+        if (!guardiansConfigured[account] || recoveryThreshold[account] == 0) revert RecoveryNotArmed();
+        if (newOwner == address(0) || newOwner == account) revert BadRecoveryTarget();
         if (!isGuardian[account][msg.sender]) revert NotGuardian();
         if (_hasVoted[account][newOwner][msg.sender]) revert AlreadyVoted();
         _hasVoted[account][newOwner][msg.sender] = true;
@@ -142,8 +150,14 @@ contract SmartWalletRegistry {
 
     /// Execute the rotation once the threshold has been reached.
     function finalizeRecovery(address account, address newOwner) external {
+        if (!guardiansConfigured[account] || recoveryThreshold[account] == 0) revert RecoveryNotArmed();
+        if (newOwner == address(0) || newOwner == account) revert BadRecoveryTarget();
         if (recoveryVotes[account][newOwner] < recoveryThreshold[account]) {
             revert ThresholdNotReached();
+        }
+        // Collision policy: `newOwner` must not already control another account.
+        if (accountOf[newOwner] != address(0) && accountOf[newOwner] != account) {
+            revert BadRecoveryTarget();
         }
         address previousOwner = SimpleAccount(payable(account)).owner();
         SimpleAccount(payable(account)).transferOwnership(newOwner);

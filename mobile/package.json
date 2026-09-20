@@ -9,13 +9,16 @@
     "ios": "expo run:ios"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~5.0.5",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@supabase/supabase-js": "^2.98.0",
     "expo": "~53.0.0",
     "expo-secure-store": "~14.0.0",
     "react": "18.3.1",
+    "react-dom": "19.0.0",
     "react-native": "0.79.0",
-    "react-native-url-polyfill": "^2.0.0"
+    "react-native-url-polyfill": "^2.0.0",
+    "react-native-web": "^0.20.0"
   },
   "devDependencies": {
     "@types/react": "~18.3.12",

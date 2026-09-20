@@ -573,6 +573,28 @@ export type Database = {
         }
         Returns: boolean
       }
+      get_shared_credential: {
+        Args: { p_token: string }
+        Returns: {
+          credential_data: Json
+          credential_hash: string
+          blockchain_anchor: string | null
+          status: string
+          issued_at: string
+          schema_name: string | null
+          schema_type: string | null
+          expires_at: string
+          disclosed_fields: Json | null
+        }[]
+      }
+      admin_manage_role: {
+        Args: {
+          p_user_id: string
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_action: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "issuer" | "holder" | "verifier" | "org_admin"

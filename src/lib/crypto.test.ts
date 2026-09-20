@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { canonicalJson, sha256Hash, computeCredentialHash, toBytes32 } from "./crypto";
+import { computeCredentialHash as edgeHash } from "../../supabase/functions/_shared/vc-hash.ts";
 
 describe("canonicalJson", () => {
   it("returns null as stringified null", () => {
@@ -122,6 +123,50 @@ describe("computeCredentialHash", () => {
     const h1 = await computeCredentialHash(vc);
     const h2 = await computeCredentialHash(vc2);
     expect(h1).not.toBe(h2);
+  });
+
+  it("ignores a top-level proof field (parity with stored credential_data)", async () => {
+    const stored = {
+      ...vc,
+      proof: { type: "Ed25519Signature2020", created: "2026-01-02T00:00:00Z", proofValue: "abc..." },
+    };
+    expect(await computeCredentialHash(stored, "prev")).toBe(await computeCredentialHash(vc, "prev"));
+  });
+});
+
+// ── Round-trip parity: client ↔ Supabase edge-function module ────────────────
+// C7 — the credential hash MUST be reproducible across every producer
+// (issue-credential, oid4vci) and every verifier (verify-credential, client).
+describe("credential hash round-trip parity (C7)", () => {
+  const issuedVC = {
+    "@context": ["https://www.w3.org/2018/credentials/v1", "https://w3id.org/security/suites/ed25519-2020/v1"],
+    type: ["VerifiableCredential", "Diploma"],
+    issuer: "did:decentraid:issuer:abc",
+    issuanceDate: "2026-01-01T00:00:00Z",
+    credentialSubject: { id: "did:decentraid:holder123", degree: "Bachelor of Science" },
+    credentialSchema: { id: "uuid-1", type: "Diploma", version: 1 },
+  };
+  const prevHash = "abc123chain";
+
+  it("client and edge-function module produce identical digests", async () => {
+    const client = await computeCredentialHash(issuedVC, prevHash);
+    const server = await edgeHash({ ...issuedVC, proof: { type: "sig" } }, prevHash);
+    expect(client).toBe(server);
+  });
+
+  it("issue → store → verify round trip (verify from full credential_data)", async () => {
+    // Issue step: hash computed BEFORE proof attachment (as in issue-credential).
+    const issuedHash = await edgeHash(issuedVC, prevHash);
+    // Store step: proof is appended to credential_data (as in the DB row).
+    const stored = { ...issuedVC, proof: { type: "EcdsaSecp256k1Signature2019", proofValue: issuedHash.slice(0, 64) } };
+    // Verify step: client recomputes from the STORED row using the same algorithm.
+    const recomputed = await computeCredentialHash(stored, prevHash);
+    expect(recomputed).toBe(issuedHash);
+  });
+
+  it("a tampered credential (key-order-independent) still yields a different digest", async () => {
+    const tampered = { ...issuedVC, issuer: "did:decentraid:issuer:EVIL" };
+    expect(await edgeHash(tampered, prevHash)).not.toBe(await computeCredentialHash(issuedVC, prevHash));
   });
 });
 

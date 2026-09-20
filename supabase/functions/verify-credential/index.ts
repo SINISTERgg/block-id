@@ -6,6 +6,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ethers } from "https://esm.sh/ethers@6.13.4";
 import { analyzeCredential, enhanceWithGemini } from "./ai-engine.ts";
+import { computeCredentialHash } from "../_shared/vc-hash.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,17 +34,6 @@ async function logAudit(supabase: any, userId: string, action: string, entityTyp
     entity_id: entityId,
     metadata,
   });
-}
-
-function canonicalJson(obj: unknown): string {
-  if (obj === null || obj === undefined) return JSON.stringify(obj);
-  if (Array.isArray(obj)) return "[" + obj.map(canonicalJson).join(",") + "]";
-  if (typeof obj === "object") {
-    const sorted = Object.keys(obj as Record<string, unknown>).sort()
-      .map(k => JSON.stringify(k) + ":" + canonicalJson((obj as Record<string, unknown>)[k]));
-    return "{" + sorted.join(",") + "}";
-  }
-  return JSON.stringify(obj);
 }
 
 async function verifyOnChain(txHash: string, expectedHash: string): Promise<{ verified: boolean; onChainData: string | null; blockNumber: number | null; rpcUsed: string }> {
@@ -124,22 +114,14 @@ serve(async (req) => {
     const vc = credential.credential_data as Record<string, unknown>;
 
     // ─── Hash verification ────────────────────────────────────────────────────
-    const vcForHash: Record<string, unknown> = {
-      "@context": vc["@context"],
-      type: vc.type,
-      issuer: vc.issuer,
-      issuanceDate: vc.issuanceDate,
-      credentialSubject: vc.credentialSubject,
-      credentialSchema: vc.credentialSchema,
-    };
-    if (vc.expirationDate) vcForHash.expirationDate = vc.expirationDate;
-
-    const encoder = new TextEncoder();
-    const hashInput = encoder.encode(canonicalJson(vcForHash) + (credential.prev_hash || "genesis"));
-    const hashBuffer = await crypto.subtle.digest("SHA-256", hashInput);
-    const computedHash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    // Recompute the canonical hash from the stored row via the SHARED module
+    // (_shared/vc-hash.ts) — the same algorithm issue-credential and oid4vci
+    // use. hashableCredential strips the signature `proof` internally, so
+    // passing the full credential_data reproduces the issuance-time digest.
+    const computedHash = await computeCredentialHash(
+      (credential.credential_data as Record<string, unknown>) ?? {},
+      credential.prev_hash || "genesis"
+    );
 
     const hashValid = computedHash === credential.credential_hash;
     const notRevoked = credential.status === "active";

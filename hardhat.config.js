@@ -1,9 +1,10 @@
 import "dotenv/config";
-import "@nomicfoundation/hardhat-ethers";
-import "@nomicfoundation/hardhat-verify";
+import hardhatEthers from "@nomicfoundation/hardhat-ethers";
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
 import { task } from "hardhat/config";
 
 const config = {
+  plugins: [hardhatEthers, hardhatVerify],
   solidity: {
     version: "0.8.19",
     settings: {
@@ -14,6 +15,10 @@ const config = {
     },
   },
   networks: {
+    hardhat: {
+      type: "edr-simulated",
+      blockGasLimit: 30_000_000,
+    },
     localhost: {
       url: "http://127.0.0.1:8545",
     },

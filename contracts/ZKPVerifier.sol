@@ -2,6 +2,16 @@
 pragma solidity ^0.8.19;
 
 /**
+ * @dev Minimal interface for CredentialRegistry — used to validate that a
+ * vcFingerprint public signal corresponds to a live (not revoked) credential.
+ * Import the full contract or use this interface for cross-contract calls.
+ */
+interface ICredentialRegistry {
+    function isValid(bytes32 hash) external view returns (bool);
+    function holderCommitments(bytes32 hash) external view returns (uint256);
+}
+
+/**
  * @title ZKPVerifier
  * @notice Generic Groth16 (BN254) zero-knowledge proof verifier for BlockID.
  *
@@ -11,10 +21,28 @@ pragma solidity ^0.8.19;
  * verified fully on-chain against the registered keys using the EIP-196/197
  * pairing precompiles.
  *
- * Replay protection: every proof carries a `nullifierHash` public signal.
- * Once a nullifier is seen on-chain it is burned — the same proof can never be
- * replayed. Convenience wrappers (`verifyAgeProof`, `verifyAttributeProof`,
- * `verifyIssuerMembership`) pin the expected signal layout per circuit.
+ * SHA-256 ‖ Poseidon Binding (Split-Field + Holder Binding)
+ * ─────────────────────────────────────────────────────────
+ * Each circuit exposes public signals covering:
+ *   • vcFingerprintHi/Lo — SHA-256(canonicalVC) split into two 128-bit field elements (no mod-r loss)
+ *   • holderCommitment   — Poseidon(secret), registered at issuance
+ *   • vcCommitment       — Poseidon(vcFingerprintHi, vcFingerprintLo, secret) (circuit output)
+ *   • nullifier          — Poseidon(secret, scope, challenge) (circuit output)
+ *
+ * The convenience wrappers (`verifyAgeProof`, `verifyAttributeProof`,
+ * `verifyIssuerMembership`) reconstruct the full bytes32 SHA-256 fingerprint:
+ *   bytes32 fp = bytes32((uint256(vcFingerprintHi) << 128) | uint256(vcFingerprintLo));
+ * and validate `CredentialRegistry.isValid(fp)`.
+ *
+ * Signal layouts — circom emits OUTPUTS FIRST, then public inputs, so the
+ * raw snarkjs publicSignals array (already in this order) is:
+ *   age-verify        : [vcCommitment(0), nullifier(1), referenceTimestamp(2), minAgeSeconds(3), scope(4), challenge(5), vcFingerprintHi(6), vcFingerprintLo(7), holderCommitment(8)] (9)
+ *   attribute-range   : [vcCommitment(0), nullifier(1), minValue(2), maxValue(3), scope(4), challenge(5), vcFingerprintHi(6), vcFingerprintLo(7), holderCommitment(8)] (9)
+ *   issuer-membership : [vcCommitment(0), nullifier(1), root(2), scope(3), challenge(4), vcFingerprintHi(5), vcFingerprintLo(6), holderCommitment(7)] (8)
+ *
+ * Replay protection: the nullifier ALWAYS occupies public-signal index 1
+ * (see NULLIFIER_IDX). verifyProof burns it — replaying with identical
+ * challenge/scope is blocked.
  */
 contract ZKPVerifier {
     // ─── Types ───────────────────────────────────────────────────────────────
@@ -45,6 +73,22 @@ contract ZKPVerifier {
     bytes32 public constant AGE_CIRCUIT = keccak256("age-verify");
     bytes32 public constant ATTRIBUTE_RANGE_CIRCUIT = keccak256("attribute-range");
     bytes32 public constant ISSUER_MEMBERSHIP_CIRCUIT = keccak256("issuer-membership");
+
+    // ─── Signal layout constants ─────────────────────────────────────────────
+    // Circom emits the main component's OUTPUTS first, then its public inputs.
+    // Every BlockID circuit declares outputs in the same order
+    // (vcCommitment, nullifier), so the nullifier is always at index 1.
+    uint256 constant NULLIFIER_IDX = 1;
+
+    // age-verify & attribute-range (9 signals):
+    uint256 constant VC_FINGERPRINT_HI_IDX_9 = 6;
+    uint256 constant VC_FINGERPRINT_LO_IDX_9 = 7;
+    uint256 constant HOLDER_COMMITMENT_IDX_9 = 8;
+
+    // issuer-membership (8 signals):
+    uint256 constant VC_FINGERPRINT_HI_IDX_8 = 5;
+    uint256 constant VC_FINGERPRINT_LO_IDX_8 = 6;
+    uint256 constant HOLDER_COMMITMENT_IDX_8 = 7;
 
     // ─── Storage ─────────────────────────────────────────────────────────────
 
@@ -125,12 +169,14 @@ contract ZKPVerifier {
 
     /**
      * @notice Verify a Groth16 proof and burn its nullifier (replay protection).
-     * The LAST public signal MUST be the nullifier hash.
+     * The nullifier MUST be at public-signal index 1 (see NULLIFIER_IDX) —
+     * circom emits outputs before public inputs and every BlockID circuit
+     * declares (vcCommitment, nullifier) as its outputs.
      *
-     * Signal layouts:
-     *   age-verify        : [referenceTimestamp, minAgeSeconds, nullifierHash]
-     *   attribute-range   : [minValue, maxValue, nullifierHash]
-     *   issuer-membership : [root, scope, nullifierHash]
+     * Signal layouts (see header for the authoritative order):
+     *   age-verify        : 9 signals, nullifier at [1], vcFingerprintHi/Lo at [6]/[7], holderCommitment at [8]
+     *   attribute-range   : 9 signals, nullifier at [1], vcFingerprintHi/Lo at [6]/[7], holderCommitment at [8]
+     *   issuer-membership : 8 signals, nullifier at [1], vcFingerprintHi/Lo at [5]/[6], holderCommitment at [7]
      */
     function verifyProof(
         bytes32 circuitId,
@@ -138,9 +184,9 @@ contract ZKPVerifier {
         uint256[] calldata pubSignals
     ) external returns (bool) {
         if (!circuitRegistered[circuitId]) revert CircuitNotRegistered();
-        if (pubSignals.length == 0) revert BadSignalLength();
+        if (pubSignals.length < NULLIFIER_IDX + 1) revert BadSignalLength();
 
-        uint256 nullifier = pubSignals[pubSignals.length - 1];
+        uint256 nullifier = pubSignals[NULLIFIER_IDX];
         if (usedNullifiers[nullifier]) revert NullifierAlreadyUsed();
 
         if (!_verify(circuitId, proof, pubSignals)) revert InvalidProof();
@@ -232,30 +278,115 @@ contract ZKPVerifier {
 
     // ─── Convenience wrappers ────────────────────────────────────────────────
 
-    /// Age layout: [referenceTimestamp, minAgeSeconds, nullifierHash]
-    function verifyAgeProof(Proof calldata proof, uint256[3] calldata signals)
-        external returns (bool)
-    {
-        uint256[] memory sigs = new uint256[](3);
-        sigs[0] = signals[0]; sigs[1] = signals[1]; sigs[2] = signals[2];
+    /**
+     * @notice Verify an age proof.
+     * Supply the raw snarkjs publicSignals in proof order (OUTPUTS first):
+     *   [vcCommitment, nullifier, referenceTimestamp, minAgeSeconds,
+     *    scope, challenge, vcFingerprintHi, vcFingerprintLo, holderCommitment]
+     * @param proof         Groth16 proof (A, B, C points).
+     * @param signals       9-element public signal array in the layout above.
+     * @param registry      Address of CredentialRegistry for live-VC check.
+     *                      Pass address(0) to skip the registry validation.
+     */
+    function verifyAgeProof(
+        Proof calldata proof,
+        uint256[9] calldata signals,
+        address registry
+    ) external returns (bool) {
+        if (registry != address(0)) {
+            // Reconstruct full 256-bit SHA-256 fingerprint from [Hi, Lo]
+            bytes32 fp = bytes32(
+                (uint256(signals[VC_FINGERPRINT_HI_IDX_9]) << 128) |
+                    uint256(signals[VC_FINGERPRINT_LO_IDX_9])
+            );
+            require(
+                ICredentialRegistry(registry).isValid(fp),
+                "ZKPVerifier: credential not valid in registry"
+            );
+            uint256 registeredHolder = ICredentialRegistry(registry).holderCommitments(fp);
+            if (registeredHolder != 0) {
+                require(
+                    registeredHolder == signals[HOLDER_COMMITMENT_IDX_9],
+                    "ZKPVerifier: holder commitment mismatch"
+                );
+            }
+        }
+        uint256[] memory sigs = new uint256[](9);
+        for (uint256 i = 0; i < 9; ) { sigs[i] = signals[i]; unchecked { ++i; } }
         return this.verifyProof(AGE_CIRCUIT, proof, sigs);
     }
 
-    /// Attribute-range layout: [minValue, maxValue, nullifierHash]
-    function verifyAttributeProof(Proof calldata proof, uint256[3] calldata signals)
-        external returns (bool)
-    {
-        uint256[] memory sigs = new uint256[](3);
-        sigs[0] = signals[0]; sigs[1] = signals[1]; sigs[2] = signals[2];
+    /**
+     * @notice Verify an attribute-range proof.
+     * Supply the raw snarkjs publicSignals in proof order (OUTPUTS first):
+     *   [vcCommitment, nullifier, minValue, maxValue,
+     *    scope, challenge, vcFingerprintHi, vcFingerprintLo, holderCommitment]
+     * @param proof         Groth16 proof (A, B, C points).
+     * @param signals       9-element public signal array in the layout above.
+     * @param registry      Address of CredentialRegistry for live-VC check.
+     *                      Pass address(0) to skip the registry validation.
+     */
+    function verifyAttributeProof(
+        Proof calldata proof,
+        uint256[9] calldata signals,
+        address registry
+    ) external returns (bool) {
+        if (registry != address(0)) {
+            bytes32 fp = bytes32(
+                (uint256(signals[VC_FINGERPRINT_HI_IDX_9]) << 128) |
+                    uint256(signals[VC_FINGERPRINT_LO_IDX_9])
+            );
+            require(
+                ICredentialRegistry(registry).isValid(fp),
+                "ZKPVerifier: credential not valid in registry"
+            );
+            uint256 registeredHolder = ICredentialRegistry(registry).holderCommitments(fp);
+            if (registeredHolder != 0) {
+                require(
+                    registeredHolder == signals[HOLDER_COMMITMENT_IDX_9],
+                    "ZKPVerifier: holder commitment mismatch"
+                );
+            }
+        }
+        uint256[] memory sigs = new uint256[](9);
+        for (uint256 i = 0; i < 9; ) { sigs[i] = signals[i]; unchecked { ++i; } }
         return this.verifyProof(ATTRIBUTE_RANGE_CIRCUIT, proof, sigs);
     }
 
-    /// Issuer-membership layout: [root, scope, nullifierHash]
-    function verifyIssuerMembership(Proof calldata proof, uint256[3] calldata signals)
-        external returns (bool)
-    {
-        uint256[] memory sigs = new uint256[](3);
-        sigs[0] = signals[0]; sigs[1] = signals[1]; sigs[2] = signals[2];
+    /**
+     * @notice Verify an issuer-membership proof.
+     * Supply the raw snarkjs publicSignals in proof order (OUTPUTS first):
+     *   [vcCommitment, nullifier, root, scope, challenge,
+     *    vcFingerprintHi, vcFingerprintLo, holderCommitment]
+     * @param proof         Groth16 proof (A, B, C points).
+     * @param signals       8-element public signal array in the layout above.
+     * @param registry      Address of CredentialRegistry for live-VC check.
+     *                      Pass address(0) to skip the registry validation.
+     */
+    function verifyIssuerMembership(
+        Proof calldata proof,
+        uint256[8] calldata signals,
+        address registry
+    ) external returns (bool) {
+        if (registry != address(0)) {
+            bytes32 fp = bytes32(
+                (uint256(signals[VC_FINGERPRINT_HI_IDX_8]) << 128) |
+                    uint256(signals[VC_FINGERPRINT_LO_IDX_8])
+            );
+            require(
+                ICredentialRegistry(registry).isValid(fp),
+                "ZKPVerifier: credential not valid in registry"
+            );
+            uint256 registeredHolder = ICredentialRegistry(registry).holderCommitments(fp);
+            if (registeredHolder != 0) {
+                require(
+                    registeredHolder == signals[HOLDER_COMMITMENT_IDX_8],
+                    "ZKPVerifier: holder commitment mismatch"
+                );
+            }
+        }
+        uint256[] memory sigs = new uint256[](8);
+        for (uint256 i = 0; i < 8; ) { sigs[i] = signals[i]; unchecked { ++i; } }
         return this.verifyProof(ISSUER_MEMBERSHIP_CIRCUIT, proof, sigs);
     }
 

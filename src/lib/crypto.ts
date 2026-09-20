@@ -33,16 +33,22 @@ export async function sha256Hash(data: string): Promise<string> {
 
 /**
  * Compute the canonical hash for a Verifiable Credential.
- * Matches the edge function algorithm exactly.
  *
- * @param vc - The Verifiable Credential object (without proof)
+ * Matches the edge-function algorithm exactly (see
+ * supabase/functions/_shared/vc-hash.ts). Any top-level signature `proof`
+ * present on `vc` is stripped before hashing, so verifiers can pass the full
+ * stored `credential_data` and still reproduce the issuance-time digest.
+ *
+ * @param vc - The Verifiable Credential object (proof, if present, is ignored)
  * @param prevHash - The previous credential hash for chain linking (or empty string)
  */
 export async function computeCredentialHash(
   vc: Record<string, unknown>,
   prevHash = ""
 ): Promise<string> {
-  const payload = canonicalJson({ vc, prevHash });
+  const hashable: Record<string, unknown> = { ...vc };
+  delete hashable.proof;
+  const payload = canonicalJson({ vc: hashable, prevHash });
   return sha256Hash(payload);
 }
 

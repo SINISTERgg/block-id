@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeCredentialHash } from "../_shared/vc-hash.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -196,7 +197,8 @@ serve(async (req) => {
         },
       };
 
-      const credentialHash = await hashData(JSON.stringify(vc));
+      // Canonical hash shared with issue-credential/verify-credential.
+      const credentialHash = await computeCredentialHash(vc, "genesis");
 
       // Store credential
       const { data: credential, error: insertErr } = await supabase.from("credentials").insert({
@@ -205,6 +207,7 @@ serve(async (req) => {
         holder_did: holderDid,
         credential_data: vc,
         credential_hash: credentialHash,
+        prev_hash: "genesis",
         blockchain_anchor: `sepolia:oid4vci:${credentialHash.substring(0, 16)}`,
         status: "active",
       }).select().single();

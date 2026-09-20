@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPinataConfigured, pinJsonToIpfs } from "../_shared/ipfs.ts";
+import { computeCredentialHash } from "../_shared/vc-hash.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,23 +10,6 @@ const corsHeaders = {
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
-
-function canonicalJson(obj: unknown): string {
-  if (obj === null || obj === undefined) return JSON.stringify(obj);
-  if (Array.isArray(obj)) return "[" + obj.map(canonicalJson).join(",") + "]";
-  if (typeof obj === "object") {
-    const sorted = Object.keys(obj as Record<string, unknown>).sort()
-      .map(k => JSON.stringify(k) + ":" + canonicalJson((obj as Record<string, unknown>)[k]));
-    return "{" + sorted.join(",") + "}";
-  }
-  return JSON.stringify(obj);
-}
-
-async function hashData(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(data));
-  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 async function logAudit(supabase: any, userId: string, action: string, entityType: string, entityId: string | null, metadata: any = {}) {
   await supabase.from("audit_logs").insert({
@@ -119,8 +103,6 @@ async function issueOne(
     .single();
 
   const prev_hash = lastCred?.credential_hash || "genesis";
-  // High-resolution salt: ISO timestamp to microsecond precision + random bytes
-  const issuanceSalt = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const vc: any = {
     "@context": ["https://www.w3.org/2018/credentials/v1", "https://w3id.org/security/suites/ed25519-2020/v1"],
@@ -142,8 +124,9 @@ async function issueOne(
     vc.expirationDate = expiresAt;
   }
 
-  // Salt is included in the hash input (not stored in the VC) to prevent collisions
-  const credential_hash = await hashData(canonicalJson(vc) + prev_hash + issuanceSalt);
+  // Deterministic canonical hash (shared with verify-credential/_shared/vc-hash.ts).
+  // Reproducible from the stored row: credential_data sans proof + prev_hash.
+  const credential_hash = await computeCredentialHash(vc, prev_hash);
 
   // Build proof
   const proof: any = {

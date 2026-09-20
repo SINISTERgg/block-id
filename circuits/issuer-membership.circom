@@ -1,88 +1,112 @@
-// BlockID — Issuer membership circuit (Merkle proof of trusted-issuer set)
-// Proves that a private issuer leaf belongs to a Merkle tree with a public root
-// WITHOUT revealing which issuer position was used.
+// BlockID — Issuer membership circuit (Groth16 / BN254)
 //
-// Public inputs : root, scope
-// Private inputs: leaf, pathElements[DEPTH], pathIndices[DEPTH]
+// Proves that a private issuer leaf belongs to a Merkle tree with a given
+// public root WITHOUT revealing which leaf was used.
 //
-// Hash function: Poseidon is standard for ZK Merkle trees but lives in circomlib;
-// to keep this repo dependency-free we use a dual-round "mimc-like" permutation
-// built from the field-native exponentiation x^7. For production deployments,
-// swap `Hash2` for circomlib's Poseidon(2) and re-run the trusted setup.
+// ┌──────────────────────────────────────────────────────────────────────────────┐
+// │  Private inputs  │  leaf, secret,                                           │
+// │                  │  pathElements[DEPTH], pathIndices[DEPTH]                 │
+// │  Public inputs   │  root, scope, challenge,                                 │
+// │                  │  vcFingerprintHi, vcFingerprintLo, holderCommitment      │
+// │  Public outputs  │  vcCommitment, nullifier                                 │
+// └──────────────────────────────────────────────────────────────────────────────┘
+//
+// Security model
+// ──────────────────────────────────────────────────────────────
+// This circuit enforces four constraints:
+//
+//  [A] Merkle membership:   hash path from leaf reaches root
+//  [B] Holder binding:      Poseidon(secret) === holderCommitment
+//  [C] VC commitment:       vcCommitment = Poseidon(vcFpHi, vcFpLo, secret)
+//  [D] Session nullifier:   Poseidon(secret, scope, challenge)
+//
+// The Merkle leaf is a private witness — the holder proves they know a leaf
+// in the trusted-issuer tree without revealing WHICH issuer signed their VC.
+// The holder binding (constraint B) ensures only the registered holder can
+// generate a valid proof even for a known issuer root.
+//
+// Public signal layout (snarkjs fullProve order — circom emits outputs FIRST):
+//   signals[0] = vcCommitment      ← Poseidon(vcFpHi, vcFpLo, secret) [output]
+//   signals[1] = nullifier         ← Poseidon(secret, scope, challenge) [output; burned on-chain]
+//   signals[2] = root              ← Merkle root of trusted issuers
+//   signals[3] = scope             ← persistent verifier domain
+//   signals[4] = challenge         ← fresh per-session nonce
+//   signals[5] = vcFingerprintHi   ← SHA-256(VC)[0:128]
+//   signals[6] = vcFingerprintLo   ← SHA-256(VC)[128:256]
+//   signals[7] = holderCommitment  ← Poseidon(secret), stored at issuance
 pragma circom 2.0.0;
 
-// DEPTH = 20 supports trees up to 2^20 = ~1M issuers
-// (top-level const is not supported in circom 2.x; value is inlined below)
+include "circomlib/circuits/poseidon.circom";
+include "circomlib/circuits/mux1.circom";
 
-// Toy one-way compression: h(x, y) = ((x + y)^7 mod p XOR y) — NOT collision
-// resistant in the cryptographic sense on its own; see note above.
-template Hash2() {
-    signal input in[2];
-    signal output out;
+template IssuerMembership(DEPTH) {
+    // ── Private witnesses ─────────────────────────────────────────────────────
+    signal input leaf;                         // Issuer identity hash — PRIVATE
+    signal input secret;                       // Holder's 253-bit secret — PRIVATE
+    signal input pathElements[DEPTH];          // Merkle sibling hashes — PRIVATE
+    signal input pathIndices[DEPTH];           // 0=left, 1=right — PRIVATE
 
-    // Decompose s^7 into quadratic steps: s^2, s^3 = s^2*s, s^4 = s^2*s^2, s^7 = s^4*s^3
-    signal s;
-    signal s2;
-    signal s3;
-    signal s4;
-    signal s7;
-    signal acc2;
-    signal acc2sq;
+    // ── Public inputs ─────────────────────────────────────────────────────────
+    signal input root;              // Trusted-issuer Merkle root — PUBLIC
+    signal input scope;             // Persistent verifier domain — PUBLIC
+    signal input challenge;         // Fresh per-session nonce — PUBLIC
+    signal input vcFingerprintHi;   // SHA-256(VC)[0:128] — PUBLIC
+    signal input vcFingerprintLo;   // SHA-256(VC)[128:256] — PUBLIC
+    signal input holderCommitment;  // Poseidon(secret) registered at issuance — PUBLIC
 
-    s   <== in[0] + in[1];
-    s2  <== s * s;
-    s3  <== s2 * s;
-    s4  <== s2 * s2;
-    s7  <== s4 * s3;               // x^7 via 4 multiplications
-
-    acc2   <== s7 - in[1];         // cheap nonlinear mix round
-    acc2sq <== acc2 * acc2;
-    out    <== acc2sq * acc2;      // further diffusion (acc2^3)
-}
-
-template IssuerMembership() {
-    var DEPTH = 20;
-
-    signal input root;                       // public
-    signal input scope;                      // public (prevents proof reuse)
-    signal input leaf;                       // private
-    signal input pathElements[20];           // private
-    signal input pathIndices[20];            // private (0 = left, 1 = right)
-
-    signal hashes[21];
+    // ── Constraint A: Merkle membership ──────────────────────────────────────
+    signal hashes[DEPTH + 1];
     hashes[0] <== leaf;
 
-    component mixers[20];
-    component scopeMixers[20];
+    component hashers[DEPTH];
+    component muxes[DEPTH];
 
-    // Sibling-selection intermediates (must be declared as arrays outside the loop)
-    signal sibPlus[20];
-    signal selfPlus[20];
-    signal diff[20];   // diff[i] = pathElements[i] - hashes[i], used for single-multiply mux
+    for (var i = 0; i < DEPTH; i++) {
+        muxes[i] = MultiMux1(2);
+        muxes[i].c[0][0] <== hashes[i];
+        muxes[i].c[1][0] <== pathElements[i];
+        muxes[i].c[0][1] <== pathElements[i];
+        muxes[i].c[1][1] <== hashes[i];
+        muxes[i].s        <== pathIndices[i];
 
-    for (var i = 0; i < 20; i++) {
-        mixers[i] = Hash2();
-        scopeMixers[i] = Hash2();
-
-        // bind every level to the verification scope (replay protection)
-        scopeMixers[i].in[0] <== pathIndices[i] * scope;
-        scopeMixers[i].in[1] <== scope;
-
-        // Merkle path selector — one multiplication each:
-        // sibPlus  = idx*(element - hash) + hash
-        //          = element if idx==1, hash if idx==0
-        // selfPlus = hash + element - sibPlus  (linear, no multiply)
-        diff[i]      <== pathElements[i] - hashes[i];
-        sibPlus[i]   <== pathIndices[i] * diff[i] + hashes[i];
-        selfPlus[i]  <== hashes[i] + pathElements[i] - sibPlus[i];
-
-        mixers[i].in[0] <== sibPlus[i];
-        mixers[i].in[1] <== selfPlus[i] + i * scopeMixers[i].out;
-        hashes[i + 1] <== mixers[i].out;
+        hashers[i] = Poseidon(2);
+        hashers[i].inputs[0] <== muxes[i].out[0];
+        hashers[i].inputs[1] <== muxes[i].out[1];
+        hashes[i + 1] <== hashers[i].out;
     }
 
-    // enforce computed root equals public root
-    hashes[20] === root;
+    // SOUNDNESS: computed root must match the claimed public root
+    hashes[DEPTH] === root;
+
+    // ── Constraint B: holder binding ──────────────────────────────────────────
+    // Poseidon(secret) === holderCommitment
+    // Ensures only the registered holder can produce a valid proof.
+    component holderHasher = Poseidon(1);
+    holderHasher.inputs[0] <== secret;
+    holderHasher.out === holderCommitment;
+
+    // ── Constraint C: VC fingerprint commitment ───────────────────────────────
+    component vcCommitmentHasher = Poseidon(3);
+    vcCommitmentHasher.inputs[0] <== vcFingerprintHi;
+    vcCommitmentHasher.inputs[1] <== vcFingerprintLo;
+    vcCommitmentHasher.inputs[2] <== secret;
+
+    signal output vcCommitment;
+    vcCommitment <== vcCommitmentHasher.out;
+
+    // ── Constraint D: session-scoped nullifier ────────────────────────────────
+    // Poseidon(secret, scope, challenge)
+    // challenge changes per-session → nullifier changes per-session.
+    component nullifierHasher = Poseidon(3);
+    nullifierHasher.inputs[0] <== secret;
+    nullifierHasher.inputs[1] <== scope;
+    nullifierHasher.inputs[2] <== challenge;
+
+    signal output nullifier;
+    nullifier <== nullifierHasher.out;
 }
 
-component main {public [root, scope]} = IssuerMembership();
+// component main {public [...]} = IssuerMembership(20);
+//   snarkjs publicSignals  = [vcCommitment, nullifier, then the 6 public inputs above]
+component main {public [root, scope, challenge,
+                        vcFingerprintHi, vcFingerprintLo, holderCommitment]} = IssuerMembership(20);

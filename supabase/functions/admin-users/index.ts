@@ -1,32 +1,104 @@
 // @ts-nocheck
 // Admin Users Edge Function
-// Uses service role key to bypass RLS, allowing the admin portal
-// to list all issuer/verifier profiles and update their account_status.
-// Authentication is done via a shared admin secret (not Supabase Auth).
+// Uses the service role key to bypass RLS so the admin portal can list
+// issuer/verifier profiles and update account_status.
+//
+// Security (roadmap C4):
+//   • Secret reads from ADMIN_SECRET env var — FAIL CLOSED (deny all) when
+//     the env var is not set. The old `"blockid-admin-secret-2024"` constant
+//     was removed; deploys MUST set ADMIN_SECRET.
+//   • CORS is restricted to ADMIN_CORS_ORIGIN (comma-separated). If unset,
+//     no cross-origin header is emitted → browsers refuse the response.
+//   • Best-effort in-memory rate limiter per client IP. Edge function
+//     runtimes are ephemeral, so this is not a hard guarantee — pair with a
+//     platform WAF / Upstash in production if this endpoint stays live.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-key",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
+const ADMIN_SECRET = Deno.env.get("ADMIN_SECRET");
+// Comma-separated allowed origins, e.g. "https://app.example.com,http://localhost:5173".
+const ADMIN_CORS_ORIGINS = (Deno.env.get("ADMIN_CORS_ORIGIN") || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-// Admin secret — must match what the frontend sends.
-// In production, use Deno.env.get("ADMIN_SECRET") for a proper secret.
-const ADMIN_SECRET = "blockid-admin-secret-2024";
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 120;
+
+/** @type {Map<string, { count: number; resetAt: number }>} */
+const rateBuckets = new Map();
+
+function allowedOriginFor(req) {
+  const requestOrigin = req.headers.get("origin");
+  if (requestOrigin && ADMIN_CORS_ORIGINS.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  // Non-browser clients (curl etc.) send no Origin header — allow them since
+  // they still must present the secret. Browsers are gated by CORS + secret.
+  if (!requestOrigin) return null;
+  return null;
+}
+
+function clientIp(req) {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return "unknown";
+}
+
+function rateLimited(ip) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > RATE_LIMIT_MAX_REQUESTS;
+}
+
+function corsHeaders(req, extra = {}) {
+  const headers = {
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-key",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    ...extra,
+  };
+  const origin = allowedOriginFor(req);
+  if (origin) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
+}
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  // Fail closed: no secret configured ⇒ nothing works.
+  if (!ADMIN_SECRET) {
+    return new Response(JSON.stringify({ error: "Service not configured" }), {
+      status: 500,
+      headers: { ...corsHeaders(req, { "Content-Type": "application/json" }) },
+    });
+  }
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders(req) });
+  }
+
+  const headers = corsHeaders(req, { "Content-Type": "application/json" });
 
   try {
-    // Authenticate via the admin secret header
-    const adminKey = req.headers.get("x-admin-key");
-    if (!adminKey || adminKey !== ADMIN_SECRET) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden: invalid admin key" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const ip = clientIp(req);
+    if (rateLimited(ip)) {
+      return new Response(JSON.stringify({ error: "Too many requests" }), { status: 429, headers });
+    }
+
+    // Authenticate via the admin secret header (constant-time compare).
+    const adminKey = req.headers.get("x-admin-key") || "";
+    if (adminKey.length !== ADMIN_SECRET.length) {
+      return new Response(JSON.stringify({ error: "Forbidden: invalid admin key" }), { status: 403, headers });
+    }
+    let mismatch = 0;
+    for (let i = 0; i < adminKey.length; i++) {
+      mismatch |= adminKey.charCodeAt(i) ^ ADMIN_SECRET.charCodeAt(i);
+    }
+    if (mismatch !== 0) {
+      return new Response(JSON.stringify({ error: "Forbidden: invalid admin key" }), { status: 403, headers });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -40,7 +112,6 @@ serve(async (req) => {
 
     // ── LIST: Fetch all issuer/verifier profiles ─────────────────────
     if (req.method === "GET" || action === "list") {
-      // Get all profiles
       const { data: profiles, error: pErr } = await supabase
         .from("profiles")
         .select("user_id, full_name, organization, account_status, created_at")
@@ -48,13 +119,11 @@ serve(async (req) => {
 
       if (pErr) throw new Error(`Failed to fetch profiles: ${pErr.message}`);
       if (!profiles || profiles.length === 0) {
-        return new Response(JSON.stringify({ users: [] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ users: [] }), { headers });
       }
 
       // Get roles
-      const userIds = profiles.map((p: any) => p.user_id);
+      const userIds = profiles.map((p) => p.user_id);
       const { data: roles, error: rErr } = await supabase
         .from("user_roles")
         .select("user_id, role")
@@ -63,16 +132,13 @@ serve(async (req) => {
       if (rErr) throw new Error(`Failed to fetch roles: ${rErr.message}`);
 
       // Build role map
-      const roleMap: Record<string, string> = {};
-      (roles || []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
+      const roleMap = {};
+      (roles || []).forEach((r) => { roleMap[r.user_id] = r.role; });
 
       // Filter to only issuers and verifiers
       const gatedUsers = profiles
-        .filter((p: any) => {
-          const role = roleMap[p.user_id];
-          return role === "issuer" || role === "verifier";
-        })
-        .map((p: any) => ({
+        .filter((p) => roleMap[p.user_id] === "issuer" || roleMap[p.user_id] === "verifier")
+        .map((p) => ({
           user_id: p.user_id,
           full_name: p.full_name,
           organization: p.organization,
@@ -86,17 +152,15 @@ serve(async (req) => {
       try {
         const { data: { users: authUsers } } = await supabase.auth.admin.listUsers();
         if (authUsers) {
-          const emailMap: Record<string, string> = {};
-          authUsers.forEach((u: any) => { emailMap[u.id] = u.email || ""; });
-          gatedUsers.forEach((u: any) => { u.email = emailMap[u.user_id] || ""; });
+          const emailMap = {};
+          authUsers.forEach((u) => { emailMap[u.id] = u.email || ""; });
+          gatedUsers.forEach((u) => { u.email = emailMap[u.user_id] || ""; });
         }
       } catch {
         // auth.admin may not be available; emails stay empty
       }
 
-      return new Response(JSON.stringify({ users: gatedUsers }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ users: gatedUsers }), { headers });
     }
 
     // ── UPDATE: Approve or reject a user ─────────────────────────────
@@ -107,27 +171,16 @@ serve(async (req) => {
         throw new Error("Invalid status");
       }
 
-      console.log(`Updating user ${user_id} status to ${new_status}`);
-
       const { error: updateErr } = await supabase
         .from("profiles")
         .update({ account_status: new_status })
         .eq("user_id", user_id);
 
       if (updateErr) {
-        console.error("Profile update error:", updateErr);
         throw new Error(`Failed to update profile: ${updateErr.message}`);
       }
 
-      // Verify the update worked
-      const { data: verifyProfile } = await supabase
-        .from("profiles")
-        .select("account_status")
-        .eq("user_id", user_id)
-        .single();
-      console.log("Profile after update:", verifyProfile);
-
-      // Also update trusted_issuers table if user is an issuer and being approved/rejected
+      // Also update trusted_issuers if the user is an issuer being approved/rejected
       const { data: userRoles } = await supabase
         .from("user_roles")
         .select("role")
@@ -138,7 +191,7 @@ serve(async (req) => {
         const issuerStatus = new_status === "approved" ? "verified" : new_status;
         const { error: issuerUpdateErr } = await supabase
           .from("trusted_issuers")
-          .update({ 
+          .update({
             verification_status: issuerStatus,
             verified_at: new_status === "approved" ? new Date().toISOString() : null,
             verified_by: null,
@@ -147,14 +200,6 @@ serve(async (req) => {
 
         if (issuerUpdateErr) {
           console.error("Failed to update trusted_issuers:", issuerUpdateErr);
-        } else {
-          // Verify issuer update
-          const { data: verifyIssuer } = await supabase
-            .from("trusted_issuers")
-            .select("verification_status")
-            .eq("issuer_user_id", user_id)
-            .single();
-          console.log("Issuer after update:", verifyIssuer);
         }
       }
 
@@ -167,9 +212,7 @@ serve(async (req) => {
         metadata: { admin: "admin-portal", new_status },
       });
 
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ success: true }), { headers });
     }
 
     throw new Error("Invalid request method");
@@ -177,10 +220,7 @@ serve(async (req) => {
     console.error("admin-users error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 400, headers }
     );
   }
 });
