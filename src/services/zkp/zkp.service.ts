@@ -26,6 +26,7 @@
  *   issuer-membership: [vcCommitment(0), nullifier(1), root(2), scope(3), challenge(4), vcFpHi(5), vcFpLo(6), holderCommitment(7)]
  *
  * ZKPVerifier.sol burns pubSignals[1] (nullifier) for on-chain replay protection.
+ */
 import {
   buildAgeVerifyInputs,
   buildAttributeRangeInputs,

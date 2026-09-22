@@ -51,7 +51,6 @@ describe("buildPackedUserOp", () => {
   });
 
   it("throws without callData", () => {
-    // @ts-expect-error — exercising runtime guard
     expect(() => buildPackedUserOp({ sender: SENDER })).toThrow(/callData is required/);
   });
 });

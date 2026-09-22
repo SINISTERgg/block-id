@@ -1,13 +1,14 @@
-import { lazy, Suspense, ReactNode } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/hooks/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardSkeleton from "./components/ui/DashboardSkeleton";
+import RoleGuard from "./components/routing/RoleGuard";
 
 // ── Lazy-loaded route pages ──────────────────────────────────────────
 const Landing = lazy(() => import("./pages/Landing"));
@@ -33,49 +34,105 @@ const PageFallback = () => (
   </div>
 );
 
-const queryClient = new QueryClient();
+const App = () => {
+  // Instantiated inside the component so it is created once per app mount
+  // and is properly garbage-collected on unmount. This avoids stale state
+  // during HMR and keeps the client isolated in tests.
+  const queryClient = useMemo(() => new QueryClient(), []);
 
-// Blockchain Explorer is available to issuer, holder, and admin portals only.
-const ExplorerRoute = ({ children }: { children: ReactNode }) => {
-  const { role } = useAuth();
-  if (role === "verifier") return <Navigate to="/" replace />;
-  return <>{children}</>;
+  return (
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <Suspense fallback={<PageFallback />}>
+                <Routes>
+                  {/* Public routes */}
+                  <Route path="/" element={<Landing />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/pending-approval" element={<PendingApproval />} />
+                  <Route path="/account-rejected" element={<AccountRejected />} />
+                  <Route path="/shared/:token" element={<SharedCredential />} />
+
+                  {/* Issuer portal — wrapped in its own ErrorBoundary */}
+                  <Route path="/issuer" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="issuer"><IssuerDashboard /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+                  <Route path="/issuer/*" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="issuer"><IssuerDashboard /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  {/* Holder portal — wrapped in its own ErrorBoundary */}
+                  <Route path="/holder" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="holder"><HolderWallet /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+                  <Route path="/holder/*" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="holder"><HolderWallet /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  {/* Verifier portal — wrapped in its own ErrorBoundary */}
+                  <Route path="/verifier" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+                  <Route path="/verifier/*" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  {/* Blockchain Explorer — available to issuer, holder, and admin portals only */}
+                  <Route path="/explorer" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute>
+                        <RoleGuard denyRoles={["verifier"]}>
+                          <BlockchainExplorer />
+                        </RoleGuard>
+                      </ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  {/* Audit log */}
+                  <Route path="/audit" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute><AuditLog /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  {/* Admin portal — wrapped in its own ErrorBoundary */}
+                  <Route path="/admin" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+                  <Route path="/admin/*" element={
+                    <ErrorBoundary>
+                      <ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>
+                    </ErrorBoundary>
+                  } />
+
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
 };
-
-const App = () => (
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Suspense fallback={<PageFallback />}>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/issuer" element={<ProtectedRoute requiredRole="issuer"><IssuerDashboard /></ProtectedRoute>} />
-                <Route path="/issuer/*" element={<ProtectedRoute requiredRole="issuer"><IssuerDashboard /></ProtectedRoute>} />
-                <Route path="/holder" element={<ProtectedRoute requiredRole="holder"><HolderWallet /></ProtectedRoute>} />
-                <Route path="/holder/*" element={<ProtectedRoute requiredRole="holder"><HolderWallet /></ProtectedRoute>} />
-                <Route path="/verifier" element={<ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>} />
-                <Route path="/verifier/*" element={<ProtectedRoute requiredRole="verifier"><VerifierDashboard /></ProtectedRoute>} />
-                <Route path="/explorer" element={<ProtectedRoute><ExplorerRoute><BlockchainExplorer /></ExplorerRoute></ProtectedRoute>} />
-                <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
-                <Route path="/admin" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />
-                <Route path="/admin/*" element={<ProtectedRoute requiredRole="org_admin"><OrgManagement /></ProtectedRoute>} />
-                <Route path="/pending-approval" element={<PendingApproval />} />
-                <Route path="/account-rejected" element={<AccountRejected />} />
-                <Route path="/shared/:token" element={<SharedCredential />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
-);
 
 export default App;

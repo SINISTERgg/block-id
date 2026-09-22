@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Send, Link2, Wallet, Loader2, CheckCircle2, XCircle, Users, QrCode } from "lucide-react";
+import { Send, Link2, Wallet, Loader2, CheckCircle2, XCircle, Users, QrCode, Medal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import OID4VCIOfferDialog from "@/components/OID4VCIOfferDialog";
 import CredentialDataGrid from "@/components/issuer/CredentialDataGrid";
 import { motion, AnimatePresence } from "framer-motion";
 import type { IssuerCredential, IssuerSchema } from "@/services/api/issuer.service";
+import { isSbtConfigured } from "@/services/blockchain/sbt.service";
 
 interface IssueViewProps {
   schemas: IssuerSchema[];
@@ -27,6 +28,7 @@ interface IssueViewProps {
     credentialData: Record<string, any>;
     expiresAt: string;
     signWithWallet: boolean;
+    mintSbtBadge: boolean;
   }) => Promise<void>;
   onRevoke: (credId: string) => Promise<void>;
   onConnectWallet: () => void;
@@ -51,14 +53,17 @@ const IssueView = ({
   const [credentialData, setCredentialData] = useState<Record<string, any>>({});
   const [expiresAt, setExpiresAt] = useState("");
   const [signWithWallet, setSignWithWallet] = useState(false);
+  const [mintSbtBadge, setMintSbtBadge] = useState(true);
   const [issuing, setIssuing] = useState(false);
+
+  const sbtConfigured = isSbtConfigured();
 
   const selectedSchemaObj = useMemo(() => schemas.find((s) => s.id === selectedSchema), [schemas, selectedSchema]);
   const latestSchemas = schemas.filter((s) => s.is_latest);
 
   const handleIssue = async () => {
     setIssuing(true);
-    await onIssue({ schemaId: selectedSchema, holderDid, credentialData, expiresAt, signWithWallet });
+    await onIssue({ schemaId: selectedSchema, holderDid, credentialData, expiresAt, signWithWallet, mintSbtBadge });
     setIssuing(false);
     setIsIssueDialogOpen(false);
     setHolderDid(""); setCredentialData({}); setSelectedSchema(""); setExpiresAt("");
@@ -141,12 +146,12 @@ const IssueView = ({
       </div>
 
       <Dialog open={isIssueDialogOpen} onOpenChange={setIsIssueDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg flex flex-col max-h-[90vh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="font-display text-xl">Issue Verifiable Credential</DialogTitle>
             <DialogDescription>Create a new credential and optionally anchor it on-chain</DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 pt-2">
+          <div className="space-y-5 pt-2 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label>Holder DID</Label>
               <Input 
@@ -218,9 +223,33 @@ const IssueView = ({
                 disabled={!isMetaMaskInstalled} 
               />
             </div>
+            {sbtConfigured && (
+              <div className="flex items-center justify-between bg-muted/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-amber-500/90 rounded-lg flex items-center justify-center">
+                    <Medal className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Mint SBT Badge</p>
+                    <p className="text-xs text-muted-foreground">Issue a soulbound token to the holder's wallet</p>
+                  </div>
+                </div>
+                <Switch
+                  id="mint-sbt-badge-toggle"
+                  checked={mintSbtBadge}
+                  onCheckedChange={setMintSbtBadge}
+                />
+              </div>
+            )}
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
               <Link2 className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{signWithWallet ? "Credential will be wallet-signed & anchored on Sepolia" : "Credential will be anchored on-chain with SHA-256 hash proof"}</span>
+              <span>
+                {signWithWallet
+                  ? "Credential will be wallet-signed & anchored on Sepolia"
+                  : "Credential will be anchored on-chain with SHA-256 hash proof"}
+                {sbtConfigured && mintSbtBadge && " · SBT badge will be minted"}
+                {sbtConfigured && !mintSbtBadge && " · SBT badge skipped"}
+              </span>
             </div>
             <Button 
               className="w-full btn-primary" 

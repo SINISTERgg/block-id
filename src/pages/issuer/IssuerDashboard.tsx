@@ -153,12 +153,14 @@ const IssuerDashboard = () => {
     credentialData,
     expiresAt,
     signWithWallet,
+    mintSbtBadge,
   }: {
     schemaId: string;
     holderDid: string;
     credentialData: Record<string, any>;
     expiresAt: string;
     signWithWallet: boolean;
+    mintSbtBadge: boolean;
   }) => {
     if (!user || !schemaId || !holderDid) return;
     try {
@@ -246,7 +248,7 @@ const IssuerDashboard = () => {
           });
 
           // ── Best-effort SBT mint ───────────────────────────────────────────
-          if (isSbtConfigured()) {
+          if (mintSbtBadge && isSbtConfigured()) {
             try {
               const { BrowserProvider } = await import("ethers");
               const browserProvider = new BrowserProvider(window.ethereum!);
@@ -257,11 +259,9 @@ const IssuerDashboard = () => {
                 description: `Token #${sbtResult.tokenId ?? "?"} — Tx: ${sbtResult.txHash?.substring(0, 18)}...`,
               });
             } catch (sbtErr: any) {
+              // Badge minting is best-effort and non-fatal — the credential is
+              // already anchored. Log for debugging but don't surface a toast.
               console.warn("SBT mint skipped:", sbtErr.message);
-              toast({
-                title: "Badge mint skipped",
-                description: "Credential anchored ✓ — badge minting failed (non-fatal). Check your SBT contract configuration.",
-              });
             }
           }
 

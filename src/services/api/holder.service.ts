@@ -190,7 +190,7 @@ export async function fetchRequestAiResult(
     .select("ai_analysis")
     .eq("id", requestId)
     .single();
-  return (data?.ai_analysis as AiVerificationResult) ?? null;
+  return (data?.ai_analysis as unknown as AiVerificationResult) ?? null;
 }
 
 
