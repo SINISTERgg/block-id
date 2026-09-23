@@ -10,7 +10,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import ParticleBackground from "@/components/ui/ParticleBackground";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 
@@ -116,8 +115,7 @@ const AuditLog = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background relative overflow-hidden">
-        <ParticleBackground particleCount={25} className="opacity-20" />
-        <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+        <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
         <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10">
           <DashboardSkeleton stats={4} showCharts={false} listItems={6} />
         </main>
@@ -127,8 +125,7 @@ const AuditLog = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      <ParticleBackground particleCount={25} className="opacity-20" />
-      <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+      <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
 
       <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
         <div className="container mx-auto flex items-center gap-3">
@@ -140,11 +137,10 @@ const AuditLog = () => {
             </TooltipTrigger>
             <TooltipContent>Back to Home</TooltipContent>
           </Tooltip>
-          <div className="relative">
-            <ScrollText className="h-5 w-5 text-primary" />
-            <div className="absolute -inset-1 bg-primary/20 rounded-full blur-md -z-10 animate-glow-pulse" />
+          <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center">
+            <ScrollText className="h-4 w-4" />
           </div>
-          <span className="font-display text-lg font-semibold tracking-tight">Audit Trail</span>
+          <span className="font-heading text-lg font-semibold uppercase tracking-tight">Audit Trail</span>
         </div>
       </header>
 
@@ -155,12 +151,12 @@ const AuditLog = () => {
           animate={{ opacity: 1, y: 0 }}
           className="grid grid-cols-2 md:grid-cols-4 gap-4"
         >
-          <Card className="glass-card border-0 rounded-2xl">
+          <Card className="solid-card">
             <CardContent className="pt-6">
               <AnimatedCounter value={logs.length} label="Total Events" />
             </CardContent>
           </Card>
-          <Card className="glass-card border-0 rounded-2xl">
+          <Card className="solid-card">
             <CardContent className="pt-6">
               <AnimatedCounter
                 value={logs.filter((l) => l.action === "credential_issued").length}
@@ -168,7 +164,7 @@ const AuditLog = () => {
               />
             </CardContent>
           </Card>
-          <Card className="glass-card border-0 rounded-2xl">
+          <Card className="solid-card">
             <CardContent className="pt-6">
               <AnimatedCounter
                 value={logs.filter((l) => l.action === "credential_verified").length}
@@ -176,7 +172,7 @@ const AuditLog = () => {
               />
             </CardContent>
           </Card>
-          <Card className="glass-card border-0 rounded-2xl">
+          <Card className="solid-card">
             <CardContent className="pt-6">
               <AnimatedCounter
                 value={logs.filter((l) => l.metadata?.signed_by_wallet).length}
@@ -199,11 +195,11 @@ const AuditLog = () => {
               placeholder="Search audit logs..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 rounded-xl glass border-0"
+              className="pl-10 border-border"
             />
           </div>
           <Select value={actionFilter} onValueChange={setActionFilter}>
-            <SelectTrigger className="w-44 rounded-xl glass border-0">
+            <SelectTrigger className="w-44">
               <Filter className="h-3 w-3 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -216,10 +212,10 @@ const AuditLog = () => {
               <SelectItem value="schema_created">Schema Created</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={exportCSV} disabled={filtered.length === 0}>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCSV} disabled={filtered.length === 0}>
             <Download className="h-3.5 w-3.5" /> CSV
           </Button>
-          <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={exportJSON} disabled={filtered.length === 0}>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportJSON} disabled={filtered.length === 0}>
             <Download className="h-3.5 w-3.5" /> JSON
           </Button>
         </motion.div>
@@ -230,13 +226,13 @@ const AuditLog = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <Card className="glass-card border-0 rounded-2xl">
-            <CardHeader>
-              <CardTitle className="font-display text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" /> Event Log
+          <Card className="solid-card">
+            <CardHeader className="border-b border-border">
+              <CardTitle className="font-heading text-xs font-semibold uppercase tracking-widest flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" /> Event Log
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {filtered.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted-foreground">No audit events found.</div>
               ) : (
@@ -249,17 +245,17 @@ const AuditLog = () => {
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.02 }}
-                        className="flex items-start gap-3 p-3 rounded-xl border border-border/30 hover:bg-muted/20 transition-all hover:border-primary/20"
+                        className="flex items-start gap-3 p-3 border border-border/40 hover:bg-muted/20 transition-all hover:border-primary/20"
                       >
-                        <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 animate-glow-pulse" />
+                        <div className="w-2 h-2 bg-primary mt-2 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${actionInfo.color}`}>
+                            <span className={`text-xs px-2 py-0.5 uppercase tracking-wide ${actionInfo.color}`}>
                               {actionInfo.label}
                             </span>
                             <span className="text-xs text-muted-foreground">{log.entity_type}</span>
                             {log.metadata?.signed_by_wallet && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">🔏 Signed</span>
+                              <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary uppercase tracking-wide">Signed</span>
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground space-y-0.5">

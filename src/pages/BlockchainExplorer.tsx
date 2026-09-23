@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import ParticleBackground from "@/components/ui/ParticleBackground";
 import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import { AMOY_EXPLORER, IS_CONTRACT_DEPLOYED } from "@/services/blockchain/config";
 
@@ -59,8 +58,7 @@ const BlockchainExplorer = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background relative overflow-hidden">
-        <ParticleBackground particleCount={30} className="opacity-25" />
-        <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+        <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
         <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10">
           <DashboardSkeleton stats={4} showCharts={false} listItems={6} />
         </main>
@@ -70,8 +68,7 @@ const BlockchainExplorer = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      <ParticleBackground particleCount={30} className="opacity-25" />
-      <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+      <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
 
       <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
         <div className="container mx-auto flex items-center justify-between">
@@ -94,11 +91,10 @@ const BlockchainExplorer = () => {
               <TooltipContent>Back to Home</TooltipContent>
             </Tooltip>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Link2 className="h-5 w-5 text-primary" />
-                <div className="absolute -inset-1 bg-primary/20 rounded-full blur-md -z-10 animate-glow-pulse" />
+              <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center">
+                <Link2 className="h-4 w-4" />
               </div>
-              <span className="font-display text-lg font-semibold tracking-tight">Blockchain Explorer</span>
+              <span className="font-heading text-lg font-semibold uppercase tracking-tight">Blockchain Explorer</span>
             </div>
           </motion.div>
 

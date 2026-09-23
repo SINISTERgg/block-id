@@ -1,6 +1,7 @@
 import { motion, type HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
+import { MOTION } from "@/lib/motion";
 
 interface GlassCardProps extends Omit<HTMLMotionProps<"div">, "children"> {
   children: ReactNode;
@@ -10,6 +11,13 @@ interface GlassCardProps extends Omit<HTMLMotionProps<"div">, "children"> {
   delay?: number;
 }
 
+const GLOW_BORDER: Record<string, string> = {
+  primary: "border-primary",
+  issuer: "border-issuer",
+  holder: "border-holder",
+  verifier: "border-verifier",
+};
+
 const GlassCard = ({
   children,
   className,
@@ -18,17 +26,15 @@ const GlassCard = ({
   delay = 0,
   ...props
 }: GlassCardProps) => {
-  const glowClass = glowColor ? `glow-${glowColor}` : "";
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: MOTION.DISTANCE }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
-      whileHover={interactive ? { y: -4, transition: { duration: 0.25 } } : undefined}
+      transition={{ duration: MOTION.DURATION, delay, ease: MOTION.EASE }}
+      whileHover={interactive ? { y: -3, transition: { duration: 0.25 } } : undefined}
       className={cn(
-        "glass-card rounded-2xl p-6",
-        glowColor && `hover:${glowClass}`,
+        "glass-card p-6 border-l-2",
+        glowColor && GLOW_BORDER[glowColor],
         className
       )}
       {...props}

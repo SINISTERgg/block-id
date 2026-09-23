@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPinataConfigured, pinJsonToIpfs } from "../_shared/ipfs.ts";
 import { computeCredentialHash } from "../_shared/vc-hash.ts";
+import { resolveAutoIdFields } from "../_shared/identity-id.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -104,6 +105,10 @@ async function issueOne(
 
   const prev_hash = lastCred?.credential_hash || "genesis";
 
+  // Auto-generated fields (e.g. idNumber) are allocated here — and only here —
+  // with a fresh, guaranteed-unique value. Client-supplied values are discarded.
+  const resolvedData = await resolveAutoIdFields(supabase, schema, credentialData);
+
   const vc: any = {
     "@context": ["https://www.w3.org/2018/credentials/v1", "https://w3id.org/security/suites/ed25519-2020/v1"],
     type: ["VerifiableCredential", schema.credential_type],
@@ -111,7 +116,7 @@ async function issueOne(
     issuanceDate: new Date().toISOString(),
     credentialSubject: {
       id: holderDid,
-      ...credentialData,
+      ...resolvedData,
     },
     credentialSchema: {
       id: schema.id,

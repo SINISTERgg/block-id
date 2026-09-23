@@ -34,8 +34,6 @@ import { useToast } from "@/hooks/use-toast";
 import MembersList, { type OrgMember } from "@/components/admin/MembersList";
 import InviteMemberDialog from "@/components/admin/InviteMemberDialog";
 import { motion } from "framer-motion";
-import ParticleBackground from "@/components/ui/ParticleBackground";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
 import { useNavigate } from "react-router-dom";
 import { Home, LogOut } from "lucide-react";
@@ -193,22 +191,22 @@ const OrgManagement = () => {
       label: "Issuers",
       value: roleCount("issuer"),
       icon: Shield,
-      accentColor: "hsl(220 72% 55%)",
-      iconColor: "text-blue-500",
+      accentColor: "hsl(var(--issuer))",
+      iconColor: "text-issuer",
     },
     {
       label: "Verifiers",
       value: roleCount("verifier"),
       icon: Building2,
-      accentColor: "hsl(262 65% 55%)",
-      iconColor: "text-purple-500",
+      accentColor: "hsl(var(--verifier))",
+      iconColor: "text-verifier",
     },
     {
       label: "Pending Issuers",
       value: pendingIssuers,
       icon: Clock,
-      accentColor: "hsl(25 95% 53%)",
-      iconColor: "text-orange-500",
+      accentColor: "hsl(var(--warning))",
+      iconColor: "text-warning",
     },
   ];
 
@@ -219,8 +217,7 @@ const OrgManagement = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      <ParticleBackground particleCount={20} className="opacity-20" />
-      <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+      <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
 
       {/* Header */}
       <header className="glass-header px-4 sm:px-6 py-3 sticky top-0 z-50 relative">
@@ -239,13 +236,12 @@ const OrgManagement = () => {
               <TooltipContent>Back to Home</TooltipContent>
             </Tooltip>
             <div className="flex items-center gap-2.5">
-              {/* Gold crown icon */}
-              <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-500/25 flex items-center justify-center">
+              {/* Crown icon */}
+              <div className="w-9 h-9 border-2 border-amber-500/50 flex items-center justify-center">
                 <Crown className="h-4.5 w-4.5 text-amber-500" />
-                <div className="absolute -inset-0.5 rounded-xl border border-amber-400/10 pointer-events-none" />
               </div>
               <div>
-                <span className="font-display text-base font-semibold tracking-tight">
+                <span className="font-heading text-base font-semibold uppercase tracking-tight">
                   Org Admin
                 </span>
                 {profile?.organization && (
@@ -259,19 +255,18 @@ const OrgManagement = () => {
 
           <div className="flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle className="shrink-0 rounded-xl" />
             <div className="hidden sm:flex items-center gap-2.5 border-l border-border/50 pl-3">
               {/* Initials avatar */}
-              <div className="w-8 h-8 rounded-full bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-amber-600">{initials}</span>
+              <div className="w-8 h-8 border border-muted-foreground/30 flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-foreground">{initials}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-xs font-medium text-foreground leading-none">{profile?.full_name}</span>
-                <Badge variant="outline" className="mt-0.5 text-[10px] capitalize bg-amber-500/10 text-amber-600 border-amber-500/20 w-fit px-1.5 py-0 leading-4 badge-glow-admin">
-                  <Crown className="h-2.5 w-2.5 mr-0.5" />{role}
+                <Badge variant="outline" className="mt-0.5 text-[10px] capitalize w-fit px-1.5 py-0 leading-4">
+                  <Crown className="h-2.5 w-2.5 mr-0.5 text-amber-500" />{role}
                 </Badge>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => signOut().then(() => navigate("/"))} className="rounded-xl h-8 w-8">
+              <Button variant="ghost" size="icon" onClick={() => signOut().then(() => navigate("/"))} className="h-8 w-8">
                 <LogOut className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -289,13 +284,13 @@ const OrgManagement = () => {
         >
           {/* Page title */}
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Organization Management</h1>
+            <h1 className="font-heading text-2xl font-bold uppercase tracking-tight text-foreground">Organization Management</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Manage your team members, roles, and organization settings.
             </p>
           </div>
 
-          {/* Stats — glassmorphic with colored top accent */}
+          {/* Stats — sharp cards with colored top accent */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {statCards.map((s, i) => (
               <motion.div
@@ -303,20 +298,19 @@ const OrgManagement = () => {
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.07 }}
-                whileHover={{ y: -3, transition: { duration: 0.2 } }}
                 className="stat-card p-5"
                 style={{ "--stat-accent": s.accentColor } as React.CSSProperties}
               >
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs text-muted-foreground font-medium">{s.label}</p>
                   <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                    className="w-7 h-7 flex items-center justify-center shrink-0"
                     style={{ backgroundColor: `${s.accentColor}18` }}
                   >
                     <s.icon className={`h-3.5 w-3.5 ${s.iconColor}`} />
                   </div>
                 </div>
-                <p className="text-3xl font-display font-bold text-foreground">{s.value}</p>
+                <p className="text-3xl font-heading font-bold text-foreground">{s.value}</p>
               </motion.div>
             ))}
           </div>
@@ -334,18 +328,18 @@ const OrgManagement = () => {
 
             {/* Members tab */}
             <TabsContent value="members">
-              <Card className="border-border/50">
-                <CardHeader>
+              <Card className="solid-card">
+                <CardHeader className="border-b border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="font-display text-lg flex items-center gap-2">
-                        <Users className="h-5 w-5 text-primary" /> Team Members
+                      <CardTitle className="font-heading text-xs font-semibold uppercase tracking-widest flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" /> Team Members
                       </CardTitle>
                       <CardDescription>
                         {members.length} member{members.length !== 1 ? "s" : ""} in your organization
                       </CardDescription>
                     </div>
-                    <Button size="sm" className="gap-1.5 rounded-xl" onClick={() => setInviteOpen(true)}>
+                    <Button size="sm" className="gap-1.5" onClick={() => setInviteOpen(true)}>
                       <UserPlus className="h-4 w-4" /> Invite
                     </Button>
                   </div>
@@ -364,10 +358,10 @@ const OrgManagement = () => {
 
             {/* Settings tab */}
             <TabsContent value="settings">
-              <Card className="border-border/50">
-                <CardHeader>
-                  <CardTitle className="font-display text-lg flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-primary" /> Organization Settings
+              <Card className="solid-card">
+                <CardHeader className="border-b border-border">
+                  <CardTitle className="font-heading text-xs font-semibold uppercase tracking-widest flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" /> Organization Settings
                   </CardTitle>
                   <CardDescription>Update your organization details.</CardDescription>
                 </CardHeader>
@@ -379,14 +373,13 @@ const OrgManagement = () => {
                       value={orgName}
                       onChange={(e) => setOrgName(e.target.value)}
                       placeholder="e.g., Acme Corporation"
-                      className="rounded-xl"
                     />
                   </div>
 
                   <div className="space-y-1.5">
                     <Label>Your Role</Label>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="capitalize text-sm bg-amber-500/10 text-amber-600 border-amber-500/20 badge-glow-admin">
+                      <Badge variant="outline" className="capitalize text-sm border-amber-500/40 text-amber-500">
                         <Crown className="h-3 w-3 mr-1" /> {role}
                       </Badge>
                       <span className="text-xs text-muted-foreground">You have full administrative access.</span>
@@ -396,7 +389,7 @@ const OrgManagement = () => {
                   <Button
                     onClick={saveOrgSettings}
                     disabled={savingSettings || !orgName.trim()}
-                    className="w-full sm:w-auto rounded-xl"
+                    className="w-full sm:w-auto"
                   >
                     {savingSettings ? "Saving..." : "Save Changes"}
                   </Button>
@@ -404,19 +397,19 @@ const OrgManagement = () => {
               </Card>
 
               {/* Danger Zone */}
-              <Card className="border-red-500/40 bg-red-500/5">
+              <Card className="border-destructive/40 bg-destructive/5 solid-card">
                 <CardHeader>
-                  <CardTitle className="font-display text-lg flex items-center gap-2 text-red-600">
-                    <AlertTriangle className="h-5 w-5" /> Danger Zone
+                  <CardTitle className="font-heading text-xs font-semibold uppercase tracking-widest flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4" /> Danger Zone
                   </CardTitle>
-                  <CardDescription className="text-red-500/80">
+                  <CardDescription className="text-destructive/80">
                     Destructive actions — these cannot be undone.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+                  <div className="flex items-center justify-between border border-destructive/30 bg-destructive/5 p-4">
                     <div>
-                      <p className="font-medium text-sm text-red-700 dark:text-red-400">Delete Organization</p>
+                      <p className="font-medium text-sm text-foreground">Delete Organization</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Permanently dissolve{" "}
                         <span className="font-semibold">{profile?.organization || "this organization"}</span>{" "}
@@ -427,7 +420,7 @@ const OrgManagement = () => {
                       id="delete-org-btn-om"
                       variant="destructive"
                       size="sm"
-                      className="gap-2 shrink-0 ml-4 rounded-xl"
+                      className="gap-2 shrink-0 ml-4"
                       onClick={() => { setDeleteOrgConfirmText(""); setDeleteOrgOpen(true); }}
                       disabled={!profile?.organization}
                     >

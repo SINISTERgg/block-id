@@ -9,6 +9,7 @@ interface SchemaField {
   name: string;
   type: string;
   required?: boolean;
+  auto?: "id" | string;
 }
 
 interface SchemaFormProps {
@@ -45,9 +46,25 @@ const SchemaForm = ({ fields, value, onChange }: SchemaFormProps) => {
         <div key={field.name}>
           <Label htmlFor={`field-${field.name}`} className="capitalize">
             {field.name.replace(/([A-Z])/g, " $1").replace(/_/g, " ")}
-            {field.required && <span className="text-destructive ml-1">*</span>}
+            {field.required && !field.auto && <span className="text-destructive ml-1">*</span>}
           </Label>
-          {field.type === "boolean" ? (
+          {field.auto === "id" ? (
+            <div className="mt-1 pointer-events-none">
+              <Input
+                id={`field-${field.name}`}
+                readOnly
+                disabled
+                value={value[field.name] ? String(value[field.name]) : ""}
+                placeholder="Auto-generated at issuance"
+                className="opacity-70"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {value[field.name]
+                  ? "Allocated at issuance — unique, non-repeatable"
+                  : "A random 8- or 12-digit ID is allocated when this credential is issued"}
+              </p>
+            </div>
+          ) : field.type === "boolean" ? (
             <div className="flex items-center gap-2 mt-1">
               <Checkbox
                 id={`field-${field.name}`}

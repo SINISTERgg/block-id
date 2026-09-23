@@ -32,6 +32,8 @@ export interface SchemaFieldDef {
   name: string;
   type: string;
   required: boolean;
+  /** Auto-generated server-side at issuance (e.g. "id" → unique random ID number). Hidden from the issue form. */
+  auto?: "id" | string;
 }
 
 /**

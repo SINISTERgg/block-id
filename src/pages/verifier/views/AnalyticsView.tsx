@@ -14,17 +14,17 @@ interface AnalyticsViewProps {
 }
 
 const CHART_COLORS = {
-  verified: "hsl(160, 84%, 39%)",
-  rejected: "hsl(0, 72%, 51%)",
-  pending: "hsl(45, 93%, 47%)",
-  accent: "hsl(50, 90%, 45%)",
+  verified: "hsl(var(--verifier))",
+  rejected: "hsl(var(--destructive))",
+  pending: "hsl(var(--muted-foreground) / 0.6)",
+  accent: "hsl(var(--primary))",
   muted: "hsl(var(--muted-foreground))",
 };
 
 const tooltipStyle = {
   background: "hsl(var(--card))",
   border: "1px solid hsl(var(--border))",
-  borderRadius: 8,
+  borderRadius: 0,
   fontSize: 12,
 } as const;
 

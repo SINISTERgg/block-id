@@ -72,22 +72,31 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({
           {(Object.entries(roleConfig) as [keyof typeof roleConfig, typeof roleConfig["issuer"]][]).map(([key, cfg]) => {
             const Icon = cfg.icon;
             const isSelected = role === key;
-            const colorClass = key === "issuer" ? "issuer" : key === "holder" ? "holder" : "verifier";
+            const colorClass =
+              key === "issuer"
+                ? "border-issuer text-issuer bg-issuer/10"
+                : key === "holder"
+                  ? "border-holder text-holder bg-holder/10"
+                  : "border-verifier text-verifier bg-verifier/10";
+            const iconBg =
+              key === "issuer" ? "bg-issuer text-issuer-foreground"
+                : key === "holder" ? "bg-holder text-holder-foreground"
+                : "bg-verifier text-verifier-foreground";
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => setRole(key)}
-                className={`p-4 rounded-lg border-2 transition-all text-center ${
-                  isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
+                className={`p-4 border-2 transition-colors text-center ${
+                  isSelected ? colorClass : "border-border hover:border-primary/40"
                 }`}
               >
-                <div className={`w-10 h-10 rounded-lg mx-auto mb-2 flex items-center justify-center ${
-                  isSelected ? `bg-${colorClass}` : "bg-muted"
+                <div className={`w-10 h-10 mx-auto mb-2 flex items-center justify-center ${
+                  isSelected ? iconBg : "bg-muted"
                 }`}>
-                  <Icon className={`h-5 w-5 ${isSelected ? "text-white" : "text-muted-foreground"}`} />
+                  <Icon className={`h-5 w-5 ${isSelected ? "" : "text-muted-foreground"}`} />
                 </div>
-                <span className={`text-sm font-semibold block ${isSelected ? "text-primary" : ""}`}>
+                <span className={`text-sm font-semibold block ${isSelected ? "" : ""}`}>
                   {cfg.label}
                 </span>
                 <span className="text-xs text-muted-foreground block mt-0.5">{cfg.description}</span>

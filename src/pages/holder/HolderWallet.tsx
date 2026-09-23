@@ -24,6 +24,7 @@ import WalletView from "./views/WalletView";
 import PresentView from "./views/PresentView";
 import SecurityView from "./views/SecurityView";
 import BadgesView from "./views/BadgesView";
+import { MOTION } from "@/lib/motion";
 
 const navItems = [
   { label: "Wallet", path: "/holder" },
@@ -126,11 +127,10 @@ const HolderWallet = () => {
 
   return (
     <PortalLayout title="Holder Wallet" portalType="holder" icon={<User className="h-5 w-5" />} navItems={navItems}>
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
+<motion.div
+        initial={{ opacity: 0, y: MOTION.DISTANCE }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
-        className="space-y-8"
+        transition={{ duration: MOTION.DURATION, ease: MOTION.EASE }}
       >
         {isLoading ? (
           <DashboardSkeleton stats={3} showCharts={false} listItems={currentView === "wallet" ? 4 : 3} />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   GraduationCap, Briefcase, IdCard, Award, CalendarCheck,
-  FileText, BookOpen, Building2, UserCheck, BadgeCheck,
+  FileText, BookOpen, Building2, BadgeCheck,
   Trophy, ChevronRight, Sparkles, Layout,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,7 +22,7 @@ import type { SchemaFieldDef } from "@/services/api/issuer.service";
  */
 const ICON_MAP: Record<string, React.ElementType> = {
   GraduationCap, Briefcase, IdCard, Award, CalendarCheck,
-  FileText, BookOpen, Building2, UserCheck, BadgeCheck, Trophy,
+  FileText, BookOpen, Building2, BadgeCheck, Trophy,
 };
 
 interface SchemaBuilderProps {
@@ -173,7 +173,12 @@ const SchemaBuilder = ({ onSelectTemplate, open, onOpenChange }: SchemaBuilderPr
                       <span className="font-medium text-foreground truncate">
                         {field.name.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}
                       </span>
-                      {field.required && <span className="text-destructive shrink-0">*</span>}
+                      {field.required && !field.auto && <span className="text-destructive shrink-0">*</span>}
+                      {field.auto === "id" && (
+                        <span className="shrink-0 text-[9px] font-mono uppercase tracking-wider text-issuer border border-[hsl(var(--issuer))]/40 px-1 py-px">
+                          Auto
+                        </span>
+                      )}
                       <span className="ml-auto text-muted-foreground capitalize shrink-0">{field.type}</span>
                     </div>
                   ))}

@@ -108,32 +108,20 @@ export const SCHEMA_TEMPLATES: SchemaTemplate[] = [
 
   // ─── Identity ───────────────────────────────────────────────────────
   {
-    id: "national-id",
-    name: "National Identity Card",
+    id: "general-identity",
+    name: "General Identity Card",
     credentialType: "certificate",
-    description: "Government-issued national identity credential",
+    description: "General-purpose identity credential with built-in age verification for any use case",
     icon: "IdCard",
     category: "identity",
     fields: [
       { name: "fullName", type: "string", required: true },
       { name: "dateOfBirth", type: "date", required: true },
       { name: "nationality", type: "string", required: true },
-      { name: "idNumber", type: "string", required: true },
+      { name: "idNumber", type: "string", required: true, auto: "id" },
       { name: "gender", type: "string", required: false },
       { name: "address", type: "text", required: false },
       { name: "expiryDate", type: "date", required: true },
-    ],
-  },
-  {
-    id: "age-verification",
-    name: "Age Verification",
-    credentialType: "certificate",
-    description: "Verifiable proof of age (suitable for ZK proofs)",
-    icon: "UserCheck",
-    category: "identity",
-    fields: [
-      { name: "holderName", type: "string", required: true },
-      { name: "dateOfBirth", type: "date", required: true },
       { name: "isOver18", type: "boolean", required: true },
       { name: "isOver21", type: "boolean", required: false },
       { name: "verificationAuthority", type: "string", required: true },

@@ -32,9 +32,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import MembersList, { type OrgMember } from "@/components/admin/MembersList";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
-import ParticleBackground from "@/components/ui/ParticleBackground";
 
 // ── Extracted view components ─────────────────────────────────────────────────
 import { StatsView, type PendingUser, type TrustedIssuer, type AuditEntry } from "./views/StatsView";
@@ -416,23 +414,22 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background relative">
-      <ParticleBackground />
+      <div className="absolute inset-0 bg-grid-pattern bg-grid-pattern-fade opacity-40 pointer-events-none" />
       <div className="relative z-10">
         {/* Header */}
-        <header className="border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+        <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex h-16 items-center justify-between">
               <div className="flex items-center gap-4">
-                <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1">
+                <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1 underline-brand">
                   <Home className="h-4 w-4" /> Home
                 </Button>
-                <span className="text-lg font-display font-semibold text-foreground">
+                <span className="text-lg font-heading font-semibold uppercase tracking-tight text-foreground">
                   {profile?.organization || "Admin Portal"}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <NotificationBell />
-                <ThemeToggle />
                 <Button variant="ghost" size="sm" onClick={signOut} className="gap-1 text-muted-foreground">
                   <LogOut className="h-4 w-4" /> Sign Out
                 </Button>

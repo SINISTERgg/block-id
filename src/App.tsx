@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardSkeleton from "./components/ui/DashboardSkeleton";
 import RoleGuard from "./components/routing/RoleGuard";
+import NoiseOverlay from "./components/ui/NoiseOverlay";
 
 // ── Lazy-loaded route pages ──────────────────────────────────────────
 const Landing = lazy(() => import("./pages/Landing"));
@@ -45,6 +46,7 @@ const App = () => {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <TooltipProvider>
+            <NoiseOverlay />
             <Toaster />
             <Sonner />
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

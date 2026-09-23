@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ReactNode } from "react";
+import { MOTION } from "@/lib/motion";
 
 interface PageTransitionProps {
   children: ReactNode;
@@ -9,33 +10,33 @@ interface PageTransitionProps {
 const pageVariants = {
   initial: {
     opacity: 0,
-    y: 12,
-    filter: "blur(4px)",
+    y: MOTION.DISTANCE,
   },
   animate: {
     opacity: 1,
     y: 0,
-    filter: "blur(0px)",
     transition: {
-      duration: 0.4,
-      ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number],
-      staggerChildren: 0.06,
+      duration: MOTION.DURATION,
+      ease: MOTION.EASE,
+      staggerChildren: MOTION.STAGGER,
     },
   },
   exit: {
     opacity: 0,
-    y: -8,
-    filter: "blur(4px)",
+    y: -10,
     transition: { duration: 0.2 },
   },
 };
 
 const itemVariants = {
-  initial: { opacity: 0, y: 16 },
+  initial: { opacity: 0, y: MOTION.DISTANCE },
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
+    transition: {
+      duration: MOTION.DURATION,
+      ease: MOTION.EASE,
+    },
   },
 };
 

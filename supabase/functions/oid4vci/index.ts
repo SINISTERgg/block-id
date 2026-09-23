@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeCredentialHash } from "../_shared/vc-hash.ts";
+import { resolveAutoIdFields } from "../_shared/identity-id.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -180,8 +181,9 @@ serve(async (req) => {
 
       if (!schema) throw new Error("Schema not found");
 
-      // Build VC
+      // Build VC — auto fields (e.g. idNumber) allocated uniquely at issuance.
       const holderDid = body.did || session.metadata?.holder_did || `did:key:external-wallet`;
+      const resolvedData = await resolveAutoIdFields(supabase, schema, session.credential_data);
       const vc: any = {
         "@context": ["https://www.w3.org/2018/credentials/v1"],
         type: ["VerifiableCredential", schema.credential_type],
@@ -189,7 +191,7 @@ serve(async (req) => {
         issuanceDate: new Date().toISOString(),
         credentialSubject: {
           id: holderDid,
-          ...(session.credential_data || {}),
+          ...resolvedData,
         },
         credentialSchema: {
           id: schema.id,

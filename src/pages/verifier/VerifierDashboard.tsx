@@ -12,6 +12,7 @@ import VerifierDashboardView from "./views/VerifierDashboardView";
 import VerifyView from "./views/VerifyView";
 import HistoryView from "./views/HistoryView";
 import AnalyticsView from "./views/AnalyticsView";
+import { MOTION } from "@/lib/motion";
 
 const navItems = [
   { label: "Dashboard", path: "/verifier" },
@@ -77,11 +78,10 @@ const VerifierDashboard = () => {
       icon={<Building2 className="h-5 w-5" />}
       navItems={navItems}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
+<motion.div
+        initial={{ opacity: 0, y: MOTION.DISTANCE }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
-        className="space-y-8"
+        transition={{ duration: MOTION.DURATION, ease: MOTION.EASE }}
       >
         {isLoading && records.length === 0 ? (
           <DashboardSkeleton stats={4} showCharts={currentView === "dashboard" || currentView === "analytics"} listItems={currentView === "history" ? 5 : 3} />

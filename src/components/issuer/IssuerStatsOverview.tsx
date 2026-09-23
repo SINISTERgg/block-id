@@ -1,4 +1,4 @@
-import { FileText, Send, Link2, Ban, Calendar, TrendingUp } from "lucide-react";
+import { FileText, Send, Link2, Ban, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface IssuerStatsOverviewProps {
@@ -10,11 +10,11 @@ interface IssuerStatsOverviewProps {
 }
 
 const stats = [
-  { key: "schemaCount", label: "Schemas", icon: FileText, color: "bg-issuer" },
-  { key: "credentialCount", label: "Issued", icon: Send, color: "bg-issuer" },
-  { key: "anchoredCount", label: "On-Chain", icon: Link2, color: "bg-issuer" },
-  { key: "revokedCount", label: "Revoked", icon: Ban, color: "bg-destructive" },
-  { key: "expiredCount", label: "Expired", icon: Calendar, color: "bg-muted" },
+  { key: "schemaCount", label: "Schemas", icon: FileText, accent: "text-issuer" },
+  { key: "credentialCount", label: "Issued", icon: Send, accent: "text-issuer" },
+  { key: "anchoredCount", label: "On-Chain", icon: Link2, accent: "text-issuer" },
+  { key: "revokedCount", label: "Revoked", icon: Ban, accent: "text-destructive" },
+  { key: "expiredCount", label: "Expired", icon: Calendar, accent: "text-muted-foreground" },
 ];
 
 const IssuerStatsOverview = ({
@@ -27,23 +27,23 @@ const IssuerStatsOverview = ({
   const values = { schemaCount, credentialCount, anchoredCount, revokedCount, expiredCount };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 border border-border divide-x divide-border divide-y md:divide-y-0">
       {stats.map((stat, index) => (
         <motion.div
           key={stat.key}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.06, duration: 0.3 }}
-          className="solid-card p-5"
+          className="px-5 py-4 flex items-center gap-4 group"
         >
-          <div className="flex items-center gap-4">
-            <div className={`w-11 h-11 ${stat.color} rounded-lg flex items-center justify-center shrink-0`}>
-              <stat.icon className={`h-5 w-5 ${stat.color === "bg-muted" ? "text-muted-foreground" : "text-white"}`} />
-            </div>
-            <div>
-              <p className="stat-number text-xl text-foreground">{values[stat.key as keyof typeof values]}</p>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-            </div>
+          <stat.icon className={`h-4 w-4 shrink-0 ${stat.accent} transition-transform group-hover:translate-x-0.5`} />
+          <div className="min-w-0">
+            <p className="font-heading text-2xl font-bold tabular-nums text-foreground leading-none">
+              {values[stat.key as keyof typeof values]}
+            </p>
+            <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mt-1 truncate">
+              {stat.label}
+            </p>
           </div>
         </motion.div>
       ))}

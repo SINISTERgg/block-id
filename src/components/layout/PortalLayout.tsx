@@ -1,11 +1,10 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, LogOut, Menu, X, Link2, Crown, Home, Zap } from "lucide-react";
+import { ArrowLeft, LogOut, Menu, X, Link2, Crown, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/NotificationBell";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import { isOrgAdmin } from "@/lib/permissions";
 
 interface PortalLayoutProps {
@@ -18,22 +17,25 @@ interface PortalLayoutProps {
 
 const PORTAL_COLORS = {
   issuer: {
-    accent: "#EA580C",
-    gradient: "from-[#9A3412] to-[#EA580C]",
-    activeText: "text-white",
-    dot: "bg-[#EA580C]",
+    accent: "text-issuer",
+    border: "border-issuer",
+    bg: "bg-issuer",
+    text: "text-issuer-foreground",
+    soft: "bg-issuer/10",
   },
   holder: {
-    accent: "#F7931A",
-    gradient: "from-[#EA580C] to-[#F7931A]",
-    activeText: "text-white",
-    dot: "bg-[#F7931A]",
+    accent: "text-holder",
+    border: "border-holder",
+    bg: "bg-holder",
+    text: "text-holder-foreground",
+    soft: "bg-holder/10",
   },
   verifier: {
-    accent: "#FFD600",
-    gradient: "from-[#F7931A] to-[#FFD600]",
-    activeText: "text-[#030304]",
-    dot: "bg-[#FFD600]",
+    accent: "text-verifier",
+    border: "border-verifier",
+    bg: "bg-verifier",
+    text: "text-verifier-foreground",
+    soft: "bg-verifier/10",
   },
 };
 
@@ -42,6 +44,7 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
   const location = useLocation();
   const { profile, role, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [clock, setClock] = useState(() => new Date());
   const adminUser = isOrgAdmin(role);
   const colors = PORTAL_COLORS[portalType];
 
@@ -49,87 +52,100 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
     ? profile.full_name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
     : "U";
 
+  useEffect(() => {
+    const t = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const time = clock.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const date = clock.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Header — glass with glowing brand node */}
+      {/* Header — telemetry strip */}
       <header className="sticky top-0 z-50 glass-header">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Brand */}
+            <div className="flex items-center gap-3">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => navigate("/")}
-                    className="shrink-0"
-                  >
-                    <Home className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="shrink-0">
+                    <ArrowLeft className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Back to Home</TooltipContent>
               </Tooltip>
+
               <div className="flex items-center gap-3">
-                {/* Brand node — role gradient */}
-                <div className="relative shrink-0">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.gradient} flex items-center justify-center shadow-[0_0_20px_-5px_rgba(234,88,12,0.6)]`}>
-                    <span className={`text-lg ${colors.activeText}`}>{icon}</span>
-                  </div>
-                  <div className="absolute -inset-1 rounded-xl bg-[#F7931A]/20 blur-md -z-10 animate-glow-pulse" />
+                {/* Brand node — sharp, flat, corner notch */}
+                <div className={`relative w-9 h-9 ${colors.bg} ${colors.text} flex items-center justify-center`}>
+                  <span className="text-base leading-none">{icon}</span>
+                  <span className="absolute -bottom-1 -right-1 w-2 h-2 bg-background" />
                 </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-heading text-lg font-bold tracking-tight leading-none">
+                <div className="flex flex-col gap-1">
+                  <span className="font-heading text-base font-bold uppercase tracking-tight leading-none">
                     {title}
                   </span>
-                  <span className="text-xs font-mono uppercase tracking-widest flex items-center gap-1.5" style={{ color: colors.accent }}>
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${colors.dot} animate-glow-pulse`} />
+                  <span className={`font-mono text-[9px] uppercase tracking-[0.22em] ${colors.accent}`}>
                     {portalType}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Navigation — glowing pills */}
-              <nav className="hidden md:flex items-center gap-1 rounded-full border border-border bg-background/40 p-1">
+            {/* Right cluster — status + nav on desktop */}
+            <div className="flex items-center gap-3">
+              {/* Status telemetry (desktop) */}
+              <div className="hidden lg:flex items-center gap-4 border border-border px-3 py-1.5">
+                <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <span className={`inline-block h-1.5 w-1.5 ${colors.bg} animate-glow-pulse`} />
+                  Live Session
+                </span>
+                <span className="h-3 w-px bg-border" />
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{time}</span>
+                <span className="h-3 w-px bg-border" />
+                <span className="font-mono text-[10px] text-muted-foreground uppercase">{date}</span>
+              </div>
+
+              <div className="hidden lg:flex items-center gap-1">
                 {navItems.map((item) => {
                   const isActive = location.pathname === item.path;
                   return (
                     <button
                       key={item.path}
                       onClick={() => navigate(item.path)}
-                      className={`px-4 py-2 rounded-full text-sm font-mono font-semibold uppercase tracking-wider transition-all duration-300 ${
+                      className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-200 ${
                         isActive
-                          ? `bg-gradient-to-r ${colors.gradient} ${colors.activeText} shadow-[0_0_15px_-5px_rgba(247,147,26,0.6)]`
-                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+                          ? `${colors.accent}`
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
+                      {isActive && <span className={`mr-1.5 ${colors.accent}`}>/</span>}
                       {item.label}
                     </button>
                   );
                 })}
-              </nav>
+              </div>
 
               {portalType !== "verifier" && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => navigate("/explorer")}
-                  className="shrink-0"
-                  title="Blockchain Explorer"
-                >
-                  <Link2 className="h-4 w-4" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => navigate("/explorer")} className="shrink-0">
+                      <Link2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Blockchain Explorer</TooltipContent>
+                </Tooltip>
               )}
 
               {adminUser && (
                 <button
                   onClick={() => navigate("/admin")}
-                  title="Organization Admin"
-                  className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono font-semibold uppercase tracking-wider transition-all duration-300 ${
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-200 ${
                     location.pathname.startsWith("/admin")
-                      ? `bg-gradient-to-r ${colors.gradient} ${colors.activeText}`
-                      : "border border-border text-muted-foreground hover:text-foreground hover:border-primary/40"
+                      ? colors.accent
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
@@ -138,43 +154,27 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
               )}
 
               <NotificationBell />
-              <ThemeToggle />
 
-              {/* User Profile — glowing avatar */}
-              <div className="hidden sm:flex items-center gap-3 border-l border-border pl-4">
-                <div className="relative">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#EA580C]/25 to-[#F7931A]/25 border border-[#F7931A]/40 flex items-center justify-center font-mono font-bold text-xs">
-                    {initials}
-                  </div>
-                  <div className="absolute -inset-0.5 rounded-full border border-[#F7931A]/20 blur-[2px] -z-10" />
+              {/* User node */}
+              <div className="hidden md:flex items-center gap-2.5 border-l border-border pl-3">
+                <div className={`w-8 h-8 border ${colors.border} flex items-center justify-center font-mono font-bold text-[11px] ${colors.accent}`}>
+                  {initials}
                 </div>
-                <div className="flex flex-col">
+                <div className="hidden xl:block">
+                  <p className="text-xs font-semibold leading-tight">{profile?.full_name}</p>
                   {profile?.organization && (
-                    <span className="text-[10px] font-mono uppercase text-muted-foreground leading-none truncate max-w-[100px]">
+                    <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground leading-tight truncate max-w-[110px]">
                       {profile.organization}
-                    </span>
+                    </p>
                   )}
-                  <span className="text-sm font-semibold leading-tight truncate max-w-[100px]">
-                    {profile?.full_name}
-                  </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => signOut().then(() => navigate("/"))}
-                  className="h-9 w-9"
-                >
+                <Button variant="ghost" size="icon" onClick={() => signOut().then(() => navigate("/"))} className="h-8 w-8">
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>
 
               {/* Mobile Menu Toggle */}
-              <Button
-                variant="outline"
-                size="icon"
-                className="md:hidden"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
+              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
                 {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </Button>
             </div>
@@ -182,33 +182,36 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
 
           {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border mt-4 pt-4 space-y-4">
+            <div className="md:hidden border-t border-border mt-3 pt-3 pb-4 space-y-3">
               <nav className="flex flex-col gap-2">
-                {navItems.map((item) => {
+                {navItems.map((item, i) => {
                   const isActive = location.pathname === item.path;
                   return (
                     <button
                       key={item.path}
                       onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                      className={`px-4 py-3 rounded-full text-left text-sm font-mono font-semibold uppercase tracking-wider transition-all duration-300 ${
-                        isActive
-                          ? `bg-gradient-to-r ${colors.gradient} ${colors.activeText}`
-                          : "border border-border text-muted-foreground hover:text-foreground"
+                      className={`flex items-center gap-3 px-4 py-3 text-left transition-colors duration-200 ${
+                        isActive ? `border-l-2 ${colors.border} bg-muted` : "border border-border"
                       }`}
                     >
-                      {item.label}
+                      <span className={`font-mono text-[10px] ${isActive ? colors.accent : "text-muted-foreground"}`}>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-mono text-sm font-semibold uppercase tracking-[0.12em]">
+                        {item.label}
+                      </span>
                     </button>
                   );
                 })}
               </nav>
-              <div className="flex items-center justify-between pt-4 border-t border-border">
+              <div className="flex items-center justify-between pt-3 border-t border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#EA580C]/25 to-[#F7931A]/25 border border-[#F7931A]/40 flex items-center justify-center font-mono font-bold text-xs">
+                  <div className={`w-8 h-8 border ${colors.border} flex items-center justify-center font-mono font-bold text-xs ${colors.accent}`}>
                     {initials}
                   </div>
                   <span className="text-sm font-semibold">{profile?.full_name}</span>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
+                <Button variant="ghost" size="sm" onClick={() => signOut().then(() => navigate("/"))}>
                   <LogOut className="h-4 w-4 mr-2" /> Sign Out
                 </Button>
               </div>
@@ -217,9 +220,69 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-6 py-8 w-full">
-        {children}
-      </main>
+      <div className="flex-1 flex w-full max-w-[1400px] mx-auto">
+        {/* Index rail — editorial numbered nav (desktop) */}
+        <aside className="hidden lg:flex flex-col justify-between w-56 shrink-0 border-r border-border px-0 py-8">
+          <nav className="space-y-1">
+            <p className="px-6 font-mono text-[9px] uppercase tracking-[0.22em] text-muted-foreground mb-4">
+              {title} / Index
+            </p>
+            {navItems.map((item, i) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`group w-full flex items-center gap-4 px-6 py-3 border-l-2 text-left transition-colors duration-200 ${
+                    isActive
+                      ? `${colors.border} bg-muted/40`
+                      : "border-transparent hover:border-border hover:bg-muted/20"
+                  }`}
+                >
+                  <span className={`font-mono text-xs tabular-nums transition-colors ${
+                    isActive ? colors.accent : "text-muted-foreground/60 group-hover:text-muted-foreground"
+                  }`}>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className={`font-mono text-xs font-semibold uppercase tracking-[0.14em] transition-colors ${
+                    isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                  }`}>
+                    {item.label}
+                  </span>
+                  {isActive && <span className={`ml-auto h-1.5 w-1.5 ${colors.bg}`} />}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Rail footer — role module */}
+          <div className="px-6">
+            <div className={`border border-border ${colors.soft}`}>
+              <div className={`flex items-center justify-between border-b border-border px-3 py-2`}>
+                <span className={`font-mono text-[9px] font-semibold uppercase tracking-[0.18em] ${colors.accent}`}>
+                  {portalType}
+                </span>
+                <span className={`inline-block h-1.5 w-1.5 ${colors.bg}`} />
+              </div>
+              <div className="px-3 py-3">
+                <p className="text-xs font-semibold truncate">{profile?.full_name || "User"}</p>
+                <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground truncate mt-0.5">
+                  {profile?.organization || "Independent"}
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <Terminal className="h-3 w-3" />
+                  BlockID · v2
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Content */}
+        <main className="flex-1 min-w-0 px-4 sm:px-8 py-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };

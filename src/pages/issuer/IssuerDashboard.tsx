@@ -23,6 +23,7 @@ import type { IssuerSchema, IssuerCredential, SchemaFieldDef } from "@/services/
 import DashboardView from "./views/DashboardView";
 import SchemasView from "./views/SchemasView";
 import IssueView from "./views/IssueView";
+import { MOTION } from "@/lib/motion";
 import { supabase } from "@/integrations/supabase/client";
 import { mintSbtForCredential, isSbtConfigured } from "@/services/blockchain/sbt.service";
 
@@ -352,9 +353,9 @@ const IssuerDashboard = () => {
   return (
     <PortalLayout title="Issuer Portal" portalType="issuer" icon={<Shield className="h-5 w-5" />} navItems={navItems}>
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: MOTION.DISTANCE }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] }}
+        transition={{ duration: MOTION.DURATION, ease: MOTION.EASE }}
         className="space-y-8"
       >
         {isLoading ? (
