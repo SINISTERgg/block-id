@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { validateFile, validateLineCount } from "@/lib/fileValidation";
 
 interface Schema {
   id: string;
@@ -64,9 +65,22 @@ const BatchIssuanceDialog = ({ schemas, onComplete }: BatchIssuanceDialogProps) 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const check = validateFile(file, { allowedExtensions: ["csv"] });
+    if (!check.ok) {
+      toast({ title: "Invalid file", description: check.error, variant: "destructive" });
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
+      const lines = text.split("\n").filter((l) => l.trim());
+      const countCheck = validateLineCount(lines);
+      if (!countCheck.ok) {
+        toast({ title: "Invalid file", description: countCheck.error, variant: "destructive" });
+        return;
+      }
       const rows = parseCSV(text);
       setParsedRows(rows);
       if (rows.length === 0) {

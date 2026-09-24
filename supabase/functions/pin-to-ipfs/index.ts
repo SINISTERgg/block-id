@@ -7,11 +7,14 @@ import {
   pinJsonToIpfs,
   toGatewayUrl,
 } from "../_shared/ipfs.ts";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 20; // pinning is costly (third-party API)
 
 /**
  * Builds the canonical JSON-LD schema document that gets pinned to IPFS.
@@ -62,31 +65,33 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Unauthorized");
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
     if (!isPinataConfigured()) {
-      throw new Error("IPFS pinning unavailable: server is missing PINATA credentials");
+      return jsonResponse({ error: "IPFS pinning is currently unavailable" }, 503, corsHeaders);
     }
 
     const body = await req.json();
     const { schema_id } = body;
-    if (!schema_id || typeof schema_id !== "string") throw new Error("schema_id is required");
+    if (!schema_id || typeof schema_id !== "string") {
+      return jsonResponse({ error: "schema_id is required" }, 400, corsHeaders);
+    }
 
     const { data: schema, error: schemaError } = await supabase
       .from("credential_schemas")
       .select("id, issuer_id, name, credential_type, fields, version, ipfs_cid, created_at")
       .eq("id", schema_id)
       .single();
-    if (schemaError || !schema) throw new Error("Schema not found");
-    if (schema.issuer_id !== user.id) throw new Error("Unauthorized: not schema owner");
+    if (schemaError || !schema) return jsonResponse({ error: "Schema not found" }, 404, corsHeaders);
+    if (schema.issuer_id !== user.id) return jsonResponse({ error: "Unauthorized: not schema owner" }, 403, corsHeaders);
 
     // Idempotent: already pinned → return existing CID
     if (schema.ipfs_cid && isValidCid(extractCid(schema.ipfs_cid) ?? "")) {
@@ -115,7 +120,10 @@ serve(async (req) => {
       .from("credential_schemas")
       .update({ ipfs_cid: pin.cid, ipfs_pinned_at: pinnedAt })
       .eq("id", schema.id);
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error("pin-to-ipfs update error:", updateError);
+      return jsonResponse({ error: "Failed to record pin" }, 400, corsHeaders);
+    }
 
     await logAudit(supabase, user.id, "schema_pinned_ipfs", "schema", schema.id, {
       schema_name: schema.name,
@@ -135,7 +143,7 @@ serve(async (req) => {
     );
   } catch (e) {
     console.error("pin-to-ipfs error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: sanitizedError(e, "IPFS pinning failed") }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -15,11 +15,22 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  clientIp,
+  jsonResponse,
+  rateLimited,
+  requireUser,
+  sanitizedError,
+  tooManyRequestsResponse,
+} from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 30;
+const MAX_IMAGE_B64 = 4 * 1024 * 1024;
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -173,11 +184,23 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
+
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, serviceKey);
 
-    const body = await req.json();
+    const user = await requireUser(req);
+    const userId = user?.id ?? null;
+
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
     const action = body?.action;
 
     // ── Step 1: issue liveness/verification challenge ──────────────────────
@@ -187,7 +210,7 @@ serve(async (req) => {
 
       const { error } = await supabase.from("biometric_challenges").insert({
         nonce,
-        user_id: body.user_id ?? null,
+        user_id: userId,
         expires_at: expiresAt,
       });
       if (error) throw error;
@@ -200,9 +223,12 @@ serve(async (req) => {
 
     // ── Step 2: verify face match + liveness claim, anchor hashes ──────────
     if (action === "verify") {
-      const { nonce, selfie_base64, document_base64, liveness_score, user_id } = body;
+      const { nonce, selfie_base64, document_base64, liveness_score } = body;
       if (typeof nonce !== "string" || typeof selfie_base64 !== "string") {
         throw new Error("nonce and selfie_base64 are required");
+      }
+      if (selfie_base64.length > MAX_IMAGE_B64 || (typeof document_base64 === "string" && document_base64.length > MAX_IMAGE_B64)) {
+        throw new Error("Image payload exceeds maximum allowed size");
       }
 
       // 1. Atomically consume the challenge (single-use, unexpired).
@@ -244,7 +270,7 @@ serve(async (req) => {
       );
 
       const { error: insertError } = await supabase.from("biometric_verifications").insert({
-        user_id: user_id ?? null,
+        user_id: userId,
         liveness_score: liveness,
         face_match_score: similarity,
         passed,
@@ -254,7 +280,7 @@ serve(async (req) => {
       });
       if (insertError) throw insertError;
 
-      await logAudit(supabase, user_id ?? null, "biometric_verified", proofHash, {
+      await logAudit(supabase, userId, "biometric_verified", proofHash, {
         provider,
         passed,
         similarity,
@@ -276,12 +302,9 @@ serve(async (req) => {
       );
     }
 
-    throw new Error("Unknown action — use 'liveness-challenge' or 'verify'");
+    return jsonResponse({ error: "Unknown action — use 'liveness-challenge' or 'verify'" }, 404, corsHeaders);
   } catch (e) {
     console.error("biometric-verify error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: sanitizedError(e, "Biometric verification failed") }, 400, corsHeaders);
   }
 });

@@ -112,13 +112,25 @@ const MembersList = ({ members, onRefresh }: MembersListProps) => {
   const [memberToRemove, setMemberToRemove] = useState<OrgMember | null>(null);
 
   const handleRoleChange = async (member: OrgMember, newRole: OrgRole) => {
-    const { error } = await supabase
-      .from("user_roles")
-      .update({ role: newRole } as any)
-      .eq("user_id", member.user_id);
+    // Direct writes to user_roles are blocked by RLS — route through the
+    // org_admin-gated SECURITY DEFINER RPC instead.
+    const { error: revokeError } = await supabase.rpc("admin_manage_role", {
+      p_user_id: member.user_id,
+      p_role: member.role,
+      p_action: "revoke",
+    });
+    if (revokeError) {
+      toast({ title: "Error", description: revokeError.message, variant: "destructive" });
+      return;
+    }
 
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    const { error: grantError } = await supabase.rpc("admin_manage_role", {
+      p_user_id: member.user_id,
+      p_role: newRole,
+      p_action: "grant",
+    });
+    if (grantError) {
+      toast({ title: "Error", description: grantError.message, variant: "destructive" });
       return;
     }
 
@@ -139,12 +151,21 @@ const MembersList = ({ members, onRefresh }: MembersListProps) => {
     setRemovingId(memberToRemove.user_id);
     try {
       // Downgrade to "holder" instead of deleting the row — Issue #6
-      const { error } = await supabase
-        .from("user_roles")
-        .update({ role: "holder" } as any)
-        .eq("user_id", memberToRemove.user_id);
-
-      if (error) throw error;
+      // (direct writes are RLS-blocked; use the org_admin-gated RPC)
+      if (memberToRemove.role !== "holder") {
+        const { error } = await supabase.rpc("admin_manage_role", {
+          p_user_id: memberToRemove.user_id,
+          p_role: memberToRemove.role,
+          p_action: "revoke",
+        });
+        if (error) throw error;
+      }
+      const { error: grantError } = await supabase.rpc("admin_manage_role", {
+        p_user_id: memberToRemove.user_id,
+        p_role: "holder",
+        p_action: "grant",
+      });
+      if (grantError) throw grantError;
 
       await supabase.from("audit_logs").insert({
         user_id: user!.id,

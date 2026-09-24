@@ -1,21 +1,41 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { clientIp, rateLimited, tooManyRequestsResponse, sanitizedError } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const RATE_LIMIT_MAX = 120;
+const DID_MAX_LENGTH = 300;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { did } = await req.json();
-    if (!did) throw new Error("DID is required");
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { did } = body;
+    if (!did || typeof did !== "string" || did.length > DID_MAX_LENGTH) {
+      return new Response(JSON.stringify({ error: "A valid DID string is required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let didDocument: any = null;
 
@@ -188,7 +208,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("resolve-did error:", e);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      JSON.stringify({ error: sanitizedError(e, "DID resolution failed") }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

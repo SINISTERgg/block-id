@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { bulkVerify, downloadTextFile, type BulkVerifyResult } from "@/services/api/verifier.service";
 import VerificationResultView from "./VerificationResultView";
+import { validateFile } from "@/lib/fileValidation";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface BulkVerifyDialogProps {
@@ -129,9 +130,19 @@ const BulkVerifyDialog = ({ open, onOpenChange, onRecordsRefresh }: BulkVerifyDi
   };
 
   const handleFile = (file: File) => {
+    const check = validateFile(file, { allowedExtensions: ["csv", "txt", "json"] });
+    if (!check.ok) {
+      toast({ title: "Invalid file", description: check.error, variant: "destructive" });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length > 500) {
+        toast({ title: "Invalid file", description: `File has ${lines.length} lines — maximum is 500`, variant: "destructive" });
+        return;
+      }
       setMode("csv");
       setInput(text);
       toast({ title: "File loaded", description: `${file.name} imported — ready to verify.` });

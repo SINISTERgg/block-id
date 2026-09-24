@@ -2,11 +2,26 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeCredentialHash } from "../_shared/vc-hash.ts";
 import { resolveAutoIdFields } from "../_shared/identity-id.ts";
+import {
+  clientIp,
+  jsonResponse,
+  rateLimited,
+  requireUser,
+  sanitizedError,
+  tooManyRequestsResponse,
+  verifyUserHasRole,
+} from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const OFFER_RATE_LIMIT_MAX = 30;
+const TOKEN_RATE_LIMIT_MAX = 30;
+const CREDENTIAL_RATE_LIMIT_MAX = 15;
+const ISSUER_ROLES = ["issuer", "org_admin"] as const;
+const SUPPORTED_FORMATS = new Set(["ldp_vc", "jwt_vc_json"]);
 
 async function hashData(data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -27,15 +42,26 @@ serve(async (req) => {
   try {
     // ─── 1. Create Credential Offer (issuer calls this) ───
     if (req.method === "POST" && pathSegment === "offer") {
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader) throw new Error("Unauthorized");
+      if (rateLimited(clientIp(req), 60_000, OFFER_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
 
-      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user }, error: authErr } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-      if (authErr || !user) throw new Error("Unauthorized");
+      const user = await requireUser(req);
+      if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
-      const { schema_id, credential_data, holder_did, expires_in_minutes } = await req.json();
-      if (!schema_id) throw new Error("schema_id required");
+      const isIssuer = await verifyUserHasRole(supabase, user.id, ISSUER_ROLES);
+      if (!isIssuer) return jsonResponse({ error: "Forbidden: issuer role required" }, 403, corsHeaders);
+
+      let body;
+      try {
+        body = await req.json();
+      } catch {
+        return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+      }
+      const { schema_id, credential_data, holder_did, expires_in_minutes } = body;
+      if (typeof schema_id !== "string" || !schema_id) {
+        return jsonResponse({ error: "schema_id required" }, 400, corsHeaders);
+      }
 
       const preAuthorizedCode = await hashData(`${user.id}:${Date.now()}:${crypto.randomUUID()}`);
       const expiresAt = new Date(Date.now() + (expires_in_minutes || 30) * 60000).toISOString();
@@ -108,6 +134,10 @@ serve(async (req) => {
 
     // ─── 3. Token Endpoint (pre-authorized code exchange) ───
     if (req.method === "POST" && pathSegment === "token") {
+      if (rateLimited(clientIp(req), 60_000, TOKEN_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
       let body: any;
       const contentType = req.headers.get("content-type") || "";
       if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -155,6 +185,10 @@ serve(async (req) => {
 
     // ─── 4. Credential Endpoint (issue the VC) ───
     if (req.method === "POST" && pathSegment === "credential") {
+      if (rateLimited(clientIp(req), 60_000, CREDENTIAL_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
       const authHeader = req.headers.get("Authorization");
       if (!authHeader) throw new Error("No access token");
 
@@ -169,8 +203,16 @@ serve(async (req) => {
       const session = sessions?.find((s: any) => s.metadata?.access_token === token);
       if (!session) throw new Error("Invalid access token");
 
-      const body = await req.json();
+      let body: any;
+      try {
+        body = await req.json();
+      } catch {
+        return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+      }
       const format = body.format || "ldp_vc";
+      if (!SUPPORTED_FORMATS.has(format)) {
+        return jsonResponse({ error: "Unsupported credential format" }, 400, corsHeaders);
+      }
 
       // Fetch schema
       const { data: schema } = await supabase
@@ -258,12 +300,9 @@ serve(async (req) => {
       });
     }
 
-    throw new Error("Unknown endpoint");
+    return jsonResponse({ error: "Unknown endpoint" }, 404, corsHeaders);
   } catch (e) {
     console.error("oid4vci error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: sanitizedError(e, "OID4VCI request failed") }, 400, corsHeaders);
   }
 });

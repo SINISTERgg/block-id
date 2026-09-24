@@ -30,13 +30,13 @@ async function extractEdgeFunctionError(error: any, fallback: string): Promise<s
     try {
       const cloned = error.context.clone();
       const body = await cloned.json();
-      if (body?.error && typeof body.error === "string") return body.error;
-      if (body?.message && typeof body.message === "string") return body.message;
+      if (body?.error && typeof body.error === "string") return body.error.slice(0, 240);
+      if (body?.message && typeof body.message === "string") return body.message.slice(0, 240);
     } catch {
       // body already consumed or not JSON — fall through
     }
   }
-  return error?.message || fallback;
+  return (error?.message || fallback).slice(0, 240);
 }
 
 /**

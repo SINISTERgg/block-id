@@ -53,7 +53,6 @@ const PendingApproval = () => {
       }
 
       const status = data?.account_status;
-      console.log("[PendingApproval] Polled status:", status);
 
       if (status && status !== "pending") {
         doRedirect(status);

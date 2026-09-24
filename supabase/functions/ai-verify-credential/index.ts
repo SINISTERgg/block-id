@@ -5,26 +5,68 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const RATE_LIMIT_MAX = 30;
+const MAX_CREDENTIAL_DATA_BYTES = 2_000_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { request_id, credential_data, request_purpose, credential_type } = await req.json();
+    // ── Auth: caller must be an authenticated user ─────────────────────────────
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
-    if (!request_id || !credential_data) {
-      return new Response(JSON.stringify({ error: "request_id and credential_data are required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_CREDENTIAL_DATA_BYTES) {
+      return jsonResponse({ error: "Request body too large" }, 413, corsHeaders);
+    }
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    const { request_id, credential_data, request_purpose, credential_type } = body;
+
+    if (typeof request_id !== "string" || !UUID_PATTERN.test(request_id)) {
+      return jsonResponse({ error: "request_id must be a valid UUID" }, 400, corsHeaders);
+    }
+    if (!credential_data || (typeof credential_data !== "object" && typeof credential_data !== "string")) {
+      return jsonResponse({ error: "credential_data is required" }, 400, corsHeaders);
+    }
+
+    // ── Ownership: the request must belong to the calling holder ───────────────
+    const { data: request, error: requestError } = await supabase
+      .from("verification_requests")
+      .select("id, holder_did")
+      .eq("id", request_id)
+      .single();
+    if (requestError || !request) return jsonResponse({ error: "Request not found" }, 404, corsHeaders);
+
+    const { data: ownProfile } = await supabase
+      .from("profiles")
+      .select("did")
+      .eq("user_id", user.id)
+      .single();
+    const callerDid = ownProfile?.did || "";
+    if (!callerDid || callerDid !== request.holder_did) {
+      return jsonResponse({ error: "Forbidden: not the request holder" }, 403, corsHeaders);
     }
 
     const vc = typeof credential_data === "string" ? JSON.parse(credential_data) : credential_data;
@@ -154,7 +196,7 @@ Respond ONLY with this JSON (no markdown, no explanation):
     });
   } catch (e) {
     console.error("ai-verify-credential error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: sanitizedError(e, "AI verification failed") }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

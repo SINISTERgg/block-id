@@ -1,10 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  clientIp,
+  jsonResponse,
+  rateLimited,
+  requireUser,
+  sanitizedError,
+  tooManyRequestsResponse,
+} from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const REQUEST_RATE_LIMIT_MAX = 30;
+const RESPONSE_RATE_LIMIT_MAX = 60;
+const STATUS_RATE_LIMIT_MAX = 60;
 
 async function hashData(data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -25,15 +37,23 @@ serve(async (req) => {
   try {
     // ─── 1. Create Presentation Request (verifier calls this) ───
     if (req.method === "POST" && pathSegment === "request") {
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader) throw new Error("Unauthorized");
+      if (rateLimited(clientIp(req), 60_000, REQUEST_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
 
-      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user }, error: authErr } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-      if (authErr || !user) throw new Error("Unauthorized");
+      const user = await requireUser(req);
+      if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
-      const { credential_types, purpose, fields, expires_in_minutes } = await req.json();
-      if (!credential_types?.length) throw new Error("credential_types required");
+      let body;
+      try {
+        body = await req.json();
+      } catch {
+        return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+      }
+      const { credential_types, purpose, fields, expires_in_minutes } = body;
+      if (!Array.isArray(credential_types) || credential_types.length === 0) {
+        return jsonResponse({ error: "credential_types required" }, 400, corsHeaders);
+      }
 
       const requestCode = await hashData(`${user.id}:vp:${Date.now()}:${crypto.randomUUID()}`);
       const expiresAt = new Date(Date.now() + (expires_in_minutes || 15) * 60000).toISOString();
@@ -105,6 +125,10 @@ serve(async (req) => {
 
     // ─── 2. Receive Presentation Response (wallet posts VP here) ───
     if (req.method === "POST" && pathSegment === "response") {
+      if (rateLimited(clientIp(req), 60_000, RESPONSE_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
       let body: any;
       const contentType = req.headers.get("content-type") || "";
       if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -114,7 +138,10 @@ serve(async (req) => {
       }
 
       const { vp_token, state, presentation_submission } = body;
-      if (!state) throw new Error("state required");
+      if (!state || typeof state !== "string") return jsonResponse({ error: "state required" }, 400, corsHeaders);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(state)) {
+        return jsonResponse({ error: "state must be a session UUID" }, 400, corsHeaders);
+      }
 
       const { data: session } = await supabase
         .from("oid4vc_sessions")
@@ -189,28 +216,39 @@ serve(async (req) => {
 
     // ─── 3. Check session status (polling) ───
     if (req.method === "GET" && pathSegment === "status") {
+      if (rateLimited(clientIp(req), 60_000, STATUS_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
+      const user = await requireUser(req);
+      if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+
       const sessionId = url.searchParams.get("session_id");
-      if (!sessionId) throw new Error("session_id required");
+      if (!sessionId || typeof sessionId !== "string") {
+        return jsonResponse({ error: "session_id required" }, 400, corsHeaders);
+      }
 
       const { data: session } = await supabase
         .from("oid4vc_sessions")
-        .select("id, status, session_type, response_data, expires_at, created_at")
+        .select("id, status, session_type, response_data, expires_at, created_at, user_id")
         .eq("id", sessionId)
         .single();
 
-      if (!session) throw new Error("Session not found");
+      if (!session) return jsonResponse({ error: "Session not found" }, 404, corsHeaders);
+
+      // Only the requesting verifier (or an org admin) may read a session.
+      if (session.user_id !== user.id) {
+        return jsonResponse({ error: "Forbidden" }, 403, corsHeaders);
+      }
 
       return new Response(JSON.stringify(session), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    throw new Error("Unknown endpoint");
+    return jsonResponse({ error: "Unknown endpoint" }, 404, corsHeaders);
   } catch (e) {
     console.error("oid4vp error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: sanitizedError(e, "OID4VP request failed") }, 400, corsHeaders);
   }
 });

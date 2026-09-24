@@ -202,13 +202,13 @@ const IssuerDashboard = () => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        let errorMsg = errorText;
+        let errorMsg = "";
         try {
           const errObj = JSON.parse(errorText);
-          errorMsg = errObj.error || errObj.details || errorText;
+          errorMsg = errObj.error || errObj.details || "";
         } catch {}
-        console.error("Issue credential error:", res.status, errorMsg);
-        toast({ title: "Error", description: `Failed (${res.status}): ${errorMsg}`, variant: "destructive" });
+        console.error("Issue credential error:", res.status, errorMsg || errorText.slice(0, 240));
+        toast({ title: "Error", description: `Failed (${res.status}): ${errorMsg || "Unexpected error"}`.slice(0, 300), variant: "destructive" });
         return;
       }
 
@@ -305,14 +305,14 @@ const IssuerDashboard = () => {
           headers: { "Content-Type": "application/json", Authorization: authBearer },
           body: JSON.stringify({ credential_id: credData.id, credential_hash: credHash }),
         });
-        const serverResult = await serverRes.json();
-        if (serverResult.success) {
+        const serverResult = await serverRes.json().catch(() => null);
+        if (serverResult?.success) {
           toast({
             title: "Credential issued & anchored on-chain ✓",
             description: `Block: #${serverResult.blockNumber} · Tx: ${serverResult.txHash?.substring(0, 18)}...`,
           });
         } else {
-          toast({ title: "Server anchoring failed", description: serverResult.error ?? "Unknown error", variant: "destructive" });
+          toast({ title: "Server anchoring failed", description: (serverResult?.error ?? "Unexpected error").slice(0, 240), variant: "destructive" });
         }
         loadData();
       } else {

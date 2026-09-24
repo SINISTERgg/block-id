@@ -96,10 +96,7 @@ const Web3WalletCard = ({ userId, onConnected }: Web3WalletCardProps) => {
 
   // ── Sign test ──────────────────────────────────────────────────────────────
   const handleTestSign = async () => {
-    const sig = await signMessage("DecentraID identity verification");
-    if (sig) {
-      console.log("Signature:", sig);
-    }
+    await signMessage("DecentraID identity verification");
   };
 
   // ─── Biometric status badge ────────────────────────────────────────────────

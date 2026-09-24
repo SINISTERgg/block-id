@@ -15,7 +15,7 @@
     <a href="https://eips.ethereum.org/EIPS/eip-4337"><img src="https://img.shields.io/badge/ERC--4337-Account_Abstraction-yellow?style=for-the-badge" alt="ERC-4337" /></a>
     <a href="https://eips.ethereum.org/EIPS/eip-5192"><img src="https://img.shields.io/badge/EIP--5192-Soulbound_Tokens-teal?style=for-the-badge" alt="EIP-5192" /></a>
     <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Supabase-BaaS-3ECF8E?style=for-the-badge&logo=supabase" alt="Supabase" /></a>
-    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Vitest-367_Passed_(16_Suites)-6E9F18?style=for-the-badge&logo=vitest" alt="Vitest" /></a>
+    <a href="https://vitest.dev/"><img src="https://img.shields.io/badge/Vitest-416_Passed_(20_Suites)-6E9F18?style=for-the-badge&logo=vitest" alt="Vitest" /></a>
   </p>
 
 > _An enterprise-grade Web3 Self-Sovereign Identity platform anchored on Ethereum Sepolia and Polygon. Issue, hold, verify, and selectively disclose tamper-proof W3C Verifiable Credentials with client-side Zero-Knowledge Proofs (Groth16 zk-SNARKs), EIP-5192 Soulbound Tokens, ERC-4337 Account Abstraction, and a multi-detector AI anomaly engine._
@@ -180,12 +180,14 @@ Incoming Verification Event
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                               SUPABASE CLOUD / BaaS LAYER                               │
 │  ├── Auth & RBAC (Role-Based Session Guards & Registration Approvals)                   │
-│  ├── PostgreSQL Database (13 Tables, Row-Level Security Policies)                       │
+│  ├── PostgreSQL Database (15 Tables, Row-Level Security Policies)                       │
 │  ├── Realtime WebSockets (Live Anchoring Notifications & Status Feeds)                  │
-│  └── 9 Deno Edge Functions (Serverless Microservices)                                   │
+│  └── 14 Deno Edge Functions (Serverless Microservices)                                  │
 │      ├── issue-credential          ├── anchor-credential         ├── verify-credential  │
 │      ├── anchor-credential-server   ├── manage-schemas            ├── resolve-did        │
-│      ├── oid4vci                   ├── oid4vp                    ├── admin-users        │
+│      ├── ai-verify-credential      ├── biometric-verify          ├── pin-to-ipfs        │
+│      ├── fetch-from-ipfs           ├── siwe-auth                 ├── admin-users        │
+│      └── oid4vci                   └── oid4vp                                           │
 └─────────────────────────────────────────┬───────────────────────────────────────────────┘
                                           │
                                           ▼
@@ -225,14 +227,14 @@ Incoming Verification Event
       <td width="50%" valign="top">
         <h3>⛓️ Web3, Backend & Cryptography</h3>
         <ul>
-          <li><b>Smart Contracts:</b> Solidity 0.8.19 + Hardhat 2.22</li>
+          <li><b>Smart Contracts:</b> Solidity 0.8.19 + Hardhat 3.2 (9 Contracts)</li>
           <li><b>Web3 Library:</b> ethers.js v6.16</li>
           <li><b>ZK Circuits:</b> Circom 2.0 (Age, Range, Merkle Membership)</li>
-          <li><b>BaaS / DB:</b> Supabase (PostgreSQL 15, Auth, RLS)</li>
-          <li><b>Serverless:</b> 9 Deno Edge Functions</li>
+          <li><b>BaaS / DB:</b> Supabase (PostgreSQL 15, Auth, 15 Tables, RLS)</li>
+          <li><b>Serverless:</b> 14 Deno Edge Functions</li>
           <li><b>Decentralized Storage:</b> Pinata IPFS API</li>
-          <li><b>Standards:</b> W3C VC, W3C DID, OID4VCI, OID4VP, EIP-712, EIP-4337, EIP-5192</li>
-          <li><b>Biometrics:</b> WebAuthn API (FIDO2 / Passkeys)</li>
+          <li><b>Standards:</b> W3C VC, W3C DID, OID4VCI, OID4VP, EIP-712, EIP-4337, EIP-5192, EIP-4361</li>
+          <li><b>Biometrics:</b> WebAuthn API (FIDO2 / Passkeys) & Interactive Liveness</li>
         </ul>
       </td>
     </tr>
@@ -400,7 +402,7 @@ block-id/
 | `npm run dev` | Launch local Vite development server with HMR |
 | `npm run build` | Compile and bundle production application |
 | `npm run preview` | Preview production build locally |
-| `npm test` | Run complete Vitest unit & integration test suite (16 test files) |
+| `npm test` | Run complete Vitest unit & integration test suite (20 test suites, 416 tests) |
 | `npm run test:watch` | Run Vitest in interactive watch mode |
 | `npm run lint` | Run ESLint syntax and style analysis |
 | `npm run compile` | Compile all Solidity smart contracts using Hardhat |
@@ -409,6 +411,9 @@ block-id/
 | `npm run deploy:sepolia` | Deploy smart contracts to Ethereum Sepolia |
 | `npm run deploy:amoy` | Deploy smart contracts to Polygon Amoy |
 | `npm run verify:amoy` | Verify deployed contracts on Polygonscan |
+| `npm run benchmark:gas` | Run on-chain gas benchmarking across smart contracts |
+| `npm run benchmark:latency` | Benchmark ZKP proving, hashing, and verification latency |
+| `npm run eval:anomaly` | Evaluate statistical anomaly engine on synthetic datasets |
 
 ---
 
@@ -416,25 +421,29 @@ block-id/
 
 BLOCKID maintains extensive unit, integration, and smart contract test coverage.
 
-### 📊 Test Suite Summary: **367 Tests Passing Across 16 Suites**
+### 📊 Test Suite Summary: **416 Tests Passing Across 20 Suites**
 
 ```
-✓ src/lib/crypto.test.ts                        (23 tests)  Canonical JSON hashing, SHA-256 calculation
-✓ src/lib/permissions.test.ts                   (20 tests)  5 RBAC user roles, permissions, route guards
-✓ src/services/ai/credential-ai.service.test.ts (39 tests)  AI risk analysis, anomaly scoring, fallback
-✓ src/lib/ml/anomaly.test.ts                    (28 tests)  5-detector statistical anomaly engine
-✓ src/lib/ml/trustScore.test.ts                 (25 tests)  8-factor Trust Radar calculation & weighting
-✓ src/lib/zkp.test.ts                           (22 tests)  Client snarkjs Groth16 witness & proof flow
-✓ src/services/blockchain/sbt.service.test.ts   (24 tests)  EIP-5192 Soulbound Token mint & lock views
-✓ src/lib/accountAbstraction.test.ts            (26 tests)  ERC-4337 smart accounts & session keys
-✓ src/services/auth/siwe.service.test.ts        (21 tests)  Sign-In With Ethereum (EIP-4361) flow
-✓ src/lib/siwe.test.ts                          (18 tests)  SIWE message formatting & signature validation
-✓ src/services/biometrics/biometric.service.test.ts (19 tests) WebAuthn registration & verification
-✓ src/lib/biometrics/liveness.test.ts           (17 tests)  Biometric liveness assurance & challenge response
-✓ src/services/blockchain/biometricAnchor.service.test.ts (16 tests) Biometric commitment anchoring
-✓ src/lib/ipfs.test.ts                          (22 tests)  Pinata IPFS upload, CID formatting, fetch
-✓ src/lib/generateCertificatePdf.test.ts        (15 tests)  PDF vector rendering, badges & layout
-✓ src/components/ProtectedRoute.test.tsx        (32 tests)  Authentication guards, role approvals, redirects
+✓ src/lib/zkp.test.ts                                (79 tests)  Circom witness parsing, Groth16 proving, nullifier hashing
+✓ src/services/ai/credential-ai.service.test.ts     (39 tests)  AI risk analysis, anomaly scoring, heuristic fallbacks
+✓ src/lib/siwe.test.ts                              (33 tests)  EIP-4361 message parsing, nonce validation, replay protection
+✓ src/lib/ml/anomaly.test.ts                        (30 tests)  5-detector statistical anomaly engine
+✓ src/lib/crypto.test.ts                            (27 tests)  Canonical JSON RFC-8785 normalization, SHA-256 calculation
+✓ src/lib/ipfs.test.ts                              (24 tests)  Pinata IPFS upload, CID validation, gateway resolution
+✓ src/lib/permissions.test.ts                       (20 tests)  5 RBAC user roles, permissions matrix, access policies
+✓ src/lib/zkp.integration.test.ts                   (19 tests)  End-to-end circuit execution with WASM & proving keys
+✓ test/CredentialRegistry.test.js                   (18 tests)  Solidity contract tests: single/batch anchor, revocation
+✓ src/lib/biometrics/liveness.test.ts               (16 tests)  Biometric liveness assurance & challenge response
+✓ src/services/blockchain/sbt.service.test.ts       (16 tests)  EIP-5192 Soulbound Token mint & on-chain lock views
+✓ src/lib/accountAbstraction.test.ts                (13 tests)  ERC-4337 smart accounts, session keys, UserOp packing
+✓ src/lib/fileValidation.test.ts                    (13 tests)  File upload validation, MIME checks, payload guards
+✓ src/lib/generateCertificatePdf.test.ts            (12 tests)  PDF vector rendering, badges & layout geometry
+✓ src/lib/ml/trustScore.test.ts                     (11 tests)  8-factor Trust Radar calculation & weighting
+✓ src/services/auth/siwe.service.test.ts            (11 tests)  Sign-In With Ethereum (EIP-4361) flow & session exchange
+✓ src/services/blockchain/biometricAnchor.service.test.ts (11 tests) On-chain biometric commitment anchoring
+✓ src/services/biometrics/biometric.service.test.ts (10 tests) WebAuthn registration & biometric challenge checks
+✓ src/components/ProtectedRoute.test.tsx            (9 tests)   Authentication guards, role approvals, route redirects
+✓ src/components/layout/PortalLayout.test.tsx       (5 tests)   Navigation bar, active portal tab, responsive sidebar
 ```
 
 ### Running Tests

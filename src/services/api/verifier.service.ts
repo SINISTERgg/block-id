@@ -133,7 +133,14 @@ export async function callVerifyEdgeFunction(
   );
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`verify-credential failed: ${text}`);
+    let message = `verify-credential failed (HTTP ${res.status})`;
+    try {
+      const body = JSON.parse(text);
+      if (body?.error && typeof body.error === "string") message = body.error;
+    } catch {
+      // Non-JSON error body — keep the generic message
+    }
+    throw new Error(message.slice(0, 240));
   }
   return res.json();
 }

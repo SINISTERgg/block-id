@@ -3,11 +3,16 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, verifyUserHasRole, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 60;
+const ANCHOR_ROLES = ["issuer", "org_admin"];
+const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
@@ -26,21 +31,34 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Unauthorized");
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
-    const { credential_id, tx_hash, block_number, from_address, anchored_at, force_update } = await req.json();
+    // Anchor is only meaningful for issuers / org admins.
+    const isIssuer = await verifyUserHasRole(supabase, user.id, ANCHOR_ROLES);
+    if (!isIssuer) return jsonResponse({ error: "Forbidden: issuer role required" }, 403, corsHeaders);
 
-    if (!credential_id || !tx_hash) {
-      throw new Error("credential_id and tx_hash are required");
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    const { credential_id, tx_hash, block_number, from_address, anchored_at, force_update } = body;
+
+    if (typeof credential_id !== "string" || !credential_id) {
+      return jsonResponse({ error: "credential_id is required" }, 400, corsHeaders);
+    }
+    if (typeof tx_hash !== "string" || !TX_HASH_PATTERN.test(tx_hash)) {
+      return jsonResponse({ error: "tx_hash must be a valid 0x transaction hash" }, 400, corsHeaders);
     }
 
     const { data: credential } = await supabase
@@ -50,7 +68,7 @@ serve(async (req) => {
       .eq("issuer_id", user.id)
       .single();
 
-    if (!credential) throw new Error("Credential not found or unauthorized");
+    if (!credential) return jsonResponse({ error: "Credential not found or unauthorized" }, 404, corsHeaders);
 
     // Skip duplicate check when force_update is true (fixing stale mainnet records)
     if (credential.blockchain_anchor && !force_update) {
@@ -87,7 +105,10 @@ serve(async (req) => {
       })
       .eq("id", credential_id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error("anchor-credential update error:", updateError);
+      return jsonResponse({ error: "Failed to update credential anchor" }, 400, corsHeaders);
+    }
 
     await logAudit(supabase, user.id, "credential_anchored", "credential", credential_id, {
       tx_hash,
@@ -106,9 +127,6 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("anchor-credential error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: sanitizedError(e, "Failed to record anchor") }, 400, corsHeaders);
   }
 });

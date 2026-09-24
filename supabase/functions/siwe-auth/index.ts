@@ -9,11 +9,23 @@ import {
   validateSiweChallenge,
   walletToEmail,
 } from "../_shared/siwe.ts";
+import {
+  clientIp,
+  jsonResponse,
+  rateLimited,
+  sanitizedError,
+  tooManyRequestsResponse,
+} from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 30;
+const MAX_BODY_BYTES = 64 * 1024;
+const NONCE_RATE_LIMIT_MAX = 30;
+const VERIFY_RATE_LIMIT_MAX = 30;
 
 type DbClient = {
   from: (table: string) => {
@@ -41,15 +53,32 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
+
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(url, serviceKey);
 
-    const body = await req.json();
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return jsonResponse({ error: "Request body too large" }, 413, corsHeaders);
+    }
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
     const action = body?.action;
 
     // ── Step 1: issue challenge ────────────────────────────────────────────
     if (action === "nonce") {
+      if (rateLimited(clientIp(req), 60_000, NONCE_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
       const address = typeof body.address === "string" ? normalizeAddress(body.address) : null;
       const nonce = generateNonce();
       const expiresAt = isoTimestamp(SIWE_CHALLENGE_TTL_MS);
@@ -68,6 +97,10 @@ serve(async (req) => {
 
     // ── Step 2: verify signature + bind Supabase identity ──────────────────
     if (action === "verify") {
+      if (rateLimited(clientIp(req), 60_000, VERIFY_RATE_LIMIT_MAX)) {
+        return tooManyRequestsResponse(corsHeaders);
+      }
+
       const { message, signature } = body;
       if (typeof message !== "string" || typeof signature !== "string") {
         throw new Error("message and signature are required");
@@ -168,13 +201,10 @@ serve(async (req) => {
       );
     }
 
-    throw new Error("Unknown action — use 'nonce' or 'verify'");
+    return jsonResponse({ error: "Unknown action — use 'nonce' or 'verify'" }, 404, corsHeaders);
   } catch (e) {
     console.error("siwe-auth error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: sanitizedError(e, "SIWE authentication failed") }, 400, corsHeaders);
   }
 });
 

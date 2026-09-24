@@ -3,11 +3,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPinataConfigured, pinJsonToIpfs } from "../_shared/ipfs.ts";
 import { computeCredentialHash } from "../_shared/vc-hash.ts";
 import { resolveAutoIdFields } from "../_shared/identity-id.ts";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, verifyUserHasRole, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 30;
+const ISSURER_ROLES = ["issuer", "org_admin"];
+const MAX_BATCH_SIZE = 500;
+const DID_PATTERN = /^did:[a-z0-9]+:.+$/i;
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
@@ -65,7 +71,6 @@ async function ensureSchemaPinned(supabase: any, userId: string, schema: any): P
       triggered_by: "issuance",
     });
 
-    console.log("Schema pinned to IPFS:", pin.cid);
     return pin.cid;
   } catch (e) {
     console.warn("IPFS schema pinning skipped:", e instanceof Error ? e.message : e);
@@ -83,14 +88,11 @@ async function issueOne(
   issuerSignature: string | null,
   signerAddress: string | null
 ) {
-  console.log("issueOne called with:", { userId, schemaId: schema.id, holderDid });
-
   const { data: holderProfile } = await supabase
     .from("profiles")
     .select("user_id")
     .eq("did", holderDid)
     .single();
-  console.log("holderProfile:", holderProfile);
 
   // ── Fix: prev_hash race condition ────────────────────────────────────────────
   // Use a millisecond-precision timestamp salt appended to the canonical JSON
@@ -172,7 +174,6 @@ async function issueOne(
     insertData.expires_at = expiresAt;
   }
 
-  console.log("Inserting credential with data:", JSON.stringify(insertData));
   const { data: credential, error: insertError } = await supabase
     .from("credentials")
     .insert(insertData)
@@ -181,7 +182,7 @@ async function issueOne(
 
   if (insertError) {
     console.error("Insert error:", insertError);
-    throw new Error("DB insert failed: " + JSON.stringify(insertError));
+    throw new Error("Failed to store credential");
   }
 
   await logAudit(supabase, userId, "credential_issued", "credential", credential.id, {
@@ -200,26 +201,46 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Unauthorized");
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+
+    // ── Server-side RBAC: only issuers (or org admins) may issue ──────────────
+    const isIssuer = await verifyUserHasRole(supabase, user.id, ISSUER_ROLES);
+    if (!isIssuer) return jsonResponse({ error: "Forbidden: issuer role required" }, 403, corsHeaders);
 
     const body = await req.json();
     const { schema_id, holder_did, credential_data, expires_at, batch, issuer_signature, signer_address } = body;
 
-    const { data: schema } = await supabase
+    if (typeof schema_id !== "string" || !schema_id.trim()) {
+      return jsonResponse({ error: "schema_id is required" }, 400, corsHeaders);
+    }
+
+    // Validate batch size and shapes before touching the DB.
+    if (batch !== undefined) {
+      if (!Array.isArray(batch)) return jsonResponse({ error: "batch must be an array" }, 400, corsHeaders);
+      if (batch.length === 0 || batch.length > MAX_BATCH_SIZE) {
+        return jsonResponse({ error: `batch must contain 1-${MAX_BATCH_SIZE} items` }, 400, corsHeaders);
+      }
+    } else if (holder_did !== undefined) {
+      if (typeof holder_did !== "string" || !DID_PATTERN.test(holder_did)) {
+        return jsonResponse({ error: "holder_did must be a valid DID" }, 400, corsHeaders);
+      }
+    }
+
+    const { data: schema, error: schemaError } = await supabase
       .from("credential_schemas")
       .select("*")
       .eq("id", schema_id)
       .single();
-    if (!schema) throw new Error("Schema not found");
+    if (schemaError || !schema) return jsonResponse({ error: "Schema not found" }, 404, corsHeaders);
 
     // Batch issuance
     if (batch && Array.isArray(batch)) {
@@ -227,6 +248,10 @@ serve(async (req) => {
       const errors = [];
       for (const item of batch) {
         try {
+          if (typeof item?.holder_did !== "string" || !DID_PATTERN.test(item.holder_did)) {
+            errors.push({ holder_did: item?.holder_did, error: "Invalid holder DID" });
+            continue;
+          }
           const cred = await issueOne(
             supabase, user.id, schema,
             item.holder_did,
@@ -237,7 +262,7 @@ serve(async (req) => {
           );
           results.push(cred);
         } catch (e) {
-          errors.push({ holder_did: item.holder_did, error: e instanceof Error ? e.message : "Unknown error" });
+          errors.push({ holder_did: item.holder_did, error: sanitizedError(e, "Failed to issue item") });
         }
       }
 
@@ -264,12 +289,11 @@ serve(async (req) => {
       });
     } catch (issueError) {
       console.error("issueOne error:", issueError);
-      throw new Error("Failed to issue: " + (issueError instanceof Error ? issueError.message : String(issueError)));
+      throw issueError;
     }
   } catch (e) {
     console.error("issue-credential error:", e);
-    const errorMsg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: errorMsg, details: errorMsg }), {
+    return new Response(JSON.stringify({ error: sanitizedError(e, "Failed to issue credential") }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

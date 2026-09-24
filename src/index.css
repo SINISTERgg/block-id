@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -508,12 +506,46 @@
   background: hsl(var(--primary));
 }
 
+/* --- Entrance animations (CSS-only, no JS Motion lib needed) --- */
+@keyframes motion-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-distance, 20px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.motion-fade-up {
+  opacity: 0;
+  animation: motion-fade-up 0.5s cubic-bezier(0.25, 0, 0, 1) both;
+}
+.motion-stagger > .motion-stagger-child {
+  animation-delay: calc(var(--motion-stagger-index, 0) * 0.08s);
+}
+.motion-stagger > .motion-stagger-child:nth-child(1) { --motion-stagger-index: 0; }
+.motion-stagger > .motion-stagger-child:nth-child(2) { --motion-stagger-index: 1; }
+.motion-stagger > .motion-stagger-child:nth-child(3) { --motion-stagger-index: 2; }
+.motion-stagger > .motion-stagger-child:nth-child(4) { --motion-stagger-index: 3; }
+.motion-stagger > .motion-stagger-child:nth-child(5) { --motion-stagger-index: 4; }
+.motion-stagger > .motion-stagger-child:nth-child(6) { --motion-stagger-index: 5; }
+.motion-stagger > .motion-stagger-child:nth-child(7) { --motion-stagger-index: 6; }
+.motion-stagger > .motion-stagger-child:nth-child(8) { --motion-stagger-index: 7; }
+
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
   .animate-float,
   .animate-glow-pulse,
   .animate-bounce,
-  .animate-ping {
+  .animate-ping,
+  .motion-fade-up,
+  .motion-stagger > .motion-stagger-child {
     animation: none !important;
+  }
+  .motion-fade-up,
+  .motion-stagger > .motion-stagger-child {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 import {
   Search, Share2, Link2, Copy, Download, Loader2, FileSearch, Layers,
-  ScanLine, CheckCircle2, XCircle, Wand2, Trash2, Send, ChevronRight,
-  Sparkles, Info,
+  ScanLine, CheckCircle2, XCircle, Trash2, Send, ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { loadRequestDefaults } from "@/lib/verifierDefaults";
 import { useToast } from "@/hooks/use-toast";
 import { callVerifyEdgeFunction, submitVerificationRequest, downloadTextFile } from "@/services/api/verifier.service";
 import { supabase } from "@/integrations/supabase/client";
-import { SAMPLE_VPS, CREDENTIAL_TYPE_OPTIONS } from "@/data/VerifierSampleVPs";
+import { CREDENTIAL_TYPE_OPTIONS } from "@/data/VerifierSampleVPs";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface VerifyViewProps {
@@ -90,14 +90,6 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
     }
     setVerifying(false);
     onRecordsRefresh();
-  };
-
-  const applySample = (vp: string) => {
-    setVerifyMode("vp");
-    setVpJson(vp);
-    setStep("input");
-    setVerificationResult(null);
-    toast({ title: "Sample loaded", description: "Replace the credential_id placeholder before verifying." });
   };
 
   const resetInput = () => {
@@ -208,7 +200,7 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
                     <Textarea
                       value={vpJson}
                       onChange={(e) => { setVpJson(e.target.value); setVerificationResult(null); setStep("input"); }}
-                      placeholder={"Paste a VP JSON here, or pick a sample below…"}
+                      placeholder={"Paste a VP JSON here…"}
                       rows={7}
                       className="font-mono text-xs input-solid"
                     />
@@ -224,34 +216,6 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
                     />
                   </div>
                 )}
-
-                {/* Sample library */}
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Wand2 className="h-3.5 w-3.5 text-verifier" /> Sample library
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {SAMPLE_VPS.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => applySample(s.vpJson)}
-                        title={s.description}
-                        className="text-[11px] px-3 py-1.5 rounded-full border border-border/60 bg-background hover:border-verifier/40 hover:text-verifier text-muted-foreground transition-colors"
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setVerifyMode("id")}
-                      className="text-[11px] px-3 py-1.5 rounded-full border border-border/60 bg-background hover:border-verifier/40 hover:text-verifier text-muted-foreground transition-colors"
-                    >
-                      Verify by credential ID
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Info className="h-3 w-3" /> Samples are templates — replace the credential_id placeholder with a real one from your registry.
-                  </p>
-                </div>
 
                 <div className="flex gap-2 flex-wrap">
                   <Button className="btn-primary flex-1 sm:flex-none" onClick={verifyCredential} disabled={verifying || !verifyInputFilled}>

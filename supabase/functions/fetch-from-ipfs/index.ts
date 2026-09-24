@@ -5,6 +5,13 @@ import {
   isValidCid,
   toGatewayUrl,
 } from "../_shared/ipfs.ts";
+import {
+  clientIp,
+  jsonResponse,
+  rateLimited,
+  sanitizedError,
+  tooManyRequestsResponse,
+} from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +20,7 @@ const corsHeaders = {
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_CONTENT_BYTES = 512 * 1024; // 512 KB guard rail
+const RATE_LIMIT_MAX = 120;
 
 /**
  * Resolves a CID or ipfs:// URI from an IPFS gateway.
@@ -22,6 +30,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
+
     let input: string | null = null;
     if (req.method === "GET") {
       const url = new URL(req.url);
@@ -77,9 +89,6 @@ serve(async (req) => {
   } catch (e) {
     console.error("fetch-from-ipfs error:", e);
     const status = e instanceof Error && e.message.includes("not allowed") ? 405 : 400;
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: sanitizedError(e, "Failed to fetch content from IPFS") }, status, corsHeaders);
   }
 });

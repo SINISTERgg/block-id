@@ -12,17 +12,25 @@
  * Required Supabase secrets:
  *   SERVER_WALLET_PRIVATE_KEY   — private key of the server wallet (no 0x prefix needed)
  *   CREDENTIAL_REGISTRY_ADDRESS — deployed contract address
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (auto-provided)
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto-provided)
+ *
+ * Auth: requires a logged-in user with the `issuer` or `org_admin` role.
+ * Rate-limited to prevent abuse (each call spends testnet gas).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ethers } from "https://esm.sh/ethers@6.13.2";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, verifyUserHasRole, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 10; // this function spends testnet gas
+const ANCHOR_ROLES = ["issuer", "org_admin"];
+const ETH_ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 
 const SEPOLIA_CHAIN_ID = 11155111;
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
@@ -69,27 +77,45 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // ── Auth ─────────────────────────────────────────────────────────────────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
+    // ── Rate limit: gas spend, so be strict ───────────────────────────────────
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
 
+    // ── Auth ─────────────────────────────────────────────────────────────────
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
 
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Unauthorized");
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+
+    // ── RBAC: only issuers / org admins can trigger gas spends ───────────────
+    const isIssuer = await verifyUserHasRole(supabase, user.id, ANCHOR_ROLES);
+    if (!isIssuer) return jsonResponse({ error: "Forbidden: issuer role required" }, 403, corsHeaders);
 
     // ── Validate config ───────────────────────────────────────────────────────
     const privateKey = Deno.env.get("SERVER_WALLET_PRIVATE_KEY");
-    if (!privateKey) throw new Error("SERVER_WALLET_PRIVATE_KEY secret not set. Add it via: supabase secrets set SERVER_WALLET_PRIVATE_KEY=<key>");
+    if (!privateKey) return jsonResponse({ error: "Server wallet is not configured" }, 503, corsHeaders);
 
     const contractAddress = Deno.env.get("CREDENTIAL_REGISTRY_ADDRESS");
-    if (!contractAddress) throw new Error("CREDENTIAL_REGISTRY_ADDRESS secret not set");
+    if (!contractAddress || !ETH_ADDRESS_PATTERN.test(contractAddress)) {
+      return jsonResponse({ error: "Anchor contract is not configured" }, 503, corsHeaders);
+    }
 
     // ── Parse request ─────────────────────────────────────────────────────────
-    const { credential_id, credential_hash } = await req.json();
-    if (!credential_id || !credential_hash) throw new Error("credential_id and credential_hash are required");
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    const { credential_id, credential_hash } = body;
+    if (typeof credential_id !== "string" || !credential_id) {
+      return jsonResponse({ error: "credential_id is required" }, 400, corsHeaders);
+    }
+    if (typeof credential_hash !== "string" || !credential_hash.startsWith("0x")) {
+      return jsonResponse({ error: "credential_hash must be a hex string" }, 400, corsHeaders);
+    }
 
     // Verify issuer owns the credential
     const { data: credential } = await supabase
@@ -123,7 +149,7 @@ serve(async (req) => {
       maxFeePerGas: ethers.parseUnits("20", "gwei"),
     });
 
-    console.log(`[anchor-server] Tx submitted: ${tx.hash}`);
+    console.info(`[anchor-server] Tx submitted: ${tx.hash}`);
     const receipt = await tx.wait();
 
     if (!receipt) throw new Error("No receipt received — transaction may have failed");
@@ -174,7 +200,7 @@ serve(async (req) => {
 
   } catch (e) {
     console.error("anchor-credential-server error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: sanitizedError(e, "Blockchain anchoring failed") }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

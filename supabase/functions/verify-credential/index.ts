@@ -7,11 +7,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ethers } from "https://esm.sh/ethers@6.13.4";
 import { analyzeCredential, enhanceWithGemini } from "./ai-engine.ts";
 import { computeCredentialHash } from "../_shared/vc-hash.ts";
+import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, sanitizedError, jsonResponse } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const RATE_LIMIT_MAX = 60;
+const MAX_VP_JSON_BYTES = 2_000_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SEPOLIA_RPC_ENDPOINTS = [
   "https://ethereum-sepolia-rpc.publicnode.com",
@@ -75,21 +80,34 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+      return tooManyRequestsResponse(corsHeaders);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) throw new Error("Unauthorized");
+    const user = await requireUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
 
-    const { credential_id, vp_json } = await req.json();
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_VP_JSON_BYTES) {
+      return jsonResponse({ error: "Request body too large" }, 413, corsHeaders);
+    }
+    let parsedBody;
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    const { credential_id, vp_json } = parsedBody;
 
     let credential;
     if (credential_id) {
+      if (typeof credential_id !== "string" || !UUID_PATTERN.test(credential_id)) {
+        return jsonResponse({ error: "credential_id must be a valid UUID" }, 400, corsHeaders);
+      }
       const { data } = await supabase
         .from("credentials")
         .select("*, credential_schemas(*)")
@@ -97,7 +115,12 @@ serve(async (req) => {
         .single();
       credential = data;
     } else if (vp_json) {
-      const vp = typeof vp_json === "string" ? JSON.parse(vp_json) : vp_json;
+      let vp;
+      try {
+        vp = typeof vp_json === "string" ? JSON.parse(vp_json) : vp_json;
+      } catch {
+        return jsonResponse({ error: "vp_json is not valid JSON" }, 400, corsHeaders);
+      }
       const credId = vp?.verifiableCredential?.id || vp?.credential_id;
       if (credId) {
         const { data } = await supabase
@@ -109,7 +132,7 @@ serve(async (req) => {
       }
     }
 
-    if (!credential) throw new Error("Credential not found");
+    if (!credential) return jsonResponse({ error: "Credential not found" }, 404, corsHeaders);
 
     const vc = credential.credential_data as Record<string, unknown>;
 
@@ -256,7 +279,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("verify-credential error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: sanitizedError(e, "Verification failed") }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

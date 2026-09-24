@@ -63,14 +63,8 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
 
             if (!status.anchored) {
               // Credential was never anchored on-chain — skip silently
-              console.info(
-                "[BlockID] Credential not anchored on-chain, skipping on-chain revocation.",
-              );
             } else if (status.revoked) {
               // Already revoked on-chain — no need to send another tx
-              console.info(
-                "[BlockID] Credential already revoked on-chain, skipping duplicate tx.",
-              );
             } else {
               // Anchored and not yet revoked — proceed with on-chain revocation
               const receipt = await revokeCredentialOnChain(credentialHash);

@@ -1,23 +1,20 @@
-import { motion, type HTMLMotionProps } from "framer-motion";
-import { ReactNode } from "react";
-import { MOTION, fadeSlide, stagger, staggerItem } from "@/lib/motion";
+import { CSSProperties, ReactNode } from "react";
 
-interface FadeInProps extends HTMLMotionProps<"div"> {
+interface FadeInProps {
   children: ReactNode;
   delay?: number;
   className?: string;
+  style?: CSSProperties;
 }
 
-const FadeIn = ({ children, delay = 0, className, ...props }: FadeInProps) => (
-  <motion.div
-    initial={{ opacity: 0, y: MOTION.DISTANCE }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: MOTION.DURATION, delay, ease: MOTION.EASE }}
-    className={className}
+const FadeIn = ({ children, delay = 0, className = "", style, ...props }: FadeInProps) => (
+  <div
+    className={`motion-fade-up ${className}`.trim()}
+    style={{ animationDelay: `${delay}s`, ...style }}
     {...props}
   >
     {children}
-  </motion.div>
+  </div>
 );
 
 interface StaggerProps {
@@ -25,21 +22,12 @@ interface StaggerProps {
   className?: string;
 }
 
-const Stagger = ({ children, className }: StaggerProps) => (
-  <motion.div
-    variants={stagger}
-    initial="hidden"
-    animate="visible"
-    className={className}
-  >
-    {children}
-  </motion.div>
+const Stagger = ({ children, className = "" }: StaggerProps) => (
+  <div className={`motion-stagger ${className}`.trim()}>{children}</div>
 );
 
-const StaggerItem = ({ children, className }: StaggerProps) => (
-  <motion.div variants={staggerItem} className={className}>
-    {children}
-  </motion.div>
+const StaggerItem = ({ children, className = "" }: StaggerProps) => (
+  <div className={`motion-stagger-child ${className}`.trim()}>{children}</div>
 );
 
-export { FadeIn, Stagger, StaggerItem, fadeSlide, stagger };
+export { FadeIn, Stagger, StaggerItem };

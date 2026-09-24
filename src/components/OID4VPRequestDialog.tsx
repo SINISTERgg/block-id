@@ -57,10 +57,12 @@ const OID4VPRequestDialog = () => {
 
     pollRef.current = setInterval(async () => {
       try {
+        const { data: sess } = await supabase.auth.getSession();
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/oid4vp/status?session_id=${request.session_id}`,
-          { headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY } }
+          { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } }
         );
+        if (!res.ok) return;
         const data = await res.json();
         if (data.status === "completed") {
           setStatus("completed");

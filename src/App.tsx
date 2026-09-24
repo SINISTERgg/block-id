@@ -39,7 +39,22 @@ const App = () => {
   // Instantiated inside the component so it is created once per app mount
   // and is properly garbage-collected on unmount. This avoids stale state
   // during HMR and keeps the client isolated in tests.
-  const queryClient = useMemo(() => new QueryClient(), []);
+  const queryClient = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: false,
+            retry: 1,
+          },
+          mutations: {
+            retry: 0,
+          },
+        },
+      }),
+    []
+  );
 
   return (
     <ErrorBoundary>
@@ -96,21 +111,25 @@ const App = () => {
                     </ErrorBoundary>
                   } />
 
-                  {/* Blockchain Explorer — available to issuer, holder, and admin portals only */}
+                  {/* Blockchain Explorer — issuer / holder / admin only */}
                   <Route path="/explorer" element={
                     <ErrorBoundary>
                       <ProtectedRoute>
-                        <RoleGuard denyRoles={["verifier"]}>
+                        <RoleGuard allowRoles={["org_admin", "issuer", "holder"]}>
                           <BlockchainExplorer />
                         </RoleGuard>
                       </ProtectedRoute>
                     </ErrorBoundary>
                   } />
 
-                  {/* Audit log */}
+                  {/* Audit log — only roles granted audit:view */}
                   <Route path="/audit" element={
                     <ErrorBoundary>
-                      <ProtectedRoute><AuditLog /></ProtectedRoute>
+                      <ProtectedRoute>
+                        <RoleGuard allowRoles={["org_admin", "issuer", "verifier", "auditor"]}>
+                          <AuditLog />
+                        </RoleGuard>
+                      </ProtectedRoute>
                     </ErrorBoundary>
                   } />
 
