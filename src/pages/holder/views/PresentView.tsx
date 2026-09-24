@@ -368,31 +368,33 @@ const PresentView = ({
 
       {/* ── Credential Picker Dialog ──────────────────────────────────────── */}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="font-display flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" />
               Select Credential to Share
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
+
+          <div className="flex-1 overflow-y-auto space-y-4 pt-2 pr-1">
+            {/* Description */}
+            <p className="text-sm text-muted-foreground leading-relaxed">
               Choose which credential to share with the verifier.
               {pickerRequest?.credential_type && (
-                <> They requested a <strong>{pickerRequest.credential_type}</strong>.</>
+                <> They requested a <strong className="text-foreground">{pickerRequest.credential_type}</strong>.</>
               )}
-              {pickerRequest?.purpose && (
-                <> Purpose: <em>{pickerRequest.purpose}</em>.</>
+              {pickerRequest?.purpose && pickerRequest.purpose.trim() && (
+                <> Purpose: <em className="text-foreground/80">{pickerRequest.purpose}</em>.</>
               )}
             </p>
 
             {/* Credential list */}
             {matchingCredentials.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground text-sm">
+              <div className="flex items-center justify-center py-6 rounded-lg border border-dashed border-border/60 text-muted-foreground text-sm">
                 No matching active credentials found.
               </div>
             ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto">
+              <div className="space-y-2">
                 {(matchingCredentials.length > 0 ? matchingCredentials : activeCredentials).map((cred) => (
                   <button
                     key={cred.id}
@@ -400,15 +402,15 @@ const PresentView = ({
                     className={`w-full text-left p-3 rounded-lg border transition-all ${
                       selectedCredId === cred.id
                         ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                        : "border-border/60 hover:border-primary/30"
+                        : "border-border/60 hover:border-primary/30 hover:bg-muted/20"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {cred.credential_schemas?.name || "Credential"}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {cred.credential_schemas?.credential_type} · Issued {new Date(cred.issued_at).toLocaleDateString()}
                         </p>
                       </div>
@@ -425,23 +427,29 @@ const PresentView = ({
             {selectedCred && vpInput && (
               <Collapsible open={vpPanelOpen} onOpenChange={setVpPanelOpen}>
                 <CollapsibleTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full gap-2 text-xs">
-                    <Eye className="h-3.5 w-3.5" />
-                    {vpPanelOpen ? "Hide" : "Preview"} Verifiable Presentation (QR / JWT / JSON / Chain)
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 text-xs font-medium"
+                  >
+                    <Eye className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {vpPanelOpen ? "Hide" : "Show"} Verifiable Presentation (QR / JWT / JSON / Chain)
+                    </span>
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="mt-3 border border-border/60 rounded-lg p-3">
+                <CollapsibleContent className="mt-2 border border-border/60 rounded-lg p-3 bg-muted/10">
                   <VPExportPanel vpInput={vpInput} />
                 </CollapsibleContent>
               </Collapsible>
             )}
 
             {/* Storage consent toggle */}
-            <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/30">
-              <div className="flex items-start gap-2">
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
+              <div className="flex items-start gap-2 min-w-0">
                 <Lock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <Label className="text-sm font-medium">Allow permanent storage</Label>
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium cursor-pointer">Allow permanent storage</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {storageConsent
                       ? "The verifier can store this credential indefinitely."
@@ -449,26 +457,30 @@ const PresentView = ({
                   </p>
                 </div>
               </div>
-              <Switch checked={storageConsent} onCheckedChange={setStorageConsent} />
+              <Switch checked={storageConsent} onCheckedChange={setStorageConsent} className="shrink-0" />
             </div>
 
             {/* AI notice */}
             <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
               <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
-              AI will automatically verify this credential in the background after sharing.
+              <span>AI will automatically verify this credential in the background after sharing.</span>
             </div>
+          </div>
 
+          {/* Footer — always visible */}
+          <div className="shrink-0 pt-3 border-t border-border/40 mt-1">
             <Button
-              className="w-full"
+              className="w-full gap-2"
               disabled={!selectedCredId}
               onClick={handleAcceptWithCredential}
             >
-              <ShieldCheck className="h-4 w-4 mr-2" />
+              <ShieldCheck className="h-4 w-4" />
               Share Selected Credential
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
 
       {/* ── Active credentials list ───────────────────────────────────────── */}
       {activeCredentials.length === 0 ? (

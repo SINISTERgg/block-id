@@ -117,6 +117,39 @@ export async function fetchPendingRequests(
  * Supabase returns 0 rows affected (not an error) when RLS blocks an UPDATE,
  * which previously caused a false-success toast while the DB was unchanged.
  */
+/**
+ * Strip large binary blobs (embedded JWS / proofValue strings) and truncate
+ * any other oversized string fields from credential data before writing to
+ * Supabase. This prevents "Data too long" / payload-size errors that occur
+ * when credentials carry large base64-encoded proof values.
+ */
+function sanitizeSharedData(data: Record<string, unknown>): Record<string, unknown> {
+  const MAX_STR = 2000; // chars — generous for readable fields, tight for blobs
+  const clone: Record<string, unknown> = {};
+
+  for (const [key, val] of Object.entries(data)) {
+    if (typeof val === "string" && val.length > MAX_STR) {
+      // Keep a short prefix so the verifier can still see the field exists
+      clone[key] = val.slice(0, MAX_STR) + "…[truncated]";
+    } else if (val && typeof val === "object" && !Array.isArray(val)) {
+      // Recurse one level into nested objects (e.g. credentialSubject, proof)
+      const nested: Record<string, unknown> = {};
+      for (const [nk, nv] of Object.entries(val as Record<string, unknown>)) {
+        if (typeof nv === "string" && nv.length > MAX_STR) {
+          nested[nk] = nv.slice(0, MAX_STR) + "…[truncated]";
+        } else {
+          nested[nk] = nv;
+        }
+      }
+      clone[key] = nested;
+    } else {
+      clone[key] = val;
+    }
+  }
+
+  return clone;
+}
+
 export async function respondToRequest(
   requestId: string,
   action: "accepted" | "rejected",
@@ -137,7 +170,9 @@ export async function respondToRequest(
 
   if (action === "accepted" && options?.sharedData) {
     payload.credential_id          = options.credentialId || null;
-    payload.shared_credential_data = options.sharedData;
+    // Sanitize before writing — prevents "Data too long" for credentials
+    // with large embedded proof blobs (JWS, base64-encoded signatures, etc.)
+    payload.shared_credential_data = sanitizeSharedData(options.sharedData);
     payload.storage_consent        = options.storageConsent ?? false;
     if (!options.storageConsent) {
       payload.access_expires_at = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Shield, Clock, Link2, AlertTriangle, ArrowLeft, EyeOff } from "lucide-react";
+import { Shield, Clock, Link2, AlertTriangle, ArrowLeft, EyeOff, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,49 +23,124 @@ const SharedCredential = () => {
   const [data, setData] = useState<SharedData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const handleRetry = useCallback(() => {
+    setError(null);
+    setData(null);
+    setLoading(true);
+    setRetryCount((c) => c + 1);
+  }, []);
 
   useEffect(() => {
     const fetchShared = async () => {
       if (!token) { setError("Invalid link"); setLoading(false); return; }
 
-      // Token-gated lookup via SECURITY DEFINER RPC (see migration
-      // 20260919000002_secure_share_tokens.sql) — the token is the
-      // capability; it is validated server-side against credential_shares.
-      const { data, error } = await supabase
-        .rpc("get_shared_credential", { p_token: token })
-        .single();
+      // Primary path: SECURITY DEFINER RPC validates token server-side.
+      try {
+        const { data: rpcData, error: rpcError } = await supabase
+          .rpc("get_shared_credential", { p_token: token })
+          .single();
 
-      if (error || !data) {
-        setError("Share link not found or invalid");
-        setLoading(false);
-        return;
+        if (rpcError) {
+          const isMissingFn =
+            rpcError.code === "PGRST202" ||
+            rpcError.message?.includes("function") ||
+            rpcError.message?.includes("42883");
+
+          if (!isMissingFn) {
+            console.warn("[SharedCredential] RPC error:", rpcError);
+            setError("Share link not found or invalid");
+            setLoading(false);
+            return;
+          }
+          console.warn("[SharedCredential] RPC not found, trying direct query:", rpcError.message);
+        } else if (rpcData) {
+          setData({
+            credential: {
+              credential_data: rpcData.credential_data,
+              credential_hash: rpcData.credential_hash,
+              blockchain_anchor: rpcData.blockchain_anchor,
+              status: rpcData.status,
+              issued_at: rpcData.issued_at,
+              credential_schemas: rpcData.schema_name
+                ? { name: rpcData.schema_name, credential_type: rpcData.schema_type }
+                : null,
+            },
+            expiresAt: rpcData.expires_at,
+            disclosedFields: rpcData.disclosed_fields as string[] | null,
+          });
+          setLoading(false);
+          return;
+        } else {
+          setError("Share link not found or expired");
+          setLoading(false);
+          return;
+        }
+      } catch (rpcEx: any) {
+        console.warn("[SharedCredential] RPC exception:", rpcEx);
       }
 
-      const credential = {
-        credential_data: data.credential_data,
-        credential_hash: data.credential_hash,
-        blockchain_anchor: data.blockchain_anchor,
-        status: data.status,
-        issued_at: data.issued_at,
-        credential_schemas: data.schema_name
-          ? { name: data.schema_name, credential_type: data.schema_type }
-          : null,
-      };
+      // Fallback: direct table join for authenticated holders.
+      try {
+        const { data: shareRow, error: shareErr } = await supabase
+          .from("credential_shares")
+          .select(`
+            expires_at,
+            disclosed_fields,
+            credentials (
+              credential_data,
+              credential_hash,
+              blockchain_anchor,
+              status,
+              issued_at,
+              credential_schemas ( name, credential_type )
+            )
+          `)
+          .eq("token", token)
+          .gt("expires_at", new Date().toISOString())
+          .single();
 
-      setData({
-        credential,
-        expiresAt: data.expires_at,
-        disclosedFields: data.disclosed_fields as string[] | null,
-      });
-      setLoading(false);
+        if (shareErr || !shareRow || !shareRow.credentials) {
+          console.warn("[SharedCredential] Direct query failed:", shareErr);
+          setError("Share link not found or expired");
+          setLoading(false);
+          return;
+        }
+
+        const cred = shareRow.credentials as any;
+        setData({
+          credential: {
+            credential_data: cred.credential_data,
+            credential_hash: cred.credential_hash,
+            blockchain_anchor: cred.blockchain_anchor,
+            status: cred.status,
+            issued_at: cred.issued_at,
+            credential_schemas: cred.credential_schemas
+              ? { name: cred.credential_schemas.name, credential_type: cred.credential_schemas.credential_type }
+              : null,
+          },
+          expiresAt: shareRow.expires_at,
+          disclosedFields: shareRow.disclosed_fields as string[] | null,
+        });
+      } catch (fallbackErr: any) {
+        console.error("[SharedCredential] Fallback exception:", fallbackErr);
+        setError("Share link not found or expired");
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetchShared();
-  }, [token]);
+  }, [token, retryCount]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading shared credential...</div>
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-sm">Loading shared credential...</p>
+        </div>
       </div>
     );
   }
@@ -73,12 +148,30 @@ const SharedCredential = () => {
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 text-center space-y-4">
-            <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-            <h2 className="font-display text-xl font-bold text-foreground">{error}</h2>
-            <p className="text-sm text-muted-foreground">The credential share link may have expired or been removed.</p>
-            <Link to="/"><Button variant="outline">Go to Homepage</Button></Link>
+        <Card className="max-w-md w-full border-destructive/20">
+          <CardContent className="pt-8 pb-6 text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+            </div>
+            <div>
+              <h2 className="font-display text-xl font-bold text-foreground mb-1">{error}</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The share link may have expired, been revoked, or the URL may be incomplete.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={handleRetry}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <RefreshCw className="h-4 w-4" /> Retry
+              </button>
+              <Link to="/">
+                <button className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors">
+                  Go to Homepage
+                </button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -91,7 +184,6 @@ const SharedCredential = () => {
   const subject = credData?.credentialSubject || {};
   const hasSelectiveDisclosure = disclosedFields && disclosedFields.length > 0;
 
-  // Filter fields based on selective disclosure
   const visibleEntries = Object.entries(subject).filter(([key]) => {
     if (!hasSelectiveDisclosure) return true;
     return disclosedFields.includes(key);
@@ -139,18 +231,16 @@ const SharedCredential = () => {
               )}
             </div>
 
-            {/* Selective Disclosure Notice */}
             {hasSelectiveDisclosure && (
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-center gap-2 text-xs">
                 <EyeOff className="h-4 w-4 text-primary shrink-0" />
                 <span className="text-foreground">
-                  <strong>Selective Disclosure:</strong> The holder has chosen to share {visibleEntries.length} of {Object.keys(subject).length} fields.
+                  <strong>Selective Disclosure:</strong> The holder chose to share {visibleEntries.length} of {Object.keys(subject).length} fields.
                   {hiddenCount > 0 && ` ${hiddenCount} field(s) are redacted.`}
                 </span>
               </div>
             )}
 
-            {/* Credential fields */}
             <div className="border rounded-lg divide-y">
               {visibleEntries.map(([key, val]) => (
                 <div key={key} className="flex justify-between px-4 py-2.5 text-sm">
@@ -168,7 +258,6 @@ const SharedCredential = () => {
               )}
             </div>
 
-            {/* Blockchain info */}
             {credential.blockchain_anchor && (
               <div className="bg-muted rounded-lg p-3 text-xs font-mono space-y-1">
                 <p className="flex items-center gap-1.5">
@@ -183,7 +272,7 @@ const SharedCredential = () => {
             </div>
 
             <p className="text-xs text-center text-muted-foreground">
-              Shared via DecentraID • Verified on Ethereum Sepolia
+              Shared via BlockID • Verified on Ethereum Sepolia
             </p>
           </CardContent>
         </Card>
