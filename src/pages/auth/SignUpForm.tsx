@@ -87,12 +87,12 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({
                 key={key}
                 type="button"
                 onClick={() => setRole(key)}
-                className={`p-4 border-2 transition-colors text-center ${
-                  isSelected ? colorClass : "border-border hover:border-primary/40"
+                className={`p-4 border-2 transition-all rounded-xl text-center ${
+                  isSelected ? colorClass : "border-white/10 hover:border-primary/40"
                 }`}
               >
-                <div className={`w-10 h-10 mx-auto mb-2 flex items-center justify-center ${
-                  isSelected ? iconBg : "bg-muted"
+                <div className={`w-10 h-10 rounded-lg mx-auto mb-2 flex items-center justify-center ${
+                  isSelected ? `${iconBg} shadow-[0_0_18px_-5px_rgba(247,147,26,0.6)]` : "bg-muted"
                 }`}>
                   <Icon className={`h-5 w-5 ${isSelected ? "" : "text-muted-foreground"}`} />
                 </div>

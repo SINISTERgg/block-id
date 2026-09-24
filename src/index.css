@@ -3,78 +3,80 @@
 @tailwind utilities;
 
 /* ============================================================
-   BOLD TYPOGRAPHY DESIGN SYSTEM — BLOCKID
-   Dark-only. #0A0A0A void, #FAFAFA ink, #FF3D00 vermillion.
-   Sharp corners (0px). No shadows. Type does the work.
+   BITCOIN DeFi DESIGN SYSTEM — BLOCKID
+   Dark-only. #030304 true void, #F7931A bitcoin orange,
+   #FFD600 digital gold. 1rem cards, pill buttons, colored glows.
+   "Not generic dark mode — a deep cosmic void where data glows."
    ============================================================ */
 
 @layer base {
   :root,
   .dark {
     /* Surfaces */
-    --background: 0 0% 4%;
-    --foreground: 0 0% 98%;
+    --background: 240 14% 1%;      /* #030304 True Void */
+    --foreground: 0 0% 100%;       /* Pure Light */
 
-    --card: 0 0% 6%;
+    --card: 220 17% 7%;            /* #0F1115 Dark Matter */
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 7%;
+    --popover: 220 14% 5%;
     --popover-foreground: 0 0% 98%;
 
-    /* Primary — Vermillion (#FF3D00) */
-    --primary: 14 100% 50%;
-    --primary-foreground: 0 0% 4%;
+    /* Primary — Bitcoin Orange (#F7931A) */
+    --primary: 31 93% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 10%;
-    --secondary-foreground: 0 0% 98%;
+    /* Secondary accent — Burnt Orange (#EA580C) */
+    --secondary: 220 12% 8%;
+    --secondary-foreground: 0 0% 96%;
 
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 220 12% 10%;
+    --muted-foreground: 215 20% 65%;   /* #94A3B8 Stardust */
 
-    --accent: 14 100% 50%;
-    --accent-foreground: 0 0% 4%;
+    --accent: 31 93% 53%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;
+    --success: 45 100% 45%;        /* Digital Gold (success/value) */
     --warning: 45 100% 50%;
     --info: 199 89% 48%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 14 100% 50%;
+    --border: 217 33% 17%;         /* #1E293B Dim Boundary */
+    --input: 217 33% 17%;
+    --ring: 31 93% 53%;
 
-    --radius: 0px;
+    --radius: 1rem;
 
     /* Typography */
-    --font-display: 'Playfair Display', Georgia, serif;
-    --font-heading: 'Inter Tight', 'Inter', sans-serif;
-    --font-body: 'Inter Tight', 'Inter', sans-serif;
+    --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    --font-heading: 'Space Grotesk', 'Inter', sans-serif;
+    --font-body: 'Inter', 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Role colors — flat, sharp, distinct */
-    --issuer: 21 90% 48%;
-    --issuer-foreground: 0 0% 98%;
+    /* Role colors — the trust triangle in bitcoin fire */
+    --issuer: 21 84% 48%;          /* Burnt Orange */
+    --issuer-foreground: 0 0% 100%;
     --issuer-muted: 0 0% 12%;
 
-    --holder: 33 93% 54%;
+    --holder: 50 100% 50%;         /* Digital Gold */
     --holder-foreground: 0 0% 4%;
     --holder-muted: 0 0% 12%;
 
-    --verifier: 50 100% 50%;
-    --verifier-foreground: 0 0% 4%;
+    --verifier: 31 93% 53%;        /* Bitcoin Orange */
+    --verifier-foreground: 0 0% 100%;
     --verifier-muted: 0 0% 12%;
 
     /* Sidebar */
-    --sidebar-background: 0 0% 3%;
+    --sidebar-background: 0 0% 1%;
     --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 14 100% 50%;
-    --sidebar-primary-foreground: 0 0% 4%;
-    --sidebar-accent: 0 0% 12%;
+    --sidebar-primary: 31 93% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 8%;
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 18%;
-    --sidebar-ring: 14 100% 50%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 31 93% 53%;
   }
 }
 
@@ -118,7 +120,7 @@
 }
 
 /* ============================================================
-   SIGNATURE STYLES — Bold Typography
+   SIGNATURE STYLES — Bitcoin DeFi
    ============================================================ */
 
 /* --- Film grain / noise overlay (subtle, 1.5%) --- */
@@ -134,16 +136,16 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
 
-/* --- Hairline grid backdrop --- */
+/* --- Blockchain grid backdrop --- */
 .bg-grid-pattern {
-  background-size: 56px 56px;
+  background-size: 50px 50px;
   background-image:
-    linear-gradient(to right, hsl(var(--border) / 0.45) 1px, transparent 1px),
-    linear-gradient(to bottom, hsl(var(--border) / 0.45) 1px, transparent 1px);
+    linear-gradient(to right, hsl(var(--border) / 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.55) 1px, transparent 1px);
 }
 .bg-grid-pattern-fade {
-  mask-image: radial-gradient(circle at center, black 0%, transparent 78%);
-  -webkit-mask-image: radial-gradient(circle at center, black 0%, transparent 78%);
+  mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
 }
 
 /* --- Dot pattern backdrop --- */
@@ -152,14 +154,20 @@
   background-size: 22px 22px;
 }
 
-/* --- Vermillion text accent --- */
+/* --- Bitcoin orange accent (legacy alias of --primary) --- */
 .text-accent-verm {
   color: hsl(var(--primary));
 }
 
-/* --- Gradient text — vermillion fade, editorial --- */
+/* --- Gradient text — bitcoin orange → digital gold --- */
 .text-gradient-accent {
-  background: linear-gradient(100deg, hsl(var(--primary)), hsl(var(--primary) / 0.55));
+  background: linear-gradient(100deg, hsl(var(--primary)), hsl(var(--holder)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-bitcoin {
+  background: linear-gradient(100deg, #EA580C, #F7931A 55%, #FFD600);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -206,8 +214,8 @@
 
 .text-headline {
   font-size: clamp(1.75rem, 4vw, 3.5rem);
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.02;
   font-family: var(--font-heading);
   text-transform: uppercase;
@@ -215,7 +223,7 @@
 
 .text-title {
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.15;
   font-family: var(--font-heading);
@@ -235,7 +243,7 @@
   letter-spacing: 0.15em;
 }
 
-/* --- Underline animations (Bold Typography signature) --- */
+/* --- Underline animations --- */
 .underline-brand {
   position: relative;
   display: inline-block;
@@ -273,35 +281,42 @@
   background: currentColor;
 }
 
-/* --- Panels: sharp, borderless, type-led --- */
+/* --- Glass morphism panels --- */
 .glass {
-  background: hsl(var(--card) / 0.6);
-  border: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--card) / 0.55);
+  border: 1px solid hsl(0 0% 100% / 0.1);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 .glass-card {
-  background: hsl(var(--card) / 0.6);
-  border: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--card) / 0.55);
+  border: 1px solid hsl(0 0% 100% / 0.1);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: 1rem;
 }
 .glass-header {
   background: hsl(var(--background) / 0.82);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  border-bottom: 1px solid hsl(0 0% 100% / 0.08);
 }
 .solid-card {
   background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(0 0% 100% / 0.1);
 }
 
-/* --- Long-form text --- */
+/* --- Cards --- */
 .card-standard {
   background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(0 0% 100% / 0.1);
+  border-radius: 1rem;
   padding: 1.5rem;
 }
 .card-inverted {
   background: hsl(var(--foreground));
   color: hsl(var(--background));
+  border-radius: 1rem;
   padding: 1.5rem;
 }
 .card-borderless {
@@ -310,7 +325,8 @@
 }
 .stat-card {
   background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(0 0% 100% / 0.1);
+  border-radius: 1rem;
   border-top: 2px solid hsl(var(--primary));
   padding: 1.5rem;
 }
@@ -323,12 +339,12 @@
   padding: 0 1.5rem;
 }
 
-/* --- Inputs: flat underline style --- */
+/* --- Inputs: single bottom-border terminal fields --- */
 .input-solid,
 .input-standard {
   background: transparent;
   border: none;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 2px solid hsl(0 0% 100% / 0.15);
   padding: 0.75rem 0;
   font-family: var(--font-mono);
   font-size: 0.875rem;
@@ -378,73 +394,74 @@
   outline-offset: 2px;
 }
 
-/* --- Ghost legacy button helpers (sharp, text-led) --- */
+/* --- Buttons: pill, gradient, glowing (legacy helpers) --- */
 .btn-primary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: 0 1.5rem;
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #EA580C, #F7931A);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  transition: background 200ms ease;
+  box-shadow: 0 0 20px -5px rgba(234, 88, 12, 0.5);
+  transition: all 300ms ease;
 }
 .btn-primary:hover {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  transform: scale(1.03);
+  box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.6);
 }
 .btn-secondary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: 0 1.5rem;
+  border-radius: 9999px;
   background: transparent;
   color: var(--foreground);
-  border: 1px solid hsl(var(--border));
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  border: 2px solid hsl(0 0% 100% / 0.2);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  transition: border-color 200ms ease, color 200ms ease;
+  transition: border-color 200ms ease, background 200ms ease, color 200ms ease;
 }
 .btn-secondary:hover {
   border-color: hsl(var(--primary));
+  background: hsl(0 0% 100% / 0.06);
   color: hsl(var(--primary));
 }
 .btn-ghost {
   background: transparent;
   color: var(--foreground);
   padding: 0.5rem 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  transition: color 200ms ease;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 200ms ease, background 200ms ease;
 }
 .btn-ghost:hover {
   color: hsl(var(--primary));
+  background: hsl(0 0% 100% / 0.06);
 }
 
-/* --- Legacy glow names: now flat, no shadows --- */
-.glow-primary { box-shadow: none; }
-.glow-issuer { box-shadow: none; }
-.glow-holder { box-shadow: none; }
-.glow-verifier { box-shadow: none; }
-.hover\:glow-primary:hover { box-shadow: none; }
-.hover\:glow-issuer:hover { box-shadow: none; }
-.hover\:glow-holder:hover { box-shadow: none; }
-.hover\:glow-verifier:hover { box-shadow: none; }
+/* --- Colored luminescence — no pure black shadows --- */
+.glow-primary { box-shadow: 0 0 20px -5px rgba(247, 147, 26, 0.5); }
+.glow-issuer { box-shadow: 0 0 20px -5px rgba(234, 88, 12, 0.5); }
+.glow-holder { box-shadow: 0 0 20px rgba(255, 214, 0, 0.3); }
+.glow-verifier { box-shadow: 0 0 20px -5px rgba(247, 147, 26, 0.5); }
+.hover\:glow-primary:hover { box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.6); }
+.hover\:glow-issuer:hover { box-shadow: 0 0 30px -5px rgba(234, 88, 12, 0.6); }
+.hover\:glow-holder:hover { box-shadow: 0 0 28px rgba(255, 214, 0, 0.4); }
+.hover\:glow-verifier:hover { box-shadow: 0 0 30px -5px rgba(247, 147, 26, 0.6); }
 
-/* --- Pulses & floats (kept subtle) --- */
+/* --- Pulses & floats --- */
 @keyframes glow-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 .animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
@@ -466,7 +483,7 @@
   animation: fade-in 0.5s cubic-bezier(0.25, 0, 0, 1) forwards;
 }
 
-/* --- Corner accents: 90-degree ticks --- */
+/* --- Corner accents: 90-degree ticks — "selected node" --- */
 .corner-accent {
   position: relative;
 }
@@ -506,7 +523,7 @@
   background: hsl(var(--primary));
 }
 
-/* --- Entrance animations (CSS-only, no JS Motion lib needed) --- */
+/* --- Entrance animations (CSS-only) --- */
 @keyframes motion-fade-up {
   from {
     opacity: 0;

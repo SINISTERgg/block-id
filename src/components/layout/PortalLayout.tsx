@@ -78,10 +78,9 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
               </Tooltip>
 
               <div className="flex items-center gap-3">
-                {/* Brand node — sharp, flat, corner notch */}
-                <div className={`relative w-9 h-9 ${colors.bg} ${colors.text} flex items-center justify-center`}>
+                {/* Brand node — glowing liquidity node */}
+                <div className={`relative w-9 h-9 ${colors.bg} rounded-xl flex items-center justify-center shadow-[0_0_18px_-4px_rgba(247,147,26,0.5)]`}>
                   <span className="text-base leading-none">{icon}</span>
-                  <span className="absolute -bottom-1 -right-1 w-2 h-2 bg-background" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="font-heading text-base font-bold uppercase tracking-tight leading-none">
@@ -97,9 +96,12 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
             {/* Right cluster — status + nav on desktop */}
             <div className="flex items-center gap-3">
               {/* Status telemetry (desktop) */}
-              <div className="hidden lg:flex items-center gap-4 border border-border px-3 py-1.5">
+              <div className="hidden lg:flex items-center gap-4 rounded-full border border-white/10 bg-white/5 px-4 py-1.5">
                 <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-                  <span className={`inline-block h-1.5 w-1.5 ${colors.bg} animate-glow-pulse`} />
+                  <span className="relative inline-flex h-1.5 w-1.5">
+                    <span className={`absolute inline-flex h-full w-full rounded-full ${colors.bg} opacity-60 animate-ping`} />
+                    <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${colors.bg}`} />
+                  </span>
                   Live Session
                 </span>
                 <span className="h-3 w-px bg-border" />
@@ -115,10 +117,10 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                     <button
                       key={item.path}
                       onClick={() => navigate(item.path)}
-                      className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors duration-200 ${
+                      className={`px-3 py-2 rounded-full font-mono text-[10px] font-semibold uppercase tracking-[0.16em] transition-all duration-200 ${
                         isActive
-                          ? `${colors.accent}`
-                          : "text-muted-foreground hover:text-foreground"
+                          ? `${colors.accent} bg-white/5`
+                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                       }`}
                     >
                       {isActive && <span className={`mr-1.5 ${colors.accent}`}>/</span>}
@@ -157,7 +159,7 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
 
               {/* User node */}
               <div className="hidden md:flex items-center gap-2.5 border-l border-border pl-3">
-                <div className={`w-8 h-8 border ${colors.border} flex items-center justify-center font-mono font-bold text-[11px] ${colors.accent}`}>
+                <div className={`w-8 h-8 rounded-full border ${colors.border} flex items-center justify-center font-mono font-bold text-[11px] ${colors.accent} shadow-[0_0_14px_-4px_rgba(247,147,26,0.4)]`}>
                   {initials}
                 </div>
                 <div className="hidden xl:block">
@@ -187,13 +189,13 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                 {navItems.map((item, i) => {
                   const isActive = location.pathname === item.path;
                   return (
-                    <button
-                      key={item.path}
-                      onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                      className={`flex items-center gap-3 px-4 py-3 text-left transition-colors duration-200 ${
-                        isActive ? `border-l-2 ${colors.border} bg-muted` : "border border-border"
-                      }`}
-                    >
+<button
+                  key={item.path}
+                  onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${
+                    isActive ? `border-l-2 ${colors.border} bg-white/5` : "border border-white/10"
+                  }`}
+                >
                       <span className={`font-mono text-[10px] ${isActive ? colors.accent : "text-muted-foreground"}`}>
                         {String(i + 1).padStart(2, "0")}
                       </span>
@@ -206,7 +208,7 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
               </nav>
               <div className="flex items-center justify-between pt-3 border-t border-border">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 border ${colors.border} flex items-center justify-center font-mono font-bold text-xs ${colors.accent}`}>
+                  <div className={`w-8 h-8 rounded-full border ${colors.border} flex items-center justify-center font-mono font-bold text-xs ${colors.accent}`}>
                     {initials}
                   </div>
                   <span className="text-sm font-semibold">{profile?.full_name}</span>
@@ -233,10 +235,10 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
-                  className={`group w-full flex items-center gap-4 px-6 py-3 border-l-2 text-left transition-colors duration-200 ${
+                  className={`group w-full flex items-center gap-4 px-6 py-3 border-l-2 text-left transition-all duration-200 ${
                     isActive
-                      ? `${colors.border} bg-muted/40`
-                      : "border-transparent hover:border-border hover:bg-muted/20"
+                      ? `${colors.border} bg-white/5 shadow-[inset_0_0_20px_-12px_rgba(247,147,26,0.5)]`
+                      : "border-transparent hover:border-white/15 hover:bg-white/[0.03]"
                   }`}
                 >
                   <span className={`font-mono text-xs tabular-nums transition-colors ${
@@ -257,12 +259,15 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
 
           {/* Rail footer — role module */}
           <div className="px-6">
-            <div className={`border border-border ${colors.soft}`}>
-              <div className={`flex items-center justify-between border-b border-border px-3 py-2`}>
+            <div className={`rounded-xl border border-white/10 ${colors.soft}`}>
+              <div className={`flex items-center justify-between rounded-t-xl border-b border-white/10 px-3 py-2 bg-black/30`}>
                 <span className={`font-mono text-[9px] font-semibold uppercase tracking-[0.18em] ${colors.accent}`}>
                   {portalType}
                 </span>
-                <span className={`inline-block h-1.5 w-1.5 ${colors.bg}`} />
+                <span className={`relative inline-flex h-1.5 w-1.5`}>
+                  <span className={`absolute inline-flex h-full w-full rounded-full ${colors.bg} opacity-60 animate-ping`} />
+                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${colors.bg}`} />
+                </span>
               </div>
               <div className="px-3 py-3">
                 <p className="text-xs font-semibold truncate">{profile?.full_name || "User"}</p>

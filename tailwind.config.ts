@@ -14,9 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["'Playfair Display'", "Georgia", "serif"],
-        heading: ["'Inter Tight'", "Inter", "sans-serif"],
-        body: ["'Inter Tight'", "Inter", "sans-serif"],
+        display: ["'Space Grotesk'", "Inter", "sans-serif"],
+        heading: ["'Space Grotesk'", "Inter", "sans-serif"],
+        body: ["'Inter'", "'Space Grotesk'", "sans-serif"],
         mono: ["'JetBrains Mono'", "monospace"],
       },
       colors: {
@@ -78,6 +78,7 @@ export default {
           void: "#030304",
           matter: "#0F1115",
           stardust: "#94A3B8",
+          boundary: "#1E293B",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
@@ -92,20 +93,21 @@ export default {
       },
       borderRadius: {
         none: "0px",
-        DEFAULT: "0px",
-        sm: "0px",
-        md: "0px",
-        lg: "0px",
-        xl: "0px",
-        "2xl": "0px",
-        "3xl": "0px",
+        DEFAULT: "0.5rem",
+        sm: "0.25rem",
+        md: "0.375rem",
+        lg: "0.5rem",
+        xl: "0.75rem",
+        "2xl": "1rem",
+        "3xl": "1.5rem",
         full: "9999px",
       },
       boxShadow: {
-        "glow-orange": "none",
-        "glow-orange-lg": "none",
-        "glow-gold": "none",
-        "glow-card": "none",
+        "glow-orange": "0 0 20px -5px rgba(234, 88, 12, 0.5)",
+        "glow-orange-lg": "0 0 30px -5px rgba(247, 147, 26, 0.6)",
+        "glow-gold": "0 0 20px rgba(255, 214, 0, 0.3)",
+        "glow-card": "0 0 50px -10px rgba(247, 147, 26, 0.1)",
+        "glow-input": "0 10px 20px -10px rgba(247, 147, 26, 0.3)",
       },
       fontSize: {
         xs: ["0.6875rem", { lineHeight: "1", letterSpacing: "0.05em" }],
@@ -155,6 +157,18 @@ export default {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-20px)" },
         },
+        "glow-pulse": {
+          "0%, 100%": { opacity: "0.35", transform: "scale(0.9)" },
+          "50%": { opacity: "1", transform: "scale(1.1)" },
+        },
+        "ping-slow": {
+          "0%": { transform: "scale(1)", opacity: "0.7" },
+          "80%, 100%": { transform: "scale(2.2)", opacity: "0" },
+        },
+        "pulse-subtle": {
+          "0%, 100%": { opacity: "0.4" },
+          "50%": { opacity: "1" },
+        },
         spin: {
           to: { transform: "rotate(360deg)" },
         },
@@ -169,6 +183,9 @@ export default {
         "fade-slide-up": "fade-slide-up 0.5s cubic-bezier(0.25,0,0,1) forwards",
         shimmer: "shimmer 1.8s infinite",
         float: "float 8s ease-in-out infinite",
+        "glow-pulse": "glow-pulse 2s ease-in-out infinite",
+        "ping-slow": "ping-slow 2.5s cubic-bezier(0, 0, 0.2, 1) infinite",
+        "pulse-subtle": "pulse-subtle 1.8s ease-in-out infinite",
         "orbit-slow": "spin 10s linear infinite",
         "orbit-reverse": "spin-reverse 15s linear infinite",
       },
