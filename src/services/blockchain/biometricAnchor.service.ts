@@ -134,3 +134,62 @@ export async function isSubjectVerified(subjectHash: string, address?: string): 
   const anchor = new Contract(target, BIOMETRIC_ANCHOR_ABI, provider);
   return (await anchor.isBiometricallyVerified(normalizeProofHash(subjectHash))) as boolean;
 }
+
+const ZERO_PROOF_HASH = "0x" + "00".repeat(32);
+
+export interface BiometricAnchorRecord {
+  subjectHash: string;
+  proofHash: string;
+  verifier: string;
+  anchoredAt: number;
+  expiresAt: number;
+  /** True while `now` is inside the [anchoredAt, expiresAt) validity window. */
+  active: boolean;
+  expired: boolean;
+}
+
+/**
+ * Read a single anchored proof record and evaluate its freshness window.
+ * Returns null when the proof was never anchored (or was invalidated).
+ */
+export async function getBiometricAnchorRecord(
+  proofHash: string,
+  address?: string
+): Promise<BiometricAnchorRecord | null> {
+  const target = anchorAddress(address);
+  const provider = await getReadProvider();
+  const anchor = new Contract(target, BIOMETRIC_ANCHOR_ABI, provider);
+  const normalized = normalizeProofHash(proofHash);
+  const rec = await anchor.getRecord(normalized);
+  const [, , anchoredAt, expiresAt] = rec;
+  const anchored = BigInt(anchoredAt);
+  if (anchored === 0n || rec.proofHash === ZERO_PROOF_HASH) return null;
+
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const expires = BigInt(expiresAt);
+  return {
+    subjectHash: rec.subjectHash,
+    proofHash: rec.proofHash,
+    verifier: rec.verifier,
+    anchoredAt: Number(anchored),
+    expiresAt: Number(expires),
+    active: now < expires,
+    expired: now >= expires,
+  };
+}
+
+/**
+ * Latest anchored proof for a subject, or null when the subject has never
+ * been anchored. Uses `latestProofBySubject` then resolves the record.
+ */
+export async function getLatestProofForSubject(
+  subjectHash: string,
+  address?: string
+): Promise<BiometricAnchorRecord | null> {
+  const target = anchorAddress(address);
+  const provider = await getReadProvider();
+  const anchor = new Contract(target, BIOMETRIC_ANCHOR_ABI, provider);
+  const latest = (await anchor.latestProofBySubject(normalizeProofHash(subjectHash))) as string;
+  if (!latest || latest === ZERO_PROOF_HASH) return null;
+  return getBiometricAnchorRecord(latest, address);
+}

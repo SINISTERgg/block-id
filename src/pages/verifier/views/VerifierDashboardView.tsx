@@ -8,6 +8,7 @@ import TrustedIssuerRegistry from "@/components/TrustedIssuerRegistry";
 import LiveActivityFeed from "@/components/verifier/LiveActivityFeed";
 import VerifierOrgCard from "@/components/verifier/VerifierOrgCard";
 import AnchorChecker from "@/components/verifier/AnchorChecker";
+import IntelligenceOverview from "@/components/verifier/IntelligenceOverview";
 import { motion } from "framer-motion";
 import { MOTION } from "@/lib/motion";
 import { useNavigate } from "react-router-dom";
@@ -217,6 +218,18 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
             </Card>
           </motion.div>
         </div>
+      )}
+
+      {/* Intelligence overview: trust distribution, circuit usage, issuers */}
+      {records.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: MOTION.DISTANCE }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.24, duration: MOTION.DURATION, ease: MOTION.EASE }}
+          className="mt-6"
+        >
+          <IntelligenceOverview records={records} />
+        </motion.div>
       )}
 
       {/* Live activity + org profile */}

@@ -110,7 +110,7 @@ serve(async (req) => {
       }
       const { data } = await supabase
         .from("credentials")
-        .select("*, credential_schemas(*)")
+        .select("*, prev_hash, credential_schemas(*)")
         .eq("id", credential_id)
         .single();
       credential = data;
@@ -125,7 +125,7 @@ serve(async (req) => {
       if (credId) {
         const { data } = await supabase
           .from("credentials")
-          .select("*, credential_schemas(*)")
+          .select("*, prev_hash, credential_schemas(*)")
           .eq("id", credId)
           .single();
         credential = data;

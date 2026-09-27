@@ -1,8 +1,8 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import {
   Search, Share2, Link2, Copy, Download, Loader2, FileSearch, Layers,
-  ScanLine, CheckCircle2, XCircle, Trash2, Send, ChevronRight,
-  Sparkles,
+  ScanLine, CheckCircle2, XCircle, Trash2, Send, ChevronRight, QrCode,
+  Sparkles, FileCheck2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OID4VPRequestDialog from "@/components/OID4VPRequestDialog";
 import BulkVerifyDialog from "@/components/verifier/BulkVerifyDialog";
 import VerificationResultView from "@/components/verifier/VerificationResultView";
+import QrScannerDialog from "@/components/verifier/QrScannerDialog";
+import SchemaValidationPanel from "@/components/verifier/SchemaValidationPanel";
 import { loadRequestDefaults } from "@/lib/verifierDefaults";
 import { useToast } from "@/hooks/use-toast";
-import { callVerifyEdgeFunction, submitVerificationRequest, downloadTextFile } from "@/services/api/verifier.service";
+import {
+  callVerifyEdgeFunction,
+  submitVerificationRequest,
+  downloadTextFile,
+  fetchLatestVerificationRecords,
+  fetchPolicies,
+  fetchBlocklist,
+  addToBlocklist,
+  removeFromBlocklist,
+} from "@/services/api/verifier.service";
+import type { VerificationPolicyRow, BlocklistEntry } from "@/services/api/verifier.service";
 import { supabase } from "@/integrations/supabase/client";
 import { CREDENTIAL_TYPE_OPTIONS } from "@/data/VerifierSampleVPs";
+import type { IntelligenceRecord } from "@/lib/verifier/intelligence";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface VerifyViewProps {
@@ -47,11 +60,97 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
   // ── Bulk state ──
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // ── Intelligence context ──
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [policies, setPolicies] = useState<VerificationPolicyRow[]>([]);
+  const [activePolicyId, setActivePolicyId] = useState<string>("none");
+  const [blocklist, setBlocklist] = useState<BlocklistEntry[]>([]);
+  const [history, setHistory] = useState<IntelligenceRecord[]>([]);
+
+  const activePolicy = useMemo(
+    () => policies.find((p) => p.id === activePolicyId)?.policy_json ?? null,
+    [policies, activePolicyId]
+  );
+  const blockedDids = useMemo(() => blocklist.map((b) => b.holder_did), [blocklist]);
+
   useEffect(() => {
     const defaults = loadRequestDefaults();
     setRequestPurpose(defaults.defaultPurpose);
     setRequestType(defaults.defaultType);
   }, []);
+
+  // Load the verifier's own priors once: active policy, blocklist, history.
+  // These are the inputs the trust model and anomaly detectors need, and
+  // refetching them per verification would add three round trips per click.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [p, b, h] = await Promise.all([
+          fetchPolicies(verifierId),
+          fetchBlocklist(verifierId),
+          fetchLatestVerificationRecords(verifierId),
+        ]);
+        if (cancelled) return;
+        setPolicies(p);
+        setActivePolicyId(p.find((x) => x.is_active)?.id ?? "none");
+        setBlocklist(b);
+        setHistory(h);
+      } catch {
+        // Non-fatal: the result view degrades to per-presentation signals only.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [verifierId]);
+
+  const refreshIntelligence = useCallback(async () => {
+    try {
+      const [p, b, h] = await Promise.all([
+        fetchPolicies(verifierId),
+        fetchBlocklist(verifierId),
+        fetchLatestVerificationRecords(verifierId),
+      ]);
+      setPolicies(p);
+      setBlocklist(b);
+      setHistory(h);
+    } catch {
+      // keep previous context
+    }
+  }, [verifierId]);
+
+  const blockHolder = async (did: string) => {
+    try {
+      await addToBlocklist(verifierId, did, "Blocked from the verify view");
+      setBlocklist((prev) => [
+        { id: did, verifier_id: verifierId, holder_did: did, reason: "Blocked from the verify view", blocked_at: new Date().toISOString() },
+        ...prev.filter((e) => e.holder_did !== did),
+      ]);
+      toast({ title: "Holder blocklisted", description: did });
+    } catch (err) {
+      toast({
+        title: "Could not block holder",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const unblockHolder = async (did: string) => {
+    const entry = blocklist.find((e) => e.holder_did === did);
+    try {
+      if (entry) await removeFromBlocklist(entry.id);
+      setBlocklist((prev) => prev.filter((e) => e.holder_did !== did));
+      toast({ title: "Holder unblocked", description: did });
+    } catch (err) {
+      toast({
+        title: "Could not unblock holder",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
+  };
 
   const verifyCredential = async () => {
     const now = Date.now();
@@ -90,6 +189,7 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
     }
     setVerifying(false);
     onRecordsRefresh();
+    refreshIntelligence();
   };
 
   const resetInput = () => {
@@ -149,9 +249,33 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
           <TabsTrigger value="verify" className="gap-1.5"><Search className="h-3.5 w-3.5" /> Verify</TabsTrigger>
           <TabsTrigger value="request" className="gap-1.5"><Share2 className="h-3.5 w-3.5" /> Request</TabsTrigger>
         </TabsList>
-
         {/* ═══════════ VERIFY TAB ═══════════ */}
         <TabsContent value="verify" className="space-y-6">
+          {/* Active policy — decides which rules gate each result */}
+          <div className="flex items-center gap-2 flex-wrap rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <FileCheck2 className="h-3.5 w-3.5 text-verifier shrink-0" />
+            <span className="text-[11px] text-muted-foreground shrink-0">Evaluate against</span>
+            <Select value={activePolicyId} onValueChange={setActivePolicyId}>
+              <SelectTrigger className="h-8 input-solid text-xs w-auto min-w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No policy (report only)</SelectItem>
+                {policies.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                    {p.is_active ? " (active)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {blocklist.length > 0 ? (
+              <span className="font-mono text-[10px] text-muted-foreground ml-auto">
+                {blocklist.length} blocked holder{blocklist.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
+
           {/* Wizard steps indicator */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className={`px-2.5 py-1 rounded-full border font-semibold ${step === "input" ? "bg-verifier/10 text-verifier border-verifier/30" : "text-emerald-600 border-emerald-500/30 bg-emerald-500/5"}`}>
@@ -196,13 +320,27 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
 
                 {verifyMode === "vp" ? (
                   <div className="space-y-2">
-                    <Label>Verifiable Presentation (JSON)</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Verifiable Presentation (JSON)</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() => setScannerOpen(true)}
+                      >
+                        <QrCode className="h-3.5 w-3.5" /> Scan QR
+                      </Button>
+                    </div>
                     <Textarea
                       value={vpJson}
                       onChange={(e) => { setVpJson(e.target.value); setVerificationResult(null); setStep("input"); }}
-                      placeholder={"Paste a VP JSON here…"}
+                      placeholder={"Paste a VP JSON here, or scan the holder's QR code…"}
                       rows={7}
                       className="font-mono text-xs input-solid"
+                    />
+                    <SchemaValidationPanel
+                      value={vpJson}
+                      onApply={(patched) => { setVpJson(patched); setVerificationResult(null); setStep("input"); }}
                     />
                   </div>
                 ) : (
@@ -262,7 +400,14 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
                         </Button>
                       </div>
                     </div>
-                    <VerificationResultView result={verificationResult} />
+                    <VerificationResultView
+                      result={verificationResult}
+                      history={history}
+                      policy={activePolicy}
+                      blockedHolders={blockedDids}
+                      onBlockHolder={blockHolder}
+                      onUnblockHolder={unblockHolder}
+                    />
                   </CardContent>
                 </Card>
               </motion.div>
@@ -354,6 +499,15 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
       </Tabs>
 
       <BulkVerifyDialog open={bulkOpen} onOpenChange={setBulkOpen} onRecordsRefresh={onRecordsRefresh} />
+      <QrScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScan={(payload) => {
+          setVpJson(payload);
+          setVerificationResult(null);
+          setStep("input");
+        }}
+      />
     </div>
   );
 };

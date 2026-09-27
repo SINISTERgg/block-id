@@ -11,7 +11,7 @@
 3. [End-to-End System Architecture](#3-end-to-end-system-architecture)
 4. [Application Routes, Navigation & Role Guards](#4-application-routes-navigation--role-guards)
 5. [Authentication, RBAC & Approval Workflow](#5-authentication-rbac--approval-workflow)
-6. [Database Schema Specification (15 Tables)](#6-database-schema-specification-15-tables)
+6. [Database Schema Specification (17 Tables)](#6-database-schema-specification-17-tables)
 7. [Row-Level Security (RLS) Policy Architecture](#7-row-level-security-rls-policy-architecture)
 8. [Database Stored Procedures, Functions & Triggers](#8-database-stored-procedures-functions--triggers)
 9. [Deno Edge Functions API Specification (14 Microservices)](#9-deno-edge-functions-api-specification-14-microservices)
@@ -31,9 +31,10 @@
 23. [Privacy & GDPR Compliance (Articles 17 & 20)](#23-privacy--gdpr-compliance-articles-17--20)
 24. [Progressive Web App (PWA) & Offline Caching](#24-progressive-web-app-pwa--offline-caching)
 25. [Native Mobile Application (React Native / Expo)](#25-native-mobile-application-react-native--expo)
-26. [Testing, Quality Assurance & Benchmarks (416 Tests across 20 Suites)](#26-testing-quality-assurance--benchmarks-416-tests-across-20-suites)
-27. [Multi-Phase Roadmap (Phases 0 – 8 Complete)](#27-multi-phase-roadmap-phases-0--8-complete)
-28. [Developer Setup & Deployment Guide](#28-developer-setup--deployment-guide)
+26. [Verifier Intelligence, Policy Engine & Compliance Reporting](#26-verifier-intelligence-policy-engine--compliance-reporting)
+27. [Testing, Quality Assurance & Benchmarks (445 Tests across 19 Suites)](#27-testing-quality-assurance--benchmarks-445-tests-across-19-suites)
+28. [Multi-Phase Roadmap (Phases 0 through 9 Complete)](#28-multi-phase-roadmap-phases-0-through-9-complete)
+29. [Developer Setup & Deployment Guide](#29-developer-setup--deployment-guide)
 
 ---
 
@@ -102,7 +103,7 @@ DECENTRALIZED SSI (Cryptographic, Sovereign, Instant):
 | **Decentralized Storage** | Pinata IPFS Gateway | Pinata API | Content-addressed schema pinning (CIDv0 / CIDv1) |
 | **Biometric Security** | WebAuthn / FIDO2 | W3C Standard | Hardware-backed biometric passkeys (TouchID, FaceID, Windows Hello) |
 | **Mobile Application** | React Native + Expo | Expo SDK 52 | Native iOS/Android mobile client with SecureStore |
-| **Testing Framework** | Vitest + Hardhat Test Runner | 3.1.2 / 3.2.0 | 416 automated tests across 20 suites with JSDOM and Testing Library |
+| **Testing Framework** | Vitest + Hardhat Test Runner | 3.1.2 / 3.2.0 | 445 tests across 19 Vitest suites with JSDOM and Testing Library |
 
 ---
 
@@ -185,8 +186,8 @@ All application routes are defined in [`src/App.tsx`](file:///c:/Users/M%20S/Des
 | `/issuer/*` | `IssuerDashboard.tsx` | `issuer` | Subviews: Issue (`/issuer/issue`), Schemas (`/issuer/schemas`) |
 | `/holder` | `HolderWallet.tsx` | `holder` | Holder wallet: credential gallery, SBT badges, security controls |
 | `/holder/*` | `HolderWallet.tsx` | `holder` | Subviews: Present (`/holder/present`), ZKP Prover, WebAuthn settings |
-| `/verifier` | `VerifierDashboard.tsx`| `verifier` | Verifier dashboard overview, live feed, recent checks |
-| `/verifier/*` | `VerifierDashboard.tsx`| `verifier` | Subviews: Verify (`/verifier/verify`), History, Analytics |
+| `/verifier` | `VerifierDashboard.tsx`| `verifier` | Verifier dashboard overview, live feed, trust distribution, circuit usage, issuer leaderboard |
+| `/verifier/*` | `VerifierDashboard.tsx`| `verifier` | Subviews: Verify (`/verifier/verify`), History (`/verifier/history`), Analytics (`/verifier/analytics`), ZKP Studio (`/verifier/zkp`), SBT Inspector (`/verifier/sbt`), Policies (`/verifier/policies`), Threat Intel (`/verifier/threat`), Compliance (`/verifier/compliance`) |
 | `/explorer` | `BlockchainExplorer.tsx`| Protected (`org_admin`, `issuer`, `holder`) | Live EVM on-chain anchor query and transaction explorer |
 | `/audit` | `AuditLog.tsx` | Protected (`org_admin`, `issuer`, `verifier`, `auditor`) | Searchable, tamper-evident audit event log stream |
 | `/admin` | `AdminDashboard.tsx` | `org_admin` | Organization management, user approval lifecycle, trusted issuers |
@@ -240,7 +241,7 @@ System Admin Inspects in Admin Portal (`/admin`):
 
 ---
 
-## 6. Database Schema Specification (15 Tables)
+## 6. Database Schema Specification (17 Tables)
 
 The BLOCKID database runs on PostgreSQL 15 via Supabase, with full schema definitions managed across 21 migration files in `supabase/migrations/`.
 
@@ -324,6 +325,29 @@ OpenID4VP presentation requests initiated by verifiers.
 - `response_data` (`JSONB`, nullable) — Verifiable Presentation payload
 - `created_at` (`TIMESTAMPTZ`, default: `now()`)
 - `updated_at` (`TIMESTAMPTZ`, default: `now()`)
+
+**Verifier intelligence columns** (added by `20260926000001_verifier_intelligence.sql`). These persist the evidence captured *at verification time*, so the history view and compliance exports report what the verifier actually observed rather than a later recomputation:
+- `holder_did` (`TEXT`, nullable) — Holder DID from the presentation's `credentialSubject.id`
+- `credential_type` (`TEXT`, nullable) — Credential type label
+- `purpose` (`TEXT`, nullable) — Stated purpose of the verification request
+- `shared_credential_data` (`JSONB`, nullable) — Presented credential payload
+- `storage_consent` (`BOOLEAN`) — Holder consented to retention (vs. 4-hour view window)
+- `access_expires_at` (`TIMESTAMPTZ`, nullable)
+- `ai_analysis` (`JSONB`, nullable) — Multi-dimensional AI risk analysis
+- `zkp_circuit` (`TEXT`, nullable) — `age_verify` | `attribute_range` | `issuer_membership`
+- `zkp_proof_valid` (`BOOLEAN`, nullable) — Local Groth16 verification verdict
+- `zkp_on_chain_valid` (`BOOLEAN`, nullable) — `ZKPVerifier.sol` nullifier verdict
+- `zkp_nullifier` (`TEXT`, nullable) — Replay-protection nullifier
+- `trust_score` (`INTEGER`, nullable, check 0–100)
+- `trust_tier` (`TEXT`, nullable, check in `'platinum'`, `'gold'`, `'silver'`, `'bronze'`, `'untrusted'`)
+- `anomaly_risk` (`INTEGER`, nullable, check 0–100)
+- `anomaly_findings` (`JSONB`, nullable) — Which of the 5 detectors fired, with detail
+- `biometric_verified` (`BOOLEAN`, nullable)
+- `sbt_token_id` (`NUMERIC`, nullable) — EIP-5192 token id, when the holder is badged
+- `policy_id` (`UUID`, nullable, FK -> `verification_policies.id` on delete SET NULL) — Policy in force at verification time
+- `responded_at`, `verified_at` (`TIMESTAMPTZ`, nullable) — Timeline anchors
+
+> All intelligence columns are nullable by design. `NULL` means *not observed*, which the UI renders as an explicit "unknown" tri-state rather than as a pass or a failure.
 
 ### Table 8: `notifications`
 Real-time user notification events delivered via Supabase WebSocket channels.
@@ -413,6 +437,30 @@ Zero-raw-data biometric liveness verification records and challenge nonces.
   - `provider` (`TEXT`, default: `'mock'`)
   - `created_at` (`TIMESTAMPTZ`, default: `now()`)
 
+### Table 16: `verification_policies`
+Declarative acceptance policies owned by a verifier. Added by `20260926000001_verifier_intelligence.sql`.
+- `id` (`UUID`, PK, default: `gen_random_uuid()`)
+- `verifier_id` (`UUID`, not null, FK -> `profiles.id` on delete CASCADE)
+- `name` (`TEXT`, not null)
+- `description` (`TEXT`, nullable)
+- `policy_json` (`JSONB`, not null) — The policy document (see §26)
+- `is_active` (`BOOLEAN`, not null, default: `false`)
+- `created_at`, `updated_at` (`TIMESTAMPTZ`, default: `now()`)
+- **Partial unique index** on `verifier_id WHERE is_active` — at most one active policy per verifier, enforced by the database rather than by application code.
+
+### Table 17: `verifier_blocklist`
+Per-verifier denylist of **holder** DIDs. Added by `20260926000001_verifier_intelligence.sql`.
+- `id` (`UUID`, PK, default: `gen_random_uuid()`)
+- `verifier_id` (`UUID`, not null, FK -> `profiles.id` on delete CASCADE)
+- `holder_did` (`TEXT`, not null)
+- `reason` (`TEXT`, nullable) — Why the verifier recorded this decision
+- `blocked_at` (`TIMESTAMPTZ`, not null, default: `now()`)
+- **Unique** on `(verifier_id, holder_did)`.
+
+> **Scope limit — holder DIDs only.** This table models exactly one kind of denylist decision, and `holder_did` is the only subject it accepts. Issuer-level denylisting is deliberately **not** modelled: it would need different disclosure rules (an issuer is a third party, not the data subject) and a different visibility scope. Writing an issuer DID into `holder_did` is therefore a bug, not a feature request. The issuer profile in the verifier portal is read-only for this reason.
+>
+> Blocklisting is also **not** credential revocation and is **not** shared: entries are invisible to the holder, the issuer, and other verifiers. It records "handle this holder's presentations with extra scrutiny".
+
 ---
 
 ## 7. Row-Level Security (RLS) Policy Architecture
@@ -426,6 +474,8 @@ All tables in BLOCKID enforce strict PostgreSQL Row-Level Security. Following se
 4. **`credential_shares`**: Holders manage their own shares. Anonymous users can only `SELECT` share records if they supply the exact matching unexpired `share_token`.
 5. **`audit_logs`**: Users can `SELECT` logs where `user_id = auth.uid()`. Administrators and auditors (`has_role(auth.uid(), 'org_admin')` or `'auditor'`) can read all audit events. Writes are restricted to the platform service role and security definer triggers.
 6. **`siwe_nonces` & `biometric_challenges`**: No client policies exist. All operations occur strictly via Edge Functions executing with `service_role` authorization.
+7. **`verification_policies`**: Full `SELECT`/`INSERT`/`UPDATE`/`DELETE` only where `verifier_id = auth.uid()`. Policies are private working documents; no verifier can read another's policy set. Activation is additionally constrained by a partial unique index, so a verifier cannot end up with two active policies even via a race.
+8. **`verifier_blocklist`**: Same ownership scoping (`verifier_id = auth.uid()`) on all four operations. A blocklist is an internal risk decision, so it must not be readable by other verifiers, and the RLS policies contain no path by which a holder or issuer could learn they are listed.
 
 ---
 
@@ -776,35 +826,129 @@ Located in the [`mobile/`](file:///c:/Users/M%20S/Desktop/block-id/mobile/) dire
 
 ---
 
-## 26. Testing, Quality Assurance & Benchmarks (416 Tests across 20 Suites)
+## 26. Verifier Intelligence, Policy Engine & Compliance Reporting
 
-The platform enforces 100% pass rates across **416 automated tests** spanning 20 suites.
+This section covers the verifier intelligence layer: the declarative policy engine, the threat intelligence surfaces, and the compliance report generator. All of it is **derived from the verifier's own observation history** — none of it trusts a self-reported number supplied by an issuer or holder.
+
+### 1. Policy Document
+
+A policy is pure JSON, stored in `verification_policies.policy_json`, defined in [`src/lib/verifier/policy.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/verifier/policy.ts):
+
+```ts
+interface VerificationPolicy {
+  required_credential_types: string[];
+  require_zkp: { circuit: CircuitName; min_threshold?: number }[];
+  require_on_chain_anchor: boolean;
+  require_sbt_badge: boolean;
+  require_biometric: boolean;
+  require_smart_wallet: boolean;
+  min_trust_tier: "untrusted" | "bronze" | "silver" | "gold" | "platinum";
+  max_credential_age_days: number;
+}
+```
+
+`require_zkp` is an array because a verifier may accept *any one* of several circuits. Evaluation is deterministic and offline: the same `VerificationEvidence` always yields the same decision, and every failed rule carries a human-readable `detail` string for the audit trail.
+
+Two properties worth stating explicitly:
+
+- **Permissive by default.** `DEFAULT_POLICY` requires nothing, so an unconfigured verifier reports evidence and applies no gating. Absence of a policy is never silently treated as strict.
+- **Rule count is surfaced in the UI.** A policy with zero requirements passes 100% of presentations, which must not be mistaken for a strict policy. The builder displays the applicable rule count alongside the preview pass rate.
+
+### 2. The Three-State Rule
+
+Every signal is `true` / `false` / **unknown** (`null`). Unknown is not a synonym for false:
+
+| Observed | Rendered | Meaning |
+|---|---|---|
+| `true` | pass | The check ran and succeeded |
+| `false` | fail | The check ran and failed |
+| `null` | unknown | The check did not run, or was not persisted |
+
+This matters because most verifications arrive without a ZKP, without biometrics, and without geolocation. Rendering those as failures would report a verifier's own tooling gaps as credential fraud. Unknown propagates through `evaluatePolicy`, the trust model, and the compliance report unchanged.
+
+### 3. Persisted vs. Recomputed Evidence
+
+`verification_requests` stores the trust score, tier, anomaly risk, findings, and ZKP verdicts captured **at verification time**. The history detail modal and the compliance report read those persisted values via the `stored` prop rather than recomputing from the row, so the audit trail cannot drift away from what the verifier actually saw. Recomputation happens only for signals that are genuinely derivable from the payload (credential age, issuer identity).
+
+### 4. Surfaces
+
+| Route | View | Purpose |
+|---|---|---|
+| `/verifier/policies` | `PolicyView.tsx` | Policy builder with **live preview against real history** — shows what a candidate policy would have done to existing verifications before activation, and which rules caused each rejection. Also JSON import/export. |
+| `/verifier/threat` | `ThreatIntelView.tsx` | Aggregate anomaly report, impossible-travel table, holder watchlist, blocklist management |
+| `/verifier/compliance` | `ComplianceView.tsx` | Compliance report generator (Markdown / JSON) with an explicit limitations list |
+| `/verifier/zkp` | `ZKPStudioView.tsx` | Circuit metadata, local + on-chain proof inspector |
+| `/verifier/sbt` | `SBTInspectorView.tsx` | EIP-5192 soulbound badge lookup |
+| `/verifier` | `IntelligenceOverview.tsx` | Trust distribution, circuit usage, issuer leaderboard |
+| `/verifier/analytics` | `IntelligenceOverview.tsx` | + ZKP adoption trend, detector heatmap, revocation impact |
+
+All aggregation lives in [`src/lib/verifier/intelligence.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/verifier/intelligence.ts); the components only render it, so the dashboard and analytics surfaces cannot disagree with each other.
+
+### 5. Threat Intelligence: Evidence, Not Automation
+
+The Threat Intelligence Center **never blocks a holder automatically**. A high anomaly score is a triage signal for a human decision, and a dashboard that silently denylists holders produces both false positives and a compliance problem. The surfaces are:
+
+- **Aggregate detectors** — all 5 statistical detectors across the verifier's traffic, with sample size stated.
+- **Impossible travel** — consecutive located verifications implying a speed above 900 km/h (jet cruise), shown as distance-over-time rather than a verdict.
+- **Holder watchlist** — ordered by rejection count, then ascending average trust. Only holders with at least one rejection appear; a clean record is not watchlist material.
+- **Blocklist** — manual, advisory, holder-DID-only (see Table 17).
+
+### 6. Compliance Report
+
+`buildComplianceReport()` produces a deterministic artefact from a verifier's records over a selected period, exportable as Markdown or JSON. It reports scope, assurance signals (ZKP rate, on-chain rate, biometric, SBT, average trust), aggregate risk, per-issuer breakdown, circuit usage, and revocation impact.
+
+The report carries an explicit, static **limitations** list stating what it does *not* attest to — including that it evidences the verifier's process rather than the truth of a presented claim, that signature validity is reported as observed by the `verify-credential` service rather than re-validated in the browser, and that anomaly findings are heuristic and not a basis for adverse action on their own.
+
+This is deliberate. A compliance artefact that quietly omits its own gaps invites reliance it cannot support, so the limitations are rendered in the preview, the JSON, and the downloaded file identically.
+
+---
+
+## 27. Testing, Quality Assurance & Benchmarks (445 Tests across 19 Suites)
+
+The platform enforces a 100% pass rate across **445 tests in 19 Vitest suites**: **442 passing, 0 failing, 3 skipped**. The 3 skipped tests are in `zkp.integration.test.ts`, which requires compiled circuit artifacts (`.wasm`/`.zkey`) and is excluded from the default run.
+
+Counts below are taken from `npx vitest run`, not estimated.
 
 ### Complete Test Suites Table
 
 | Test Suite | Test Count | Scope |
 |---|:---:|---|
 | [`src/lib/zkp.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/zkp.test.ts) | 79 | Circom circuit witness parsing, Groth16 proof generation, nullifier hashing, signal verification |
+| [`src/lib/siwe.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/siwe.test.ts) | 52 | EIP-4361 message parsing, nonce validation, expiration, address case-sensitivity |
+| [`src/lib/ml/trustScore.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/ml/trustScore.test.ts) | 39 | 8-factor Trust Radar calculation, tier boundaries, weighting verification |
 | [`src/services/ai/credential-ai.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/ai/credential-ai.service.test.ts) | 39 | Multi-dimensional AI risk calculation, Gemini prompt synthesis, heuristic fallbacks |
-| [`src/lib/siwe.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/siwe.test.ts) | 33 | EIP-4361 message parsing, nonce validation, expiration, address case-sensitivity |
 | [`src/lib/ml/anomaly.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/ml/anomaly.test.ts) | 30 | 5-detector statistical engine: burst velocity, failure streaks, Haversine geo-hops, off-hours, latency |
 | [`src/lib/crypto.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/crypto.test.ts) | 27 | Canonical JSON RFC-8785 normalization, deterministic SHA-256 fingerprinting |
 | [`src/lib/ipfs.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/ipfs.test.ts) | 24 | CIDv0/CIDv1 validation, gateway URL builders, JSON-LD schema pinning payload builder |
+| [`src/services/blockchain/biometricAnchor.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/blockchain/biometricAnchor.service.test.ts) | 21 | On-chain biometric commitment anchoring and nullifier verification |
+| [`src/services/blockchain/sbt.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/blockchain/sbt.service.test.ts) | 20 | EIP-5192 Soulbound token minting, lock state verification, revocation synchronization |
 | [`src/lib/permissions.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/permissions.test.ts) | 20 | RBAC matrix enforcement across all 5 roles (`issuer`, `holder`, `verifier`, `org_admin`, `auditor`) |
-| [`src/lib/zkp.integration.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/zkp.integration.test.ts) | 19 | End-to-end circuit execution with real `.wasm` and `.zkey` files |
-| [`test/CredentialRegistry.test.js`](file:///c:/Users/M%20S/Desktop/block-id/test/CredentialRegistry.test.js) | 18 | Solidity smart contract unit tests: single/batch anchor, revocation, status checks |
-| [`src/lib/biometrics/liveness.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/biometrics/liveness.test.ts) | 16 | Interactive liveness challenge generation, frame variance analysis, blink scoring |
-| [`src/services/blockchain/sbt.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/blockchain/sbt.service.test.ts) | 16 | EIP-5192 Soulbound token minting, lock state verification, revocation synchronization |
-| [`src/lib/accountAbstraction.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/accountAbstraction.test.ts) | 13 | Smart account address derivation, UserOperation packing, session key constraints |
+| [`src/lib/biometrics/liveness.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/biometrics/liveness.test.ts) | 18 | Interactive liveness challenge generation, frame variance analysis, blink scoring |
 | [`src/lib/fileValidation.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/fileValidation.test.ts) | 13 | File upload validation: size limits, MIME type guards, malicious payload rejection |
+| [`src/lib/accountAbstraction.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/accountAbstraction.test.ts) | 13 | Smart account address derivation, UserOperation packing, session key constraints |
 | [`src/lib/generateCertificatePdf.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/generateCertificatePdf.test.ts) | 12 | jsPDF vector layout geometry, QR code embedding, dark-mode color styling |
-| [`src/lib/ml/trustScore.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/ml/trustScore.test.ts) | 11 | 8-factor Trust Radar calculation, boundary conditions, weighting verification |
 | [`src/services/auth/siwe.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/auth/siwe.service.test.ts) | 11 | End-to-end SIWE authentication flow, nonce generation, session exchange |
-| [`src/services/blockchain/biometricAnchor.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/blockchain/biometricAnchor.service.test.ts) | 11 | On-chain biometric commitment anchoring and nullifier verification |
 | [`src/services/biometrics/biometric.service.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/services/biometrics/biometric.service.test.ts) | 10 | Biometric challenge consumption, proof hash generation, score thresholding |
 | [`src/components/ProtectedRoute.test.tsx`](file:///c:/Users/M%20S/Desktop/block-id/src/components/ProtectedRoute.test.tsx) | 9 | Route authentication guards, pending approval redirects, rejected screen routing |
 | [`src/components/layout/PortalLayout.test.tsx`](file:///c:/Users/M%20S/Desktop/block-id/src/components/layout/PortalLayout.test.tsx) | 5 | Navigation bar rendering, active portal tab highlighting, responsive sidebar |
-| **TOTAL** | **416** | **20 Suites Passing (100% Success Rate)** |
+| [`src/lib/zkp.integration.test.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/zkp.integration.test.ts) | 3 *(skipped)* | End-to-end circuit execution with real `.wasm` and `.zkey` files |
+| **TOTAL (Vitest)** | **445** | **19 Suites — 442 Passing, 3 Skipped, 0 Failing** |
+
+### Solidity Test Suite
+
+| Test Suite | Scope |
+|---|---|
+| [`test/CredentialRegistry.test.js`](file:///c:/Users/M%20S/Desktop/block-id/test/CredentialRegistry.test.js) | Run separately via `npx hardhat test`: single/batch anchor, revocation, status checks |
+
+### Static Analysis
+
+| Check | Command | Result |
+|---|---|---|
+| TypeScript | `npx tsc -p tsconfig.app.json --noEmit` | Clean apart from 3 pre-existing `src/components/admin/MembersList.tsx` errors (org-role typing, unrelated to the verifier work) |
+| ESLint | `npx eslint .` | 0 errors (233 pre-existing `no-explicit-any` warnings) |
+| Production build | `npx vite build` | Succeeds |
+
+> The three `MembersList.tsx` errors are a known pre-existing baseline: `OrgRole` in [`src/lib/permissions.ts`](file:///c:/Users/M%20S/Desktop/block-id/src/lib/permissions.ts) includes `"auditor"`, which is not a member of the `app_role` enum. Tracked separately from the verifier intelligence work.
 
 ### Performance Benchmarks
 - **ZKP Proving Latency**: ~120ms (Age Verify), ~145ms (Attribute Range), ~210ms (Issuer Membership).
@@ -814,13 +958,13 @@ The platform enforces 100% pass rates across **416 automated tests** spanning 20
 
 ---
 
-## 27. Multi-Phase Roadmap (Phases 0 – 8 Complete)
+## 28. Multi-Phase Roadmap (Phases 0 through 9 Complete)
 
 All phases from the Master Implementation Plan have been engineered, tested, and integrated:
 
 | Phase | Subsystem | Engineering Delivery | Status |
 |---|---|---|:---:|
-| **Phase 0** | **Testing & CI/CD Infrastructure** | 416 automated tests across 20 suites, GitHub Actions workflow | ✅ Complete |
+| **Phase 0** | **Testing & CI/CD Infrastructure** | 445 tests across 19 Vitest suites, GitHub Actions workflow | ✅ Complete |
 | **Phase 1** | **Zero-Knowledge Proofs (ZK-SNARKs)** | Circom circuits, browser WASM proving (<250ms), EVM pairing precompile verifier | ✅ Complete |
 | **Phase 2** | **Account Abstraction (ERC-4337)** | `SimpleAccount.sol`, `SmartWalletRegistry.sol`, session keys, UserOp builder | ✅ Complete |
 | **Phase 3** | **Decentralized Storage & IPFS** | Pinata IPFS pinning, CID schema resolution, auto-pin on issuance | ✅ Complete |
@@ -829,10 +973,11 @@ All phases from the Master Implementation Plan have been engineered, tested, and
 | **Phase 6** | **Advanced AI & Anomaly Engine** | 5 real-time statistical anomaly detectors, 8-factor Trust Radar, Gemini assistant | ✅ Complete |
 | **Phase 7** | **Visual Credentials & SBTs** | EIP-5192 Soulbound Tokens deployed on Sepolia, SVG certificate renderer, dark PDF | ✅ Complete |
 | **Phase 8** | **Biometric Verification Pipeline** | WebAuthn passkeys, interactive liveness detection, on-chain commitment anchor | ✅ Complete |
+| **Phase 9** | **Verifier Intelligence & Policy Engine** | Declarative policy engine with live preview, 9-view verifier portal, threat intelligence centre, compliance report generator, ZKP/SBT inspectors, QR intake, local VP schema validation | ✅ Complete |
 
 ---
 
-## 28. Developer Setup & Deployment Guide
+## 29. Developer Setup & Deployment Guide
 
 ### Prerequisites
 - Node.js >= 20.x
@@ -870,6 +1015,33 @@ VITE_CREDENTIAL_REGISTRY_ADDRESS="0x1FE3Dce86E02C28b7B5c1CaCf83127874fb5D778"
 VITE_SOULBOUND_CREDENTIAL_ADDRESS="0xC5B743959e651C2cbb60422B3bC44fFD465B46d8"
 VITE_SMART_WALLET_REGISTRY_ADDRESS="0xD7a4375C9bA97B6b5E767AfDbCa48c5d99B68196"
 
+# ── Verifier Intelligence (all optional) ──────────────────────────────────────
+# Every variable below is optional. When one is absent the matching panel stays
+# usable but is explicitly labelled as not configured, so an unconfigured lookup
+# is never presented as a passing check.
+#
+# VITE_ZKP_VERIFIER_ADDRESS — ZKPVerifier.sol. When set, ZKP proof panels run
+#   the on-chain nullifier/replay check, which is authoritative. Unset, the
+#   portal falls back to local Groth16 verification against the served
+#   verification key only, and the panel renders the notice "Set
+#   VITE_ZKP_VERIFIER_ADDRESS to enable on-chain verification. Local
+#   (WebAssembly) verification still works." This is the expected behaviour in
+#   the current environment, where the variable is not set.
+VITE_ZKP_VERIFIER_ADDRESS="0x..."
+
+# VITE_BIOMETRIC_ANCHOR_ADDRESS — BiometricProofAnchor.sol. Backs the biometric
+#   check in the holder evidence strip.
+VITE_BIOMETRIC_ANCHOR_ADDRESS="0x..."
+
+# VITE_SOULBOUND_CREDENTIAL_ADDRESS — SoulboundCredential.sol (EIP-5192). Backs
+#   the SBT badge lookup. Required for /verifier/sbt to return anything; without
+#   it the view shows "Soulbound contract not configured".
+VITE_SOULBOUND_CREDENTIAL_ADDRESS="0x..."
+
+# VITE_SMART_WALLET_REGISTRY_ADDRESS — SmartWalletRegistry.sol (ERC-4337). Backs
+#   the smart-wallet check in the holder evidence strip.
+VITE_SMART_WALLET_REGISTRY_ADDRESS="0x..."
+
 # ERC-4337 Account Abstraction
 VITE_CHAIN_ID=11155111
 VITE_BUNDLER_URL="https://api.pimlico.io/v2/11155111/rpc?apikey=your-api-key"
@@ -881,12 +1053,27 @@ VITE_IPFS_GATEWAY="https://gateway.pinata.cloud/ipfs/"
 GEMINI_API_KEY="your-gemini-api-key"
 ```
 
+#### Verifier intelligence database migration
+
+The verifier intelligence surfaces read from columns and tables added by
+`supabase/migrations/20260926000001_verifier_intelligence.sql`. **This migration has been applied** to the linked Supabase project (`gqsiirtclckqnftcglaq`); `verification_policies`, `verifier_blocklist` and the 18 `verification_requests` intelligence columns are all live.
+
+For a **fresh** or **reset** database, apply it before using `/verifier/policies`, `/verifier/threat` or `/verifier/compliance`:
+
+```bash
+npx supabase db push
+```
+
+> **Symptom of a missing migration:** these three views fail with a toast reading `Could not load policies` and a PostgREST error `Could not find the table 'public.verification_policies' in the schema cache` (code `PGRST205`). The application-side checks (typecheck, lint, tests, build) all pass in this state — a missing table is a deployment gap, not a code defect, so verify schema existence separately when adding features that depend on new tables.
+
+The migration is idempotent (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`) and ends with `NOTIFY pgrst, 'reload schema'` so PostgREST picks up the changes without a manual reload. It creates `verification_policies` and `verifier_blocklist` with RLS scoped to `verifier_id = auth.uid()`, and the `verifier_blocklist` table stores **holder** DIDs only — issuer-level denylisting is intentionally not modelled.
+
 ### 3. Execution Commands
 ```bash
 # Start local web development server
 npm run dev
 
-# Run full Vitest test suite (416 tests)
+# Run full Vitest test suite (445 tests, 19 suites)
 npm test
 
 # Run smart contract integration tests

@@ -52,6 +52,11 @@ function sbtAddress(explicit?: string): string {
   return addr!;
 }
 
+/** Configured Soulbound address, or null. For UI links — not for contract calls. */
+export function getSbtAddress(): string | null {
+  return isSbtConfigured() ? sbtAddress() : null;
+}
+
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 /** Accepts any 32-byte-prefixed hex hash and normalises to bytes32 form. */
@@ -209,4 +214,41 @@ export async function listHolderSbts(holder: string, address?: string): Promise<
     })
   );
   return statuses;
+}
+
+/** Total number of SBTs ever minted on this deployment. Never throws. */
+export async function getSbtTotalSupply(address?: string): Promise<number> {
+  try {
+    const provider = await getReadProvider();
+    const sbt = new Contract(sbtAddress(address), SOULBOUND_ABI, provider);
+    return Number((await sbt.totalSupply()) as bigint);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Resolve SBTs by credential hash for many credentials in one batch of reads.
+ * Used by the dashboard's "batch re-check" widget to surface newly minted or
+ * newly revoked badges after a set of verifications.
+ */
+export async function getSbtForCredentials(
+  credentialHashes: string[],
+  address?: string
+): Promise<Map<string, SbtStatus | null>> {
+  const out = new Map<string, SbtStatus | null>();
+  if (credentialHashes.length === 0 || !isSbtConfigured(address)) {
+    credentialHashes.forEach((h) => out.set(h, null));
+    return out;
+  }
+  await Promise.all(
+    credentialHashes.map(async (hash) => {
+      try {
+        out.set(hash, await getSbtForCredential(hash, address));
+      } catch {
+        out.set(hash, null);
+      }
+    })
+  );
+  return out;
 }

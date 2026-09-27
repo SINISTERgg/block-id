@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Fingerprint, Lock, Globe, CheckCircle2, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-// ── Extracted form components ────────────────────────────────────────────────
+// -- Extracted form components -------------------------------------------------
 import { SignInForm } from "./auth/SignInForm";
 import { SignUpForm } from "./auth/SignUpForm";
 import { ForgotPasswordForm, CheckEmailCard } from "./auth/ForgotPasswordForm";
@@ -87,7 +87,7 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen bg-background flex relative">
-      {/* Home button — always on top at top-left */}
+      {/* Home button -- always on top, above both panels */}
       <div className="absolute top-4 left-4 z-50">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -104,6 +104,39 @@ const Auth = () => {
         </Tooltip>
       </div>
 
+      {/* Left brand panel */}
+      <div className="hidden lg:flex lg:w-[45%] bg-card border-r border-border flex-col relative">
+        <div className="absolute inset-0 pattern-dots opacity-30" />
+        <div className="relative z-10 flex flex-col justify-center h-full px-12 xl:px-16 py-12">
+          <div className="flex items-center gap-3 mb-20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#EA580C] to-[#F7931A] flex items-center justify-center shadow-[0_0_20px_-4px_rgba(247,147,26,0.6)]">
+              <Fingerprint className="h-5 w-5 text-white" />
+            </div>
+            <span className="font-heading text-xl font-bold tracking-tight">BlockID</span>
+          </div>
+
+          <h1 className="font-heading text-5xl xl:text-6xl font-bold tracking-tight leading-[0.95] mb-8">
+            Blockchain<br />Based<br />
+            <span className="text-gradient-bitcoin">Identity</span>
+          </h1>
+
+          <p className="text-muted-foreground text-base leading-relaxed mb-12 max-w-sm">
+            Issue, hold, and verify academic credentials secured by cryptography and blockchain anchoring.
+          </p>
+
+          <div className="space-y-5 border-t border-border pt-8">
+            {brandFeatures.map((f, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-primary shrink-0" strokeWidth={1.5} />
+                <span className="text-sm text-foreground/80">{f.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right auth panel */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2 mb-8">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#EA580C] to-[#F7931A] flex items-center justify-center shadow-[0_0_16px_-4px_rgba(247,147,26,0.6)]">
@@ -167,7 +200,7 @@ const Auth = () => {
 
         <p className="mt-6 text-xs text-muted-foreground/60 flex items-center gap-2">
           <Lock className="h-3 w-3" />
-          Secured by cryptography · W3C Verifiable Credentials
+          Secured by cryptography * W3C Verifiable Credentials
         </p>
       </div>
     </div>

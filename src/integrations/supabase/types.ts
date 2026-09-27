@@ -515,6 +515,17 @@ export type Database = {
           access_expires_at: string | null
           storage_consent: boolean
           responded_at: string | null
+          anomaly_findings: Json | null
+          anomaly_risk: number | null
+          biometric_verified: boolean | null
+          policy_id: string | null
+          sbt_token_id: number | null
+          trust_score: number | null
+          trust_tier: string | null
+          zkp_circuit: string | null
+          zkp_nullifier: string | null
+          zkp_on_chain_valid: boolean | null
+          zkp_proof_valid: boolean | null
         }
         Insert: {
           ai_analysis?: Json | null
@@ -531,6 +542,17 @@ export type Database = {
           access_expires_at?: string | null
           storage_consent?: boolean
           responded_at?: string | null
+          anomaly_findings?: Json | null
+          anomaly_risk?: number | null
+          biometric_verified?: boolean | null
+          policy_id?: string | null
+          sbt_token_id?: number | null
+          trust_score?: number | null
+          trust_tier?: string | null
+          zkp_circuit?: string | null
+          zkp_nullifier?: string | null
+          zkp_on_chain_valid?: boolean | null
+          zkp_proof_valid?: boolean | null
         }
         Update: {
           ai_analysis?: Json | null
@@ -547,6 +569,17 @@ export type Database = {
           access_expires_at?: string | null
           storage_consent?: boolean
           responded_at?: string | null
+          anomaly_findings?: Json | null
+          anomaly_risk?: number | null
+          biometric_verified?: boolean | null
+          policy_id?: string | null
+          sbt_token_id?: number | null
+          trust_score?: number | null
+          trust_tier?: string | null
+          zkp_circuit?: string | null
+          zkp_nullifier?: string | null
+          zkp_on_chain_valid?: boolean | null
+          zkp_proof_valid?: boolean | null
         }
         Relationships: [
           {
@@ -554,6 +587,83 @@ export type Database = {
             columns: ["credential_id"]
             isOneToOne: false
             referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_requests_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "verification_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      verification_policies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          policy_json: Json
+          verifier_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          policy_json?: Json
+          verifier_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          policy_json?: Json
+          verifier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_policies_verifier_id_fkey"
+            columns: ["verifier_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      verifier_blocklist: {
+        Row: {
+          blocked_at: string
+          holder_did: string
+          id: string
+          reason: string | null
+          verifier_id: string
+        }
+        Insert: {
+          blocked_at?: string
+          holder_did: string
+          id?: string
+          reason?: string | null
+          verifier_id: string
+        }
+        Update: {
+          blocked_at?: string
+          holder_did?: string
+          id?: string
+          reason?: string | null
+          verifier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verifier_blocklist_verifier_id_fkey"
+            columns: ["verifier_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

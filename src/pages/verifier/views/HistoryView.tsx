@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Brain, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText,
   Lock, ShieldCheck, Timer, User, Building2, Calendar, Link2, Hash,
-  Filter, Download, FileJson, Loader2, Search, RefreshCw, FileUp,
+  Filter, Download, FileJson, Loader2, Search, RefreshCw, FileUp, ScanSearch,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,11 @@ import {
 import {
   fetchVerificationRecords, downloadTextFile, verificationRecordsToCSV,
   type VerificationRecord,
+} from "@/services/api/verifier.service";
+import HistoryDetailModal from "@/components/verifier/HistoryDetailModal";
+import {
+  fetchPolicies, fetchBlocklist, addToBlocklist, removeFromBlocklist,
+  type BlocklistEntry, type VerificationPolicyRow,
 } from "@/services/api/verifier.service";
 import { CREDENTIAL_TYPE_OPTIONS } from "@/data/VerifierSampleVPs";
 import { useToast } from "@/hooks/use-toast";
@@ -213,6 +218,38 @@ const HistoryView = ({ verifierId, refreshSignal }: HistoryViewProps) => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<"csv" | "json" | null>(null);
+
+  // Detail modal + the context the intelligence panels need
+  const [detailRecord, setDetailRecord] = useState<VerificationRecord | null>(null);
+  const [policies, setPolicies] = useState<VerificationPolicyRow[]>([]);
+  const [blocklist, setBlocklist] = useState<BlocklistEntry[]>([]);
+
+  const activePolicy = useMemo(
+    () => policies.find((p) => p.is_active)?.policy_json ?? null,
+    [policies]
+  );
+
+  const reloadContext = useCallback(async () => {
+    try {
+      const [p, b] = await Promise.all([
+        fetchPolicies(verifierId).catch(() => []),
+        fetchBlocklist(verifierId).catch(() => []),
+      ]);
+      setPolicies(p);
+      setBlocklist(b);
+    } catch {
+      // The modal degrades to the persisted row alone if this fails.
+    }
+  }, [verifierId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await reloadContext();
+      if (cancelled) return;
+    })();
+    return () => { cancelled = true; };
+  }, [reloadContext]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -432,6 +469,15 @@ const HistoryView = ({ verifierId, refreshSignal }: HistoryViewProps) => {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={(e) => { e.stopPropagation(); setDetailRecord(r); }}
+                            title="Open full intelligence report"
+                          >
+                            <ScanSearch className="h-3.5 w-3.5" />
+                          </Button>
                           {isAccepted && hasData && !r.storage_consent && r.access_expires_at && (
                             <CountdownBadge expiresAt={r.access_expires_at} />
                           )}
@@ -532,6 +578,26 @@ const HistoryView = ({ verifierId, refreshSignal }: HistoryViewProps) => {
           )}
         </CardContent>
       </Card>
+
+      <HistoryDetailModal
+        record={detailRecord}
+        open={detailRecord !== null}
+        onOpenChange={(open) => { if (!open) setDetailRecord(null); }}
+        history={records}
+        policy={activePolicy}
+        blockedHolders={blocklist.map((b) => b.holder_did)}
+        onBlockHolder={async (did) => {
+          await addToBlocklist(verifierId, did);
+          await reloadContext();
+          toast({ title: "Holder blocklisted", description: did });
+        }}
+        onUnblockHolder={async (did) => {
+          const entry = blocklist.find((b) => b.holder_did === did);
+          if (entry) await removeFromBlocklist(entry.id);
+          await reloadContext();
+          toast({ title: "Holder unblocked", description: did });
+        }}
+      />
     </div>
   );
 };

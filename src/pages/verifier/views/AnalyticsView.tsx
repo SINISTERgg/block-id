@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LineChart, Line, Cell,
 } from "recharts";
 import { motion } from "framer-motion";
+import IntelligenceOverview from "@/components/verifier/IntelligenceOverview";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
 interface AnalyticsViewProps {
@@ -324,6 +325,21 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
                 </CardContent>
               </Card>
             </motion.div>
+          </div>
+
+          {/* Intelligence analytics — trust, circuits, issuers, ZKP adoption,
+              detector heatmap, revocation impact */}
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+                Intelligence
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <IntelligenceOverview
+              records={records}
+              sections={["trust", "circuits", "issuers", "zkp", "heatmap", "revocation"]}
+            />
           </div>
         </>
       )}

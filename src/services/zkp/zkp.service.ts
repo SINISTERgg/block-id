@@ -89,13 +89,70 @@ type SnarkJsModule = {
 
 let snarkjsPromise: Promise<SnarkJsModule | null> | null = null;
 
-async function loadSnarkjs(): Promise<SnarkJsModule | null> {
+/**
+ * Lazily load snarkjs (dynamic import → its own chunk, never in the main bundle).
+ * Returns null when the module is unavailable so callers can degrade gracefully.
+ */
+export async function loadSnarkjs(): Promise<SnarkJsModule | null> {
   if (!snarkjsPromise) {
     snarkjsPromise = import("snarkjs")
       .then((m) => (m as unknown as { default?: SnarkJsModule })?.default ?? (m as unknown as SnarkJsModule))
       .catch(() => null);
   }
   return snarkjsPromise;
+}
+
+/** Per-artifact availability, resolved with HEAD requests against public/zkp. */
+export interface ArtifactAvailability {
+  wasm: boolean;
+  zkey: boolean;
+  vkey: boolean;
+}
+
+async function head(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: "HEAD" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Check which compiled artifacts (wasm / zkey / vkey) are deployed for a circuit. */
+export async function getArtifactAvailability(circuit: CircuitName): Promise<ArtifactAvailability> {
+  const { wasmUrl, zkeyUrl, vkeyUrl } = getArtifactPaths(circuit);
+  const [wasm, zkey, vkey] = await Promise.all([head(wasmUrl), head(zkeyUrl), head(vkeyUrl)]);
+  return { wasm, zkey, vkey };
+}
+
+/** Fetch a circuit's verification key JSON. Throws when it is not deployed. */
+export async function fetchVerificationKey(circuit: CircuitName): Promise<unknown> {
+  const { vkeyUrl } = getArtifactPaths(circuit);
+  const res = await fetch(vkeyUrl);
+  if (!res.ok) throw new Error(`Verification key missing for ${circuit} — run npm run build:circuits`);
+  return res.json();
+}
+
+/**
+ * Verify a raw snarkjs proof (as pasted / received from a holder) in the browser.
+ * This is the verifier-side counterpart of `prove()`: nothing is trusted from the
+ * holder except the proof itself — the pairing check runs locally in WebAssembly.
+ */
+export async function verifyRawProofLocally(
+  circuit: CircuitName,
+  publicSignals: string[],
+  proof: Groth16ProofJson
+): Promise<boolean> {
+  if (!isValidProofShape(proof)) throw new Error("Malformed Groth16 proof — expected pi_a / pi_b / pi_c");
+  if (!isExpectedSignalCount(circuit, publicSignals)) {
+    throw new Error(
+      `${circuit}: expected ${publicSignalCount(circuit)} public signals, got ${publicSignals.length}.`
+    );
+  }
+  const snarkjs = await loadSnarkjs();
+  if (!snarkjs) throw new Error("snarkjs is not installed — run `npm install snarkjs`");
+  const vkey = await fetchVerificationKey(circuit);
+  return snarkjs.groth16.verify(vkey, [...publicSignals], proof);
 }
 
 export interface GeneratedProof {

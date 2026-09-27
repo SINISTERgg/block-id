@@ -1,13 +1,52 @@
-import { useState } from "react";
-import { CheckCircle2, XCircle, Link2, PenTool, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCircle2, XCircle, Link2, PenTool, Copy, Check, ChevronDown, ChevronUp, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CredentialAIAssistant from "@/components/CredentialAIAssistant";
+import TrustScoreRadar from "@/components/verifier/TrustScoreRadar";
+import AnomalyPanel from "@/components/verifier/AnomalyPanel";
+import VerificationTimeline from "@/components/verifier/VerificationTimeline";
+import SelectiveDisclosureInspector from "@/components/verifier/SelectiveDisclosureInspector";
+import HolderEvidenceStrip from "@/components/verifier/HolderEvidenceStrip";
+import IssuerProfile from "@/components/verifier/IssuerProfile";
+import PolicyEvaluationPanel from "@/components/verifier/PolicyEvaluationPanel";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import { computeTrustScore, type TrustFactors, type TrustTier } from "@/lib/ml/trustScore";
+import type { AnomalyFinding, AnomalyReport } from "@/lib/ml/anomaly";
+import { evaluatePolicy, normalizePolicy, type VerificationPolicy } from "@/lib/verifier/policy";
+import { analyzeHolderRecords } from "@/lib/verifier/intelligence";
+import type { IntelligenceRecord } from "@/lib/verifier/intelligence";
+import type { TimelineStep } from "@/components/verifier/VerificationTimeline";
+import type { CircuitName } from "@/lib/zkp";
 
 interface VerificationResultViewProps {
   result: Record<string, any>;
   compact?: boolean;
+  /**
+   * Verifier's own verification history. Supplies the holder/issuer priors the
+   * trust model and anomaly detectors need — a single presentation alone is
+   * not enough history to judge behaviour.
+   */
+  history?: IntelligenceRecord[];
+  /** Active policy to evaluate this presentation against. */
+  policy?: VerificationPolicy | null;
+  /** Persisted per-request intelligence from the verification_requests row. */
+  stored?: {
+    zkp_circuit?: CircuitName | null;
+    zkp_proof_valid?: boolean | null;
+    zkp_on_chain_valid?: boolean | null;
+    zkp_nullifier?: string | null;
+    trust_score?: number | null;
+    trust_tier?: TrustTier | null;
+    anomaly_risk?: number | null;
+    anomaly_findings?: AnomalyFinding[] | null;
+    biometric_verified?: boolean | null;
+    sbt_token_id?: number | null;
+  };
+  blockedHolders?: string[];
+  onBlockHolder?: (did: string) => void;
+  onUnblockHolder?: (did: string) => void;
 }
 
 const ResultBadge = ({ valid }: { valid: boolean }) =>
@@ -21,14 +60,35 @@ const ResultBadge = ({ valid }: { valid: boolean }) =>
     </span>
   );
 
-const CheckTile = ({ ok, label, value }: { ok: boolean; label: string; value: string }) => (
-  <div className={`p-3 rounded-lg text-center border ${ok ? "bg-emerald-500/10 border-emerald-500/20" : "bg-destructive/10 border-destructive/20"}`}>
-    <p className="text-xs text-muted-foreground">{label}</p>
-    <p className={`font-semibold ${ok ? "text-emerald-600" : "text-destructive"}`}>{value}</p>
-  </div>
-);
+/**
+ * Tri-state tile for a check whose outcome can legitimately be "not checked".
+ * Two-state tiles make an unperformed check look like a pass.
+ */
+const TriTile = ({ state, label, value }: { state: "pass" | "fail" | "unknown"; label: string; value: string }) => {
+  const cls =
+    state === "pass"
+      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+      : state === "fail"
+        ? "bg-destructive/10 border-destructive/20 text-destructive"
+        : "bg-muted/40 border-border text-muted-foreground";
+  return (
+    <div className={`p-3 rounded-lg text-center border ${cls}`}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
+  );
+};
 
-export const VerificationResultView = ({ result, compact = false }: VerificationResultViewProps) => {
+export const VerificationResultView = ({
+  result,
+  compact = false,
+  history = [],
+  policy,
+  stored,
+  blockedHolders = [],
+  onBlockHolder,
+  onUnblockHolder,
+}: VerificationResultViewProps) => {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -41,10 +101,174 @@ export const VerificationResultView = ({ result, compact = false }: Verification
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (!result) return null;
+  // Everything below the guard is derived from `result`; the early return sits
+  // just above the JSX so that every hook above it runs unconditionally. An
+  // early return placed before these hooks would change the hook count between
+  // renders whenever a caller passes a result that can become null.
+  const valid = !!result?.valid;
+  const onChain = result?.on_chain_verification || result?.blockchain_info;
 
-  const valid = !!result.valid;
-  const onChain = result.on_chain_verification || result.blockchain_info;
+  // ── Intelligence derived from this presentation ──
+  const holderDid: string | null = result?.holder_did ?? result?.holderDid ?? null;
+  const credentialHash: string | null = result?.credential_hash ?? result?.hash ?? null;
+  const biometricProofHash: string | null =
+    result?.biometric_proof_hash ?? result?.biometricProofHash ?? null;
+  const schemaType: string | null = result?.schema_type ?? result?.schemaType ?? null;
+  const issuer: string | null = result?.issuer ?? result?.issuer_did ?? result?.issuerDid ?? null;
+
+  // A ZKP may have been attached either to this live report or to the persisted row.
+  const zkpCircuit: CircuitName | null =
+    (result.zkp?.circuit as CircuitName | undefined) ?? stored?.zkp_circuit ?? null;
+  const zkpProofValid: boolean | null =
+    result.zkp?.proof_valid ?? result.zkp_proof_valid ?? stored?.zkp_proof_valid ?? null;
+  const zkpOnChainValid: boolean | null =
+    result.zkp?.on_chain_valid ?? result.zkp_on_chain_valid ?? stored?.zkp_on_chain_valid ?? null;
+  const zkpNullifier: string | null = result.zkp?.nullifier ?? stored?.zkp_nullifier ?? null;
+
+  const anomalyReport: AnomalyReport | null = useMemo(() => {
+    if (!holderDid) return null;
+    const scoped = history.filter((r) => r.holder_did === holderDid);
+    if (scoped.length < 2) return null;
+    return analyzeHolderRecords(scoped);
+  }, [history, holderDid]);
+
+  const trustResult = useMemo(() => {
+    // Prefer the score persisted at verification time so the audit trail and
+    // the live report can never disagree.
+    if (typeof stored?.trust_score === "number" && stored.trust_tier) {
+      return {
+        score: stored.trust_score,
+        rawScore: stored.trust_score,
+        tier: stored.trust_tier,
+        factors: [],
+        criticalFailures: [] as string[],
+        computedAt: "",
+      };
+    }
+    const shared =
+      (result?.credential as Record<string, any> | undefined) ??
+      (result?.shared_credential_data as Record<string, any> | undefined) ??
+      undefined;
+    const sig = shared?.proof?.proofValue ?? shared?.proof;
+    const factors: TrustFactors = {
+      signatureValid:
+        typeof sig === "string" && /^0x[0-9a-fA-F]{130}$/.test(sig) && sig !== "unsigned",
+      anchoredOnChain: !!onChain?.txVerified || !!onChain?.contractAnchored || !!result?.blockchain_anchor,
+      notRevoked: result?.not_revoked !== false,
+      notExpired: result?.not_expired !== false,
+      issuerReputation: 75,
+      zkProofVerified: zkpProofValid === true,
+      biometricBound: stored?.biometric_verified === true,
+      hasSmartWallet: undefined,
+      credentialAgeDays: typeof result?.age_in_days === "number" ? result.age_in_days : undefined,
+    };
+    return computeTrustScore(factors);
+  }, [stored, result, onChain, zkpProofValid]);
+
+  const policyEvaluation = useMemo(() => {
+    if (!policy) return null;
+    return evaluatePolicy(
+      normalizePolicy(policy),
+      {
+        credentialType: schemaType,
+        zkpCircuit,
+        zkpProofValid,
+        anchoredOnChain: !!result?.blockchain_anchor || !!onChain?.txVerified || !!onChain?.contractAnchored,
+        sbtBadge: stored?.sbt_token_id ? true : null,
+        biometricVerified: stored?.biometric_verified ?? null,
+        smartWallet: null,
+        trustTier: trustResult.tier as TrustTier,
+        trustScore: trustResult.score,
+        credentialAgeDays: typeof result?.age_in_days === "number" ? result.age_in_days : null,
+      },
+      "Active policy"
+    );
+  }, [policy, schemaType, zkpCircuit, zkpProofValid, result, onChain, stored, trustResult]);
+
+  const timeline: TimelineStep[] = useMemo(() => {
+    const steps: TimelineStep[] = [
+      {
+        key: "hash",
+        label: "Hash integrity",
+        detail: result?.hash_integrity
+          ? "Credential bytes hash to the value the registry committed."
+          : "Recomputed hash does not match the registry commitment.",
+        state: result?.hash_integrity ? "pass" : "fail",
+        at: result?.verified_at ?? null,
+      },
+      {
+        key: "signature",
+        label: "Holder signature",
+        detail: result?.signature?.signed
+          ? `Wallet signature verified (${result.signature.type}).`
+          : result?.signature
+            ? `Unsigned or simulated presentation (${result.signature.type}).`
+            : "No signature information was returned with this report.",
+        state: result?.signature?.signed ? "pass" : result?.signature ? "fail" : "unknown",
+      },
+      {
+        key: "revocation",
+        label: "Revocation status",
+        detail:
+          result?.not_revoked === false
+            ? "The issuer has revoked this credential."
+            : result?.not_revoked === true
+              ? "No active revocation found."
+              : "Revocation was not reported for this presentation.",
+        state: result?.not_revoked === false ? "fail" : result?.not_revoked === true ? "pass" : "unknown",
+        at: result?.responded_at ?? null,
+      },
+      {
+        key: "expiry",
+        label: "Validity window",
+        detail:
+          result?.not_expired === false
+            ? `Expired ${result?.expires_at ? new Date(result.expires_at).toLocaleDateString() : "at an unknown date"}.`
+            : result?.not_expired === true
+              ? `Valid until ${result?.expires_at ? new Date(result.expires_at).toLocaleDateString() : "unknown"}.`
+              : "Expiry was not reported for this presentation.",
+        state: result?.not_expired === false ? "fail" : result?.not_expired === true ? "pass" : "unknown",
+      },
+      {
+        key: "anchor",
+        label: "On-chain anchor",
+        detail: onChain?.txVerified || onChain?.contractAnchored
+          ? `Anchored in the credential registry at block ${onChain.blockNumber ?? onChain.contractBlockAnchored ?? "?"}.`
+          : onChain
+            ? "Registry lookup ran but found no anchor for this credential."
+            : "No registry lookup was performed for this presentation.",
+        state: onChain?.txVerified || onChain?.contractAnchored ? "pass" : onChain ? "fail" : "unknown",
+      },
+      {
+        key: "zkp",
+        label: "Zero-knowledge proof",
+        detail: zkpCircuit
+          ? `${zkpCircuit} proof ${zkpProofValid ? "passed" : "failed"} local verification${
+              zkpOnChainValid ? " and was accepted on-chain" : zkpOnChainValid === false ? " but was rejected on-chain" : " (on-chain check not run)"
+            }.`
+          : "No zero-knowledge proof accompanied this presentation.",
+        state: zkpCircuit ? (zkpProofValid ? "pass" : "fail") : "unknown",
+      },
+      {
+        key: "behaviour",
+        label: "Behavioural analysis",
+        detail: anomalyReport
+          ? `${anomalyReport.findings.length} of 5 detectors fired — aggregate risk ${Math.round(anomalyReport.riskScore)}/100.`
+          : "Not enough history for this holder to run behavioural detectors.",
+        state: anomalyReport ? (anomalyReport.isAnomalous ? "fail" : "pass") : "unknown",
+      },
+    ];
+    return steps;
+  }, [result, onChain, zkpCircuit, zkpProofValid, zkpOnChainValid, anomalyReport]);
+
+  const disclosed = useMemo(() => {
+    const raw = result?.shared_credential_data ?? result?.credential ?? result?.credentialSubject;
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  }, [result]);
+
+  const holderBlocked = holderDid ? blockedHolders.includes(holderDid) : false;
+
+  if (!result) return null;
 
   return (
     <motion.div
@@ -72,10 +296,126 @@ export const VerificationResultView = ({ result, compact = false }: Verification
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <CheckTile ok={!!result.hash_integrity} label="Hash Integrity" value={result.hash_integrity ? "Valid" : "Tampered"} />
-        <CheckTile ok={!!result.not_revoked} label="Revocation" value={result.not_revoked ? "Active" : "Revoked"} />
-        <CheckTile ok={result.not_expired !== false} label="Expiry" value={result.not_expired !== false ? "Valid" : "Expired"} />
+        <TriTile
+          state={result.hash_integrity ? "pass" : result.hash_integrity === false ? "fail" : "unknown"}
+          label="Hash Integrity"
+          value={result.hash_integrity ? "Valid" : result.hash_integrity === false ? "Tampered" : "Not checked"}
+        />
+        <TriTile
+          state={result.not_revoked === false ? "fail" : result.not_revoked === true ? "pass" : "unknown"}
+          label="Revocation"
+          value={result.not_revoked === false ? "Revoked" : result.not_revoked === true ? "Active" : "Not checked"}
+        />
+        <TriTile
+          state={result.not_expired === false ? "fail" : "pass"}
+          label="Expiry"
+          value={result.not_expired === false ? "Expired" : "Valid"}
+        />
       </div>
+
+      {zkpCircuit ? (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-foreground">Zero-knowledge proof</span>
+            <span className="flex items-center gap-2">
+              <TriTile
+                state={zkpProofValid ? "pass" : "fail"}
+                label="local"
+                value={zkpProofValid ? "valid" : "invalid"}
+              />
+              {zkpOnChainValid !== null ? (
+                <TriTile
+                  state={zkpOnChainValid ? "pass" : "fail"}
+                  label="on-chain"
+                  value={zkpOnChainValid ? "valid" : "invalid"}
+                />
+              ) : null}
+            </span>
+          </div>
+          <p className="font-mono text-[10px] text-muted-foreground break-all">
+            {zkpCircuit}
+            {zkpNullifier ? ` · nullifier ${zkpNullifier.slice(0, 18)}…` : ""}
+          </p>
+        </div>
+      ) : null}
+
+      {!compact ? (
+        <Tabs defaultValue="trust">
+          <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsTrigger value="trust" className="text-xs">Trust</TabsTrigger>
+            <TabsTrigger value="timeline" className="text-xs">Timeline</TabsTrigger>
+            <TabsTrigger value="disclosure" className="text-xs">Disclosure</TabsTrigger>
+            <TabsTrigger value="issuer" className="text-xs">Issuer</TabsTrigger>
+            {policyEvaluation ? <TabsTrigger value="policy" className="text-xs">Policy</TabsTrigger> : null}
+          </TabsList>
+
+          <TabsContent value="trust" className="space-y-4 pt-4">
+            <TrustScoreRadar result={trustResult} />
+            <HolderEvidenceStrip
+              holderDid={holderDid}
+              credentialHash={credentialHash}
+              biometricProofHash={biometricProofHash}
+            />
+            {/* The blocklist is scoped to holder DIDs, so the block control lives
+                with the holder evidence — never on the issuer card. */}
+            {holderDid && (onBlockHolder || onUnblockHolder) ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-foreground">
+                    {holderBlocked ? "Holder is on your blocklist" : "Block this holder"}
+                  </p>
+                  <p className="font-mono text-[10px] text-muted-foreground truncate">{holderDid}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`shrink-0 gap-1.5 text-xs ${
+                    holderBlocked
+                      ? "border-destructive/40 text-destructive hover:bg-destructive/10"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => {
+                    if (holderBlocked) onUnblockHolder?.(holderDid);
+                    else onBlockHolder?.(holderDid);
+                  }}
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  {holderBlocked ? "Unblock" : "Block"}
+                </Button>
+              </div>
+            ) : null}
+            <AnomalyPanel
+              report={anomalyReport}
+              sampleSize={history.filter((r) => r.holder_did === holderDid).length}
+              scope={holderDid ? "this holder" : "all verifications"}
+              storedFindings={stored?.anomaly_findings}
+              storedRisk={stored?.anomaly_risk}
+            />
+          </TabsContent>
+
+          <TabsContent value="timeline" className="pt-4">
+            <VerificationTimeline steps={timeline} />
+          </TabsContent>
+
+          <TabsContent value="disclosure" className="pt-4">
+            <SelectiveDisclosureInspector
+              disclosed={disclosed}
+              credentialFingerprint={credentialHash}
+              zkpCoveredFields={zkpCircuit ? ["dateOfBirth", "birthDate", "age"] : []}
+            />
+          </TabsContent>
+
+          <TabsContent value="issuer" className="pt-4">
+            <IssuerProfile issuer={issuer} records={history} />
+          </TabsContent>
+
+          {policyEvaluation ? (
+            <TabsContent value="policy" className="pt-4">
+              <PolicyEvaluationPanel evaluation={policyEvaluation} />
+            </TabsContent>
+          ) : null}
+        </Tabs>
+      ) : null}
 
       {result.expires_at && (
         <p className="text-xs text-muted-foreground">

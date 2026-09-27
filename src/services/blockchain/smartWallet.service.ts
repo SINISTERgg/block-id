@@ -67,6 +67,61 @@ export async function predictAccountAddress(owner: string, salt: bigint): Promis
   return (await registry.getAccountAddress(owner, salt32)) as string;
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+export interface SmartWalletProfile {
+  owner: string;
+  /** ERC-4337 account address, or the zero address when none is deployed. */
+  account: string;
+  hasSmartWallet: boolean;
+  guardians: string[];
+  recoveryThreshold: number;
+}
+
+/**
+ * Resolve a holder's ERC-4337 smart account + guardian configuration.
+ * `accountOf` is keyed by OWNER address. Never throws — an unconfigured or
+ * unreachable registry simply yields `hasSmartWallet: false`.
+ */
+export async function getSmartWalletProfile(
+  owner: string,
+  address?: string
+): Promise<SmartWalletProfile> {
+  const base: SmartWalletProfile = {
+    owner,
+    account: ZERO_ADDRESS,
+    hasSmartWallet: false,
+    guardians: [],
+    recoveryThreshold: 0,
+  };
+  const target = address ?? REGISTRY_ADDRESS;
+  if (!target || target === ZERO_ADDRESS || !isSmartWalletConfigured()) return base;
+  try {
+    const provider = await getReadProvider();
+    const registry = new Contract(target, SMART_WALLET_REGISTRY_ABI, provider);
+    const account = (await registry.accountOf(owner)) as string;
+    if (!account || account === ZERO_ADDRESS) return base;
+    const [guardians, threshold] = await Promise.all([
+      registry.getGuardians(account) as Promise<string[]>,
+      registry.recoveryThreshold(account) as Promise<bigint>,
+    ]);
+    return {
+      owner,
+      account,
+      hasSmartWallet: true,
+      guardians: guardians ?? [],
+      recoveryThreshold: Number(threshold ?? 0),
+    };
+  } catch {
+    return base;
+  }
+}
+
+/** True when `owner` controls a deployed ERC-4337 smart account. */
+export async function hasSmartWallet(owner: string, address?: string): Promise<boolean> {
+  return (await getSmartWalletProfile(owner, address)).hasSmartWallet;
+}
+
 /**
  * Deploy (or reuse) the smart account. If a bundler is configured we send an
  * initCode UserOperation; otherwise we call createAccount directly with the

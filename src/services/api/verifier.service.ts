@@ -1,4 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import type { AnomalyFinding } from "@/lib/ml/anomaly";
+import type { TrustTier } from "@/lib/ml/trustScore";
+import type { CircuitName } from "@/lib/zkp";
+import { normalizePolicy, type VerificationPolicy } from "@/lib/verifier/policy";
 
 export interface VerificationRecord {
   id: string;
@@ -14,6 +19,18 @@ export interface VerificationRecord {
   access_expires_at: string | null;
   storage_consent: boolean;
   responded_at: string | null;
+  // ── Intelligence columns (migration 20260926000001) ──
+  zkp_circuit?: CircuitName | null;
+  zkp_proof_valid?: boolean | null;
+  zkp_on_chain_valid?: boolean | null;
+  zkp_nullifier?: string | null;
+  trust_score?: number | null;
+  trust_tier?: TrustTier | null;
+  anomaly_risk?: number | null;
+  anomaly_findings?: AnomalyFinding[] | null;
+  biometric_verified?: boolean | null;
+  sbt_token_id?: number | null;
+  policy_id?: string | null;
 }
 
 export interface FetchRecordsOptions {
@@ -67,7 +84,9 @@ export async function fetchVerificationRecords(
 
   const { data, count, error } = await query;
   if (error) throw error;
-  return { records: (data ?? []) as VerificationRecord[], count: count ?? 0 };
+  // The generated row types use `Json` for the JSONB columns; the app-facing
+  // `VerificationRecord` narrows them to the shapes the services produce.
+  return { records: (data ?? []) as unknown as VerificationRecord[], count: count ?? 0 };
 }
 
 /**
@@ -207,6 +226,14 @@ export function verificationRecordsToCSV(records: VerificationRecord[]): string 
     "responded_at",
     "stored",
     "access_expires_at",
+    "trust_score",
+    "trust_tier",
+    "anomaly_risk",
+    "zkp_circuit",
+    "zkp_proof_valid",
+    "zkp_on_chain_valid",
+    "biometric_verified",
+    "sbt_token_id",
   ];
   const rows = records.map((r) => {
     const ai = (r.ai_analysis as any) ?? {};
@@ -223,6 +250,14 @@ export function verificationRecordsToCSV(records: VerificationRecord[]): string 
       r.responded_at ?? "",
       r.storage_consent ? "true" : "false",
       r.access_expires_at ?? "",
+      r.trust_score ?? "",
+      r.trust_tier ?? "",
+      r.anomaly_risk ?? "",
+      r.zkp_circuit ?? "",
+      r.zkp_proof_valid == null ? "" : String(r.zkp_proof_valid),
+      r.zkp_on_chain_valid == null ? "" : String(r.zkp_on_chain_valid),
+      r.biometric_verified == null ? "" : String(r.biometric_verified),
+      r.sbt_token_id ?? "",
     ]
       .map(csvEscape)
       .join(",");
@@ -238,4 +273,160 @@ export function downloadTextFile(filename: string, content: string, mime = "text
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Verification policies (Phase 7) ──────────────────────────────────────────
+
+export interface VerificationPolicyRow {
+  id: string;
+  verifier_id: string;
+  name: string;
+  description: string | null;
+  policy_json: VerificationPolicy;
+  is_active: boolean;
+  created_at: string;
+}
+
+/**
+ * Stored policies are JSONB, so the value comes back as `Json`. Repair it
+ * through the shared `normalizePolicy` so a hand-edited or legacy row can
+ * never crash the whole policy list.
+ */
+
+export async function fetchPolicies(verifierId: string): Promise<VerificationPolicyRow[]> {
+  const { data, error } = await supabase
+    .from("verification_policies")
+    .select("*")
+    .eq("verifier_id", verifierId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({ ...r, policy_json: normalizePolicy(r.policy_json) }));
+}
+
+export async function createPolicy(
+  verifierId: string,
+  input: { name: string; description?: string; policy_json: VerificationPolicy; is_active?: boolean }
+): Promise<VerificationPolicyRow> {
+  const { data, error } = await supabase
+    .from("verification_policies")
+    .insert({
+      verifier_id: verifierId,
+      name: input.name,
+      description: input.description ?? null,
+      policy_json: input.policy_json as unknown as Json,
+      is_active: input.is_active ?? false,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return { ...data, policy_json: normalizePolicy(data.policy_json) };
+}
+
+export async function updatePolicy(
+  policyId: string,
+  patch: Partial<Pick<VerificationPolicyRow, "name" | "description" | "policy_json" | "is_active">>
+): Promise<void> {
+  const payload: {
+    name?: string;
+    description?: string | null;
+    is_active?: boolean;
+    policy_json?: Json;
+  } = {};
+  if (patch.name !== undefined) payload.name = patch.name;
+  if (patch.description !== undefined) payload.description = patch.description;
+  if (patch.is_active !== undefined) payload.is_active = patch.is_active;
+  if (patch.policy_json !== undefined) payload.policy_json = patch.policy_json as unknown as Json;
+
+  const { error } = await supabase
+    .from("verification_policies")
+    .update(payload)
+    .eq("id", policyId);
+  if (error) throw error;
+}
+
+/** Activate exactly one policy and deactivate every sibling in one pass. */
+export async function activatePolicy(verifierId: string, policyId: string): Promise<void> {
+  const { error } = await supabase
+    .from("verification_policies")
+    .update({ is_active: false })
+    .eq("verifier_id", verifierId)
+    .neq("id", policyId);
+  if (error) throw error;
+  const { error: activeError } = await supabase
+    .from("verification_policies")
+    .update({ is_active: true })
+    .eq("id", policyId);
+  if (activeError) throw activeError;
+}
+
+export async function deletePolicy(policyId: string): Promise<void> {
+  const { error } = await supabase.from("verification_policies").delete().eq("id", policyId);
+  if (error) throw error;
+}
+
+// ── Verifier blocklist (Phase 8) ─────────────────────────────────────────────
+
+export interface BlocklistEntry {
+  id: string;
+  verifier_id: string;
+  holder_did: string;
+  reason: string | null;
+  blocked_at: string;
+}
+
+export async function fetchBlocklist(verifierId: string): Promise<BlocklistEntry[]> {
+  const { data, error } = await supabase
+    .from("verifier_blocklist")
+    .select("*")
+    .eq("verifier_id", verifierId)
+    .order("blocked_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as BlocklistEntry[];
+}
+
+export async function addToBlocklist(
+  verifierId: string,
+  holderDid: string,
+  reason?: string
+): Promise<void> {
+  const { error } = await supabase.from("verifier_blocklist").insert({
+    verifier_id: verifierId,
+    holder_did: holderDid,
+    reason: reason ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function removeFromBlocklist(entryId: string): Promise<void> {
+  const { error } = await supabase.from("verifier_blocklist").delete().eq("id", entryId);
+  if (error) throw error;
+}
+
+// ── Verification intelligence persistence ────────────────────────────────────
+
+/** Persist trust/anomaly/ZKP conclusions against a verification request row. */
+export async function saveVerificationIntelligence(
+  requestId: string,
+  patch: Partial<
+    Pick<
+      VerificationRecord,
+      | "zkp_circuit"
+      | "zkp_proof_valid"
+      | "zkp_on_chain_valid"
+      | "zkp_nullifier"
+      | "trust_score"
+      | "trust_tier"
+      | "anomaly_risk"
+      | "anomaly_findings"
+      | "biometric_verified"
+      | "sbt_token_id"
+      | "policy_id"
+    >
+  >
+): Promise<void> {
+  const { error } = await supabase
+    .from("verification_requests")
+    .update(patch as Record<string, unknown>)
+    .eq("id", requestId);
+  if (error) throw error;
 }
