@@ -1,16 +1,25 @@
 import { useMemo, useState } from "react";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
-import { Shield, Copy, QrCode, ExternalLink, Clock, Link2, Wallet, Key, AlertTriangle, FileImage, Fingerprint } from "lucide-react";
+import {
+  Shield, Copy, QrCode, ExternalLink, Clock, Link2, Wallet, Key, AlertTriangle,
+  FileImage, Fingerprint, Search, RefreshCw, Fingerprint as Passkey,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import CertificateRenderer from "@/components/issuer/CertificateRenderer";
+import CredentialInspectorModal from "@/components/holder/CredentialInspectorModal";
 import OnChainStatusBadge from "@/components/OnChainStatusBadge";
 import { motion } from "framer-motion";
 import { MOTION } from "@/lib/motion";
+import { useNavigate } from "react-router-dom";
+import type { UseSecurityHealthResult, SecurityAction } from "@/hooks/useSecurityHealth";
 import type { HolderCredential } from "@/services/api/holder.service";
 
 type StatusFilter = "all" | "active" | "revoked" | "expired";
+type CategoryFilter = "all" | "education" | "employment" | "identity" | "certifications";
 
 interface WalletViewProps {
   credentials: HolderCredential[];
@@ -24,7 +33,7 @@ interface WalletViewProps {
   holderDid: string | undefined;
   holderName: string | undefined;
   onGenerateDid: () => void;
-  securityScore: number;
+  securityHealth: UseSecurityHealthResult;
   isWalletConnected: boolean;
 }
 
@@ -34,6 +43,49 @@ const STATUS_FILTER_OPTIONS: { label: string; value: StatusFilter }[] = [
   { label: "Revoked", value: "revoked" },
   { label: "Expired", value: "expired" },
 ];
+
+/**
+ * Keyword signatures per category. Ordered most-specific-first so that e.g.
+ * "employment" wins over a generic "certificate" match on the same credential.
+ */
+const CATEGORY_KEYWORDS: Record<Exclude<CategoryFilter, "all">, string[]> = {
+  education: [
+    "degree", "diploma", "transcript", "education", "academic", "bachelor", "master",
+    "phd", "thesis", "course", "university", "college", "school", "student", "gpa", "grade",
+  ],
+  employment: [
+    "employment", "employee", "employer", "work", "job", "salary", "profession",
+    "contractor", "internship", "recruit", "role", "payroll",
+  ],
+  identity: [
+    "identity", "kyc", "aml", "passport", "national", "citizen", "residence",
+    "birth", "driver", "aadhaar", "ssn", "taxpayer", "person",
+  ],
+  certifications: [
+    "certificate", "certification", "certified", "license", "licence", "training",
+    "accreditation", "accredited", "badge", "membership", "qualification",
+  ],
+};
+
+const CATEGORY_OPTIONS: { label: string; value: CategoryFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Education", value: "education" },
+  { label: "Employment", value: "employment" },
+  { label: "Identity & KYC", value: "identity" },
+  { label: "Certifications", value: "certifications" },
+];
+
+/** Match a credential against a category by scanning its type then its name. */
+function matchesCategory(cred: HolderCredential, category: CategoryFilter): boolean {
+  if (category === "all") return true;
+  const haystack = [
+    cred.credential_schemas?.credential_type ?? "",
+    cred.credential_schemas?.name ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  return CATEGORY_KEYWORDS[category].some((kw) => haystack.includes(kw));
+}
 
 const WalletView = ({
   credentials,
@@ -47,10 +99,18 @@ const WalletView = ({
   holderDid,
   holderName,
   onGenerateDid,
-  securityScore,
+  securityHealth,
   isWalletConnected,
 }: WalletViewProps) => {
+  const navigate = useNavigate();
   const [certPreview, setCertPreview] = useState<HolderCredential | null>(null);
+  const [inspected, setInspected] = useState<HolderCredential | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [expiringOnly, setExpiringOnly] = useState(false);
+  const [renewalTarget, setRenewalTarget] = useState<HolderCredential | null>(null);
+  const [renewalNote, setRenewalNote] = useState("");
+
+  const { score: securityScore, recommendations } = securityHealth;
 
   const activeCount = credentials.filter((c) => c.status === "active").length;
   const revokedCount = credentials.filter((c) => c.status === "revoked").length;
@@ -68,8 +128,12 @@ const WalletView = ({
     });
   }, [credentials]);
 
+  const expiringSoonIds = useMemo(() => new Set(expiringSoon.map((c) => c.id)), [expiringSoon]);
+
   const filteredCredentials = useMemo(() => credentials.filter((c) => {
     if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (!matchesCategory(c, categoryFilter)) return false;
+    if (expiringOnly && !expiringSoonIds.has(c.id)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
@@ -79,7 +143,23 @@ const WalletView = ({
       );
     }
     return true;
-  }), [credentials, statusFilter, searchQuery]);
+  }), [credentials, statusFilter, searchQuery, categoryFilter, expiringOnly, expiringSoonIds]);
+
+  /** Route a recommendation chip to wherever that control is actually configured. */
+  const runSecurityAction = (action: SecurityAction) => {
+    if (action === "generate-did") {
+      if (isWalletConnected) onGenerateDid();
+      else navigate("/holder", { state: { scrollToWallet: true } });
+      return;
+    }
+    if (action === "connect-wallet") {
+      navigate("/holder");
+      return;
+    }
+    if (action === "setup-passkey") {
+      navigate("/holder/security");
+    }
+  };
 
   /** Build the verification URL from credential hash (matches CertificateRenderer) */
   const getVerificationUrl = (hash: string) => {
@@ -179,6 +259,22 @@ const WalletView = ({
                 transition={{ delay: 0.3, duration: 0.6, ease: MOTION.EASE }}
               />
             </div>
+            {recommendations.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {recommendations.map((rec) => (
+                  <button
+                    key={rec.id}
+                    onClick={() => runSecurityAction(rec.action!)}
+                    title={rec.detail}
+                    className="inline-flex items-center gap-1.5 border border-holder/40 bg-holder/10 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-holder transition-colors hover:bg-holder/20"
+                  >
+                    {rec.action === "setup-passkey" && <Passkey className="h-3 w-3" />}
+                    {rec.actionLabel}
+                    <span className="opacity-60">+{rec.weight}%</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -259,14 +355,71 @@ const WalletView = ({
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 border-l-2 border-warning bg-warning/10 p-4 mb-6"
+          className="flex flex-wrap items-center gap-3 border-l-2 border-warning bg-warning/10 p-4 mb-6"
         >
           <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
-          <p className="text-sm text-muted-foreground flex-1">
+          <p className="text-sm text-muted-foreground flex-1 min-w-[220px]">
             <strong className="text-foreground">{expiringSoon.length}</strong> credential{expiringSoon.length !== 1 ? "s" : ""} expiring within 30 days
           </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant={expiringOnly ? "holder" : "outline"}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setExpiringOnly((v) => !v)}
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em]">View Expiring Only</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => { setRenewalTarget(expiringSoon[0]); setRenewalNote(""); }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em]">Request Renewal</span>
+            </Button>
+          </div>
         </motion.div>
       )}
+
+      {/* Category tabs */}
+      <motion.div
+        initial={{ opacity: 0, y: MOTION.DISTANCE }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: MOTION.DURATION, ease: MOTION.EASE }}
+        className="flex flex-wrap items-center gap-2 mb-4"
+      >
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mr-1">
+          Category
+        </span>
+        {CATEGORY_OPTIONS.map((opt) => {
+          const count = credentials.filter((c) => matchesCategory(c, opt.value)).length;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => setCategoryFilter(opt.value)}
+              className={`border px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                categoryFilter === opt.value
+                  ? "border-holder bg-holder text-holder-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              }`}
+            >
+              {opt.label}
+              <span className="ml-1 opacity-60">{count}</span>
+            </button>
+          );
+        })}
+        {expiringOnly && (
+          <button
+            onClick={() => setExpiringOnly(false)}
+            className="border border-warning bg-warning/10 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-warning"
+          >
+            Expiring Only ✕
+          </button>
+        )}
+      </motion.div>
 
       {/* Credential registry */}
       <motion.div
@@ -392,6 +545,9 @@ const WalletView = ({
                           <Button variant="ghost" size="sm" className="h-7 gap-1.5" onClick={() => setCertPreview(cred)}>
                             <FileImage className="h-3.5 w-3.5" /><span className="font-mono text-[9px] uppercase tracking-[0.12em]">Cert</span>
                           </Button>
+                          <Button variant="ghost" size="sm" className="h-7 gap-1.5" onClick={() => setInspected(cred)}>
+                            <Search className="h-3.5 w-3.5" /><span className="font-mono text-[9px] uppercase tracking-[0.12em]">Inspect</span>
+                          </Button>
                         </div>
                       )}
 
@@ -423,6 +579,9 @@ const WalletView = ({
                         </Button>
                         <Button variant="outline" size="sm" className="h-8 gap-1.5 flex-1" onClick={() => setCertPreview(cred)}>
                           <FileImage className="h-4 w-4" /> Cert
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5 flex-1" onClick={() => setInspected(cred)}>
+                          <Search className="h-4 w-4" /> Inspect
                         </Button>
                       </div>
                     )}
@@ -489,6 +648,61 @@ const WalletView = ({
             : null
         }
       />
+      {/* Credential Inspector */}
+      <CredentialInspectorModal
+        open={!!inspected}
+        onOpenChange={(open) => !open && setInspected(null)}
+        credential={inspected}
+        onCopy={onCopy}
+      />
+
+      {/* Renewal Request */}
+      <Dialog open={!!renewalTarget} onOpenChange={(open) => !open && setRenewalTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Request Renewal</DialogTitle>
+            <DialogDescription>
+              Send a renewal request token to the issuer of {renewalTarget?.credential_schemas?.name || "this credential"}.
+            </DialogDescription>
+          </DialogHeader>
+          {renewalTarget && (
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <label className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground" htmlFor="renewal-note">
+                  Note to issuer (optional)
+                </label>
+                <Textarea
+                  id="renewal-note"
+                  rows={3}
+                  value={renewalNote}
+                  onChange={(e) => setRenewalNote(e.target.value)}
+                  placeholder="e.g. My certification renews next month — please reissue."
+                  className="text-sm"
+                />
+              </div>
+              <Button
+                className="btn-holder w-full gap-2"
+                onClick={() => {
+                  const payload = JSON.stringify({
+                    type: "renewal-request",
+                    credentialId: renewalTarget.id,
+                    credentialHash: renewalTarget.credential_hash,
+                    schema: renewalTarget.credential_schemas?.name,
+                    holder: holderDid ?? holderName ?? "unknown-holder",
+                    expiresAt: (renewalTarget.credential_data as any)?.expirationDate ?? null,
+                    note: renewalNote.trim() || undefined,
+                    issuedAt: new Date().toISOString(),
+                  });
+                  onCopy(payload);
+                  setRenewalTarget(null);
+                }}
+              >
+                <RefreshCw className="h-4 w-4" /> Copy renewal request token
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

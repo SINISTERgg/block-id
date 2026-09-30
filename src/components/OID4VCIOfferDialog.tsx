@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Smartphone, Copy, Check, QrCode, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SchemaForm from "@/components/SchemaForm";
+import { isValidHolderDid } from "@/lib/schemaValidation";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
@@ -34,6 +36,27 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
   const selectedSchemaObj = schemas.find((s) => s.id === selectedSchema);
   const latestSchemas = schemas.filter((s) => s.is_latest);
 
+  /** The offer dialog used to POST an always-empty `credential_data`, so every
+   *  credential it issued had an empty credentialSubject. */
+  const schemaFields = useMemo(
+    () => (selectedSchemaObj ? (selectedSchemaObj.fields as any[]) : []),
+    [selectedSchemaObj],
+  );
+
+  /** Required fields the issuer still has to fill in before an offer is valid. */
+  const missingRequired = useMemo(
+    () =>
+      schemaFields.filter(
+        (f) => f?.required && !f?.auto && isBlank(credentialData?.[f.name]),
+      ),
+    [schemaFields, credentialData],
+  );
+
+  const holderDidInvalid = holderDid.trim() !== "" && !isValidHolderDid(holderDid.trim());
+
+  const canGenerate =
+    !!selectedSchema && latestSchemas.length > 0 && missingRequired.length === 0 && !holderDidInvalid;
+
   const generateOffer = async () => {
     if (!selectedSchema) return;
     setGenerating(true);
@@ -50,17 +73,17 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
           body: JSON.stringify({
             schema_id: selectedSchema,
             credential_data: credentialData,
-            holder_did: holderDid || undefined,
+            holder_did: holderDid.trim() || undefined,
             expires_in_minutes: 30,
           }),
         }
       );
       const result = await res.json();
-      if (result.error) throw new Error(result.error);
+      if (!res.ok || result.error) throw new Error(result.error || "Could not create the offer");
       setOffer(result);
       toast({ title: "Credential offer created" });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: err?.message, variant: "destructive" });
     }
     setGenerating(false);
   };
@@ -125,17 +148,47 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
                     <Input 
                       value={holderDid} 
                       onChange={(e) => setHolderDid(e.target.value)} 
-                      placeholder="did:key:... or leave blank"
+                      placeholder="did:key:... or leave blank" 
                       className="mt-1"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">Leave empty for any wallet to claim</p>
+                    {holderDidInvalid ? (
+                      <p className="text-xs text-destructive mt-1">
+                        That is not a valid DID. Leave it blank to let any wallet claim.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">Leave empty for any wallet to claim</p>
+                    )}
                   </div>
+
+                  {schemaFields.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">Credential Data</Label>
+                      <div className="border border-border rounded-md p-3 mt-1 space-y-3 max-h-64 overflow-y-auto">
+                        <SchemaForm
+                          fields={schemaFields}
+                          value={credentialData}
+                          onChange={setCredentialData}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        These values are written into the credential's credentialSubject when
+                        the holder claims the offer.
+                      </p>
+                    </div>
+                  )}
+
+                  {missingRequired.length > 0 && (
+                    <p className="text-xs text-destructive">
+                      Fill in: {missingRequired.map((f) => f.name).join(", ")}
+                    </p>
+                  )}
 
                   <Button 
                     className="w-full btn-primary" 
                     onClick={generateOffer} 
-                    disabled={generating || !selectedSchema || latestSchemas.length === 0}
+                    disabled={!canGenerate || generating}
                   >
+
                     {generating ? (
                       <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
                     ) : "Generate Offer"}
@@ -185,7 +238,10 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
                 <Button variant="ghost" className="w-full text-sm mt-3" onClick={reset}>Create Another Offer</Button>
 
                 <p className="text-xs text-muted-foreground text-center mt-3">
-                  Compatible with Sphereon, Walt.id, MATTR, and other OID4VCI wallets
+                  Standard OID4VCI pre-authorized code flow (ldp_vc). Works with wallets that
+                  support <span className="font-mono">openid-credential-offer://</span> — for
+                  example Sphereon, Walt.id and MATTR. The credential is issued unsigned; this
+                  issuer holds no signing key.
                 </p>
               </>
             )}
@@ -195,5 +251,14 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
     </div>
   );
 };
+
+/** A required field counts as filled unless it is empty, whitespace, or an
+ *  empty array — `isBlank` from lodash semantics, kept local to avoid a dep. */
+function isBlank(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
 
 export default OID4VCIOfferDialog;

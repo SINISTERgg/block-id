@@ -12,7 +12,8 @@ import IssuerProfile from "@/components/verifier/IssuerProfile";
 import PolicyEvaluationPanel from "@/components/verifier/PolicyEvaluationPanel";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
-import { computeTrustScore, type TrustFactors, type TrustTier } from "@/lib/ml/trustScore";
+import { computeTrustScore, analysisToTrustScore, type TrustFactors, type TrustTier } from "@/lib/ml/trustScore";
+import { normalizeAiAnalysis } from "@/lib/ml/aiAnalysis";
 import type { AnomalyFinding, AnomalyReport } from "@/lib/ml/anomaly";
 import { evaluatePolicy, normalizePolicy, type VerificationPolicy } from "@/lib/verifier/policy";
 import { analyzeHolderRecords } from "@/lib/verifier/intelligence";
@@ -132,19 +133,37 @@ export const VerificationResultView = ({
     return analyzeHolderRecords(scoped);
   }, [history, holderDid]);
 
+  // The canonical analysis, normalised onto the current schema. Any historical
+  // or v1 payload still renders correctly instead of half-populating the panel.
+  const analysis = useMemo(() => normalizeAiAnalysis(result?.ai_analysis), [result?.ai_analysis]);
+
   const trustResult = useMemo(() => {
-    // Prefer the score persisted at verification time so the audit trail and
-    // the live report can never disagree.
+    // Prefer the engine's own analysis: it carries the full factor breakdown,
+    // so the radar and the trust panel are guaranteed to show the same number.
+    if (analysis && (analysis.dimensions.length > 0 || !analysis.legacy)) {
+      return analysisToTrustScore(analysis);
+    }
+
+    // Next best: a score persisted at verification time. The breakdown was not
+    // retained for this row, so the factor list stays empty and the radar
+    // renders its "not recorded" state.
     if (typeof stored?.trust_score === "number" && stored.trust_tier) {
       return {
         score: stored.trust_score,
         rawScore: stored.trust_score,
-        tier: stored.trust_tier,
+        tier: stored.trust_tier as TrustTier,
         factors: [],
+        hardCaps: [],
+        confidence: 0,
+        confidenceFactors: [],
+        riskLevel: "medium" as const,
+        dimensions: [],
         criticalFailures: [] as string[],
         computedAt: "",
       };
     }
+
+    // Last resort: derive signals from the raw response and run the engine.
     const shared =
       (result?.credential as Record<string, any> | undefined) ??
       (result?.shared_credential_data as Record<string, any> | undefined) ??
@@ -156,14 +175,20 @@ export const VerificationResultView = ({
       anchoredOnChain: !!onChain?.txVerified || !!onChain?.contractAnchored || !!result?.blockchain_anchor,
       notRevoked: result?.not_revoked !== false,
       notExpired: result?.not_expired !== false,
-      issuerReputation: 75,
+      // The server did not report a reputation here, so it stays unknown rather
+      // than being back-filled with an optimistic constant.
+      issuerReputation: result?.issuer_reputation ?? null,
       zkProofVerified: zkpProofValid === true,
       biometricBound: stored?.biometric_verified === true,
-      hasSmartWallet: undefined,
-      credentialAgeDays: typeof result?.age_in_days === "number" ? result.age_in_days : undefined,
+      hashChecked: result?.hash_integrity !== undefined && result?.hash_integrity !== null,
+      hashValid: result?.hash_integrity === true,
+      onChainChecked: result?.on_chain_checked ?? !!onChain?.contractVerified,
+      expiresAt: result?.expires_at ?? null,
+      issuedAt: shared?.issuanceDate ?? null,
+      credentialAgeDays: typeof result?.age_in_days === "number" ? result.age_in_days : null,
     };
     return computeTrustScore(factors);
-  }, [stored, result, onChain, zkpProofValid]);
+  }, [analysis, stored, result, onChain, zkpProofValid]);
 
   const policyEvaluation = useMemo(() => {
     if (!policy) return null;
@@ -475,18 +500,22 @@ export const VerificationResultView = ({
         </div>
       )}
 
-      {result.ai_analysis?.dimensions && (
+      {analysis.dimensions.length > 0 && (
         <CredentialAIAssistant
-          analysis={result.ai_analysis}
+          analysis={analysis}
           verificationContext={{
-            ai_analysis: result.ai_analysis,
+            ai_analysis: analysis,
             valid: result.valid,
             hash_integrity: result.hash_integrity,
+            hash_checked: result.hash_integrity !== undefined && result.hash_integrity !== null,
             not_revoked: result.not_revoked,
             not_expired: result.not_expired,
             blockchain_verified: result.blockchain_verified,
+            blockchain_checked: result.on_chain_checked ?? false,
             expires_at: result.expires_at,
             blockchain_anchor: result.blockchain_anchor,
+            unverified_checks: result.unverified_checks,
+            provisional: result.provisional,
             signature: result.signature,
           }}
         />

@@ -21,6 +21,55 @@ const OID4VPRequestDialog = () => {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
 
+  // The request's presentation definition filters on `$.type` containing the
+  // chosen `credential_type`. That has to be a value that actually exists in
+  // `credential_schemas`, so the options are read from the database rather than
+  // hardcoded — the old fixed list (degree/diploma/transcript) matched nothing
+  // this deployment issues, so every generated request was unsatisfiable.
+  const [credentialTypes, setCredentialTypes] = useState<{ type: string; label: string }[]>([]);
+  const [typesLoading, setTypesLoading] = useState(false);
+
+  // Held in a ref so the fetch effect does not depend on `toast` identity —
+  // adding it to the dep array would re-run the query whenever it changed.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTypesLoading(true);
+    supabase
+      .from("credential_schemas")
+      .select("credential_type, name, is_latest")
+      .eq("is_latest", true)
+      .order("credential_type", { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          toastRef.current({
+            title: "Could not load credential types",
+            description: error.message,
+            variant: "destructive",
+          });
+          setCredentialTypes([]);
+        } else {
+          const seen = new Map<string, string>();
+          for (const row of (data ?? []) as { credential_type?: string; name?: string }[]) {
+            const type = row?.credential_type;
+            if (typeof type === "string" && type && !seen.has(type)) {
+              seen.set(type, row?.name || type);
+            }
+          }
+          setCredentialTypes([...seen.entries()].map(([type, label]) => ({ type, label })));
+        }
+        setTypesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Re-fetch each time the dialog opens so newly created schemas show up.
+  }, [open]);
+
   const generateRequest = async () => {
     if (!credentialType) return;
     setGenerating(true);
@@ -116,16 +165,30 @@ const OID4VPRequestDialog = () => {
           <div className="space-y-4 pt-2">
             <div>
               <Label>Credential Type</Label>
-              <Select value={credentialType} onValueChange={setCredentialType}>
-                <SelectTrigger><SelectValue placeholder="Select required type" /></SelectTrigger>
+              <Select value={credentialType} onValueChange={setCredentialType} disabled={typesLoading || credentialTypes.length === 0}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      typesLoading
+                        ? "Loading types…"
+                        : credentialTypes.length === 0
+                          ? "No schemas published yet"
+                          : "Select required type"
+                    }
+                  />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="degree">Degree</SelectItem>
-                  <SelectItem value="diploma">Diploma</SelectItem>
-                  <SelectItem value="certificate">Certificate</SelectItem>
-                  <SelectItem value="transcript">Transcript</SelectItem>
-                  <SelectItem value="VerifiableCredential">Any Verifiable Credential</SelectItem>
+                  {credentialTypes.map((t) => (
+                    <SelectItem key={t.type} value={t.type}>
+                      {t.label} ({t.type})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Matched against the credential's <span className="font-mono">type</span>, so the
+                options come from schemas that actually exist in this deployment.
+              </p>
             </div>
 
             <div>

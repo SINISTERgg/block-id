@@ -73,12 +73,17 @@ test/*
 *.njsproj
 *.sln
 *.sw?
+.cursor
+.cursor/*
+.vscode/*
 
 # ── OS files ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 Desktop.ini
 *.local
+.peridot
+.peridot/*
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 nul

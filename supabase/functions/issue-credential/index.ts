@@ -86,11 +86,15 @@ async function issueOne(
   credentialData: any,
   expiresAt: string | null,
   issuerSignature: string | null,
-  signerAddress: string | null
+  signerAddress: string | null,
+  sbtRequested: boolean = false
 ) {
   const { data: holderProfile } = await supabase
     .from("profiles")
-    .select("user_id")
+    // wallet_address is returned so the caller can mint the holder's SBT badge
+    // to the right recipient — the DID's own address is preferred, this is the
+    // fallback for DIDs that are not Ethereum-based.
+    .select("user_id, wallet_address")
     .eq("did", holderDid)
     .single();
 
@@ -168,6 +172,10 @@ async function issueOne(
     status: "active",
     issuer_signature: issuerSignature || null,
     signer_address: signerAddress || null,
+    // Durable record of the issuer's badge request. The holder portal needs
+    // this to tell "badge requested but never minted" apart from "no badge
+    // wanted" — the mint itself happens client-side, in a wallet.
+    sbt_requested: sbtRequested === true,
   };
 
   if (expiresAt) {
@@ -194,7 +202,15 @@ async function issueOne(
     credential_hash,
   });
 
-  return { ...credential, credential_hash };
+  // `holder_wallet_address` is surfaced to the caller so the client can mint the
+  // soulbound badge to the holder rather than to the issuer. `holder_did` is
+  // repeated here because the UI needs the DID to derive the preferred address.
+  return {
+    ...credential,
+    credential_hash,
+    holder_did: holderDid,
+    holder_wallet_address: holderProfile?.wallet_address ?? null,
+  };
 }
 
 serve(async (req) => {
@@ -217,7 +233,16 @@ serve(async (req) => {
     if (!isIssuer) return jsonResponse({ error: "Forbidden: issuer role required" }, 403, corsHeaders);
 
     const body = await req.json();
-    const { schema_id, holder_did, credential_data, expires_at, batch, issuer_signature, signer_address } = body;
+    const {
+      schema_id,
+      holder_did,
+      credential_data,
+      expires_at,
+      batch,
+      issuer_signature,
+      signer_address,
+      sbt_requested,
+    } = body;
 
     if (typeof schema_id !== "string" || !schema_id.trim()) {
       return jsonResponse({ error: "schema_id is required" }, 400, corsHeaders);
@@ -258,7 +283,8 @@ serve(async (req) => {
             item.credential_data || credential_data || {},
             item.expires_at || expires_at || null,
             item.issuer_signature || issuer_signature || null,
-            item.signer_address || signer_address || null
+            item.signer_address || signer_address || null,
+            (item.sbt_requested ?? sbt_requested) === true
           );
           results.push(cred);
         } catch (e) {
@@ -282,7 +308,7 @@ serve(async (req) => {
 
     // Single issuance
     try {
-      const credential = await issueOne(supabase, user.id, schema, holder_did, credential_data || {}, expires_at || null, issuer_signature || null, signer_address || null);
+      const credential = await issueOne(supabase, user.id, schema, holder_did, credential_data || {}, expires_at || null, issuer_signature || null, signer_address || null, sbt_requested === true);
       const schemaIpfsCid = await ensureSchemaPinned(supabase, user.id, schema);
       return new Response(JSON.stringify({ credential, schema_ipfs_cid: schemaIpfsCid }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

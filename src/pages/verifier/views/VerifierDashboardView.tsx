@@ -12,6 +12,7 @@ import IntelligenceOverview from "@/components/verifier/IntelligenceOverview";
 import { motion } from "framer-motion";
 import { MOTION } from "@/lib/motion";
 import { useNavigate } from "react-router-dom";
+import { aiConfidencePercent } from "@/lib/ml/aiAnalysis";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
 const stats = [
@@ -42,9 +43,13 @@ const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
   const stored = records.filter((r) => r.storage_consent && r.shared_credential_data).length;
 
   const avgConfidence = useMemo(() => {
-    const analyzed = records.filter((r) => (r.ai_analysis as any)?.confidence);
+    // Normalised to a single 0-100 scale — see AnalyticsView for why the raw
+    // field cannot be averaged directly.
+    const analyzed = records
+      .map((r) => aiConfidencePercent(r.ai_analysis))
+      .filter((c): c is number => c !== null);
     if (analyzed.length === 0) return 0;
-    return Math.round(analyzed.reduce((sum, r) => sum + (r.ai_analysis as any).confidence, 0) / analyzed.length);
+    return Math.round(analyzed.reduce((sum, c) => sum + c, 0) / analyzed.length);
   }, [records]);
 
   const statusDistribution = useMemo(() => [

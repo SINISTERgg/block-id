@@ -139,7 +139,7 @@ const SBTInspectorView = () => {
                 value={hashInput}
                 onChange={(e) => setHashInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") lookup(hashInput); }}
-                placeholder="0x… (64 hex chars)"
+                placeholder="64 hex chars, 0x optional"
                 className="font-mono text-xs input-solid"
               />
               <Button className="btn-primary gap-2 shrink-0" onClick={() => lookup(hashInput)} disabled={loading || !hashInput.trim()}>
@@ -215,9 +215,9 @@ const SBTInspectorView = () => {
                 className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-[11px] text-muted-foreground"
               >
                 <Check className="h-3.5 w-3.5 shrink-0" />
-                No soulbound token is bound to this hash. Either it was never minted, or it
-                was minted against a different hash form (the registry keys on{" "}
-                <span className="font-mono">0x</span>-prefixed SHA-256).
+                No soulbound token is bound to this hash — it was never minted. Both the bare
+                64-character form stored in <span className="font-mono">credentials.credential_hash</span>{" "}
+                and its <span className="font-mono">0x</span>-prefixed equivalent resolve to the same token.
               </motion.div>
             )
           ) : null}

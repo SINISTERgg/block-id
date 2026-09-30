@@ -25,7 +25,12 @@ import SchemasView from "./views/SchemasView";
 import IssueView from "./views/IssueView";
 import { MOTION } from "@/lib/motion";
 import { supabase } from "@/integrations/supabase/client";
-import { mintSbtForCredential, isSbtConfigured } from "@/services/blockchain/sbt.service";
+import {
+  mintSbtForCredential,
+  isSbtConfigured,
+  resolveHolderAddress,
+} from "@/services/blockchain/sbt.service";
+import { SBT_NOT_DEPLOYED_HINT } from "@/services/blockchain/config";
 
 const navItems = [
   { label: "Dashboard", path: "/issuer" },
@@ -197,6 +202,9 @@ const IssuerDashboard = () => {
           expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
           issuer_signature: issuerSignature,
           signer_address: signerAddr,
+          // Persisted server-side so the holder portal can distinguish a badge
+          // that was requested but never landed from one nobody asked for.
+          sbt_requested: mintSbtBadge,
         }),
       });
 
@@ -220,6 +228,9 @@ const IssuerDashboard = () => {
       if (!credHash) { toast({ title: "Error", description: "Failed to get credential hash", variant: "destructive" }); return; }
 
       // ── On-chain anchoring ───────────────────────────────────────────
+      // Anchor first (it proves the credential is on the registry), then mint
+      // the badge as its own step. The two used to be nested such that a
+      // rejected anchor silently cancelled the badge.
       if (walletAddress && isContractReady) {
         // Browser wallet (MetaMask)
         const anchorResult = await anchor(credHash);
@@ -247,34 +258,11 @@ const IssuerDashboard = () => {
             title: "Credential issued & anchored on-chain ✓",
             description: `Block: #${anchorResult.blockNumber} · Tx: ${anchorResult.txHash?.substring(0, 18)}...`,
           });
-
-          // ── Best-effort SBT mint ───────────────────────────────────────────
-          if (mintSbtBadge && isSbtConfigured()) {
-            try {
-              const { BrowserProvider } = await import("ethers");
-              const browserProvider = new BrowserProvider(window.ethereum!);
-              const signer = await browserProvider.getSigner();
-              const sbtResult = await mintSbtForCredential(signer as any, { credentialHash: credHash });
-              toast({
-                title: "🏅 Badge minted!",
-                description: `Token #${sbtResult.tokenId ?? "?"} — Tx: ${sbtResult.txHash?.substring(0, 18)}...`,
-              });
-            } catch (sbtErr: any) {
-              // Badge minting is best-effort and non-fatal — the credential is
-              // already anchored. Log for debugging but don't surface a toast.
-              console.warn("SBT mint skipped:", sbtErr.message);
-            }
-          }
-
-          loadData();
         } else {
           const errMsg = anchorResult.error ?? "";
           const isRejected = errMsg.includes("rejected") || errMsg.includes("denied");
           const isInsufficientFunds =
             errMsg.includes("insufficient funds") || errMsg.includes("insufficient_funds");
-
-          // Credential was already issued — refresh regardless
-          loadData();
 
           if (isRejected) {
             toast({
@@ -314,7 +302,6 @@ const IssuerDashboard = () => {
         } else {
           toast({ title: "Server anchoring failed", description: (serverResult?.error ?? "Unexpected error").slice(0, 240), variant: "destructive" });
         }
-        loadData();
       } else {
         toast({
           title: "Credential issued (off-chain)",
@@ -322,10 +309,166 @@ const IssuerDashboard = () => {
             ? "Connect MetaMask to anchor on Ethereum Sepolia."
             : "Contract not deployed. Credential created without on-chain anchor.",
         });
-        loadData();
       }
+
+      // ── Soulbound badge mint ─────────────────────────────────────────
+      // Runs regardless of the anchor outcome, and reports its own result
+      // instead of failing silently. The badge is minted to the HOLDER's
+      // address — never the issuer's.
+      if (mintSbtBadge) {
+        await mintAndRecordBadge({
+          credentialId: credData.id,
+          credentialHash: credHash,
+          holderDid: credData.holder_did ?? holderDid,
+          fallbackAddress: credData.holder_wallet_address ?? null,
+          authBearer,
+        });
+      }
+
+      loadData();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  /**
+   * Mint the holder's SBT badge, then persist the token id so the holder portal
+   * and the verifier SBT read paths can find it.
+   */
+  const mintAndRecordBadge = async ({
+    credentialId,
+    credentialHash,
+    holderDid,
+    fallbackAddress,
+    authBearer,
+  }: {
+    credentialId: string;
+    credentialHash: string;
+    holderDid: string;
+    fallbackAddress: string | null;
+    authBearer: string;
+  }): Promise<void> => {
+    if (!isSbtConfigured()) {
+      toast({
+        title: "Badge skipped — contract not configured",
+        description: SBT_NOT_DEPLOYED_HINT,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const holder = resolveHolderAddress(holderDid, fallbackAddress);
+    if (!holder) {
+      toast({
+        title: "Badge skipped — no holder wallet",
+        description:
+          "This holder DID is not an Ethereum DID and no wallet address is on file, so there is nowhere to mint the badge.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!window.ethereum) {
+      toast({
+        title: "Badge skipped — no wallet",
+        description: "Minting a soulbound badge requires MetaMask so the issuer can sign the transaction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let sbtResult;
+    try {
+      const { BrowserProvider } = await import("ethers");
+      const browserProvider = new BrowserProvider(window.ethereum!);
+      const signer = await browserProvider.getSigner();
+      sbtResult = await mintSbtForCredential(signer as any, {
+        credentialHash,
+        holderDid,
+        fallbackAddress,
+      });
+    } catch (sbtErr: any) {
+      const reason = (sbtErr as { reason?: string }).reason;
+      console.error("SBT mint failed:", sbtErr);
+
+      // Persist the failure so the holder portal can show a pending badge
+      // rather than silently omitting it.
+      if (reason !== "rejected") {
+        await supabase
+          .from("credentials")
+          .update({ sbt_status: "failed" })
+          .eq("id", credentialId)
+          .then(() => undefined, () => undefined);
+      }
+
+      toast({
+        title: reason === "rejected" ? "Badge mint declined" : "Badge mint failed",
+        description: sbtErr?.message?.slice(0, 260) ?? "Unknown error",
+        variant: reason === "rejected" ? undefined : "destructive",
+      });
+      return;
+    }
+
+    // Persist the token id — this is what makes the badge visible in the
+    // holder portal. Without it the mint is invisible to every reader.
+    //
+    // When tokenId is null (e.g. Minted log was absent from the receipt or
+    // eth_getTransactionReceipt hasn't finalised yet), pass verify_on_chain=true
+    // so the edge function reads tokenByCredentialHash from the contract directly,
+    // resolving the id without requiring a client-side re-decode.
+    try {
+      const recordBody: Record<string, unknown> = {
+        credential_id: credentialId,
+        tx_hash: sbtResult.txHash,
+        holder_address: sbtResult.holder,
+        status: "minted",
+        // Always ask the edge function to cross-check: it will self-heal a
+        // null tokenId by reading the contract, and validate a non-null one.
+        verify_on_chain: true,
+      };
+      if (sbtResult.tokenId !== null) {
+        recordBody.token_id = Number(sbtResult.tokenId);
+      }
+      // else: omit token_id — the edge function will read it from the chain
+
+      const recordRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/record-sbt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authBearer },
+        body: JSON.stringify(recordBody),
+      });
+
+      if (!recordRes.ok) {
+        const errBody = await recordRes.json().catch(() => ({}));
+        console.warn("record-sbt failed:", recordRes.status, errBody);
+
+        // Gracefully surface which token the badge landed on if we know
+        const tokenLabel = sbtResult.tokenId !== null ? `token #${sbtResult.tokenId}` : "an on-chain token";
+        toast({
+          title: `Badge minted (${tokenLabel}) but not recorded`,
+          description:
+            errBody?.error?.slice(0, 180) ??
+            "The badge is on-chain, but saving its token id failed. Run `node scripts/reconcile-sbt.js --write` to backfill it.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const recorded = await recordRes.json().catch(() => ({}));
+      // If the edge function resolved a token id that the client missed, use that
+      const resolvedTokenId = recorded?.sbt_token_id ?? sbtResult.tokenId;
+      toast({
+        title: "Badge minted ✓",
+        description: `Token #${resolvedTokenId ?? "?"} → ${sbtResult.holder.slice(0, 10)}… · Tx: ${sbtResult.txHash?.substring(0, 14)}...`,
+      });
+      return; // early return: toast already emitted above
+    } catch (recordErr) {
+      console.warn("record-sbt request failed:", recordErr);
+      toast({
+        title: `Badge minted (token #${sbtResult.tokenId ?? "?"}) but not recorded`,
+        description: "The badge is on-chain, but saving its token id failed. Run `node scripts/reconcile-sbt.js --write` to backfill it.",
+        variant: "destructive",
+      });
+      return;
     }
   };
 

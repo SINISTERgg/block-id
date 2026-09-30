@@ -24,7 +24,10 @@
     "gen:dataset": "node scripts/generate-anomaly-dataset.mjs",
     "eval:anomaly": "node scripts/evaluate-anomaly-engine.mjs",
     "benchmark:gas": "hardhat run scripts/benchmark-gas.js",
-    "benchmark:latency": "node scripts/benchmark-latency.mjs"
+    "benchmark:latency": "node scripts/benchmark-latency.mjs",
+    "test:contract:sbt": "hardhat run scripts/test-sbt-contract.js",
+    "reconcile:sbt": "node scripts/reconcile-sbt.js",
+    "sbt:issuer": "node scripts/set-issuer.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

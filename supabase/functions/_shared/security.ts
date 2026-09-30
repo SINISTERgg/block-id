@@ -16,6 +16,36 @@ const DEFAULT_MAX_REQUESTS = 60;
 /** @type {Map<string, { count: number; resetAt: number }>} */
 const rateBuckets = new Map();
 
+/**
+ * Ceiling on tracked buckets.
+ *
+ * The map was previously never pruned, so a warm edge instance that saw many
+ * distinct source addresses retained one entry per address for its whole life.
+ * That is a slow memory leak reachable by anyone with a rotating IP range, so
+ * eviction is bounded and lazy rather than best-effort-and-hoped. Buckets are
+ * keyed `scope:ip`, so the reachable key space is (routes x addresses); the
+ * ceiling is sized accordingly.
+ */
+const MAX_TRACKED_IPS = 10_000;
+let lastSweepAt = 0;
+
+/** Drop windows that have already reset. At most one full scan per window. */
+function sweepRateBuckets(now) {
+  if (rateBuckets.size < MAX_TRACKED_IPS && now - lastSweepAt < DEFAULT_WINDOW_MS) return;
+  lastSweepAt = now;
+  for (const [key, bucket] of rateBuckets) {
+    if (now > bucket.resetAt) rateBuckets.delete(key);
+  }
+  // Still oversized: shed the windows closest to resetting, which are the ones
+  // about to expire anyway.
+  if (rateBuckets.size > MAX_TRACKED_IPS) {
+    const oldest = [...rateBuckets.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+    for (let i = 0; i < oldest.length - MAX_TRACKED_IPS; i++) {
+      rateBuckets.delete(oldest[i][0]);
+    }
+  }
+}
+
 export function clientIp(req) {
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0].trim();
@@ -24,13 +54,29 @@ export function clientIp(req) {
   return "unknown";
 }
 
-/** Returns true when the caller is over the limit for this window. */
-export function rateLimited(ip, windowMs = DEFAULT_WINDOW_MS, max = DEFAULT_MAX_REQUESTS) {
+/**
+ * Returns true when the caller is over the limit for this window.
+ *
+ * `scope` namespaces the bucket. This is load-bearing: the counters are keyed
+ * by identifier alone, so without it every route in a function shares one
+ * counter. Callers then trip a limit they have nothing to do with — the
+ * verifier's 3-second `/status` poll (20/min) exhausts the shared window and
+ * the issuer's `/offer` on the same egress IP starts returning 429. Each route
+ * must pass its own scope.
+ *
+ * @param {string} ip
+ * @param {number} windowMs
+ * @param {number} max
+ * @param {string} scope
+ */
+export function rateLimited(ip, windowMs = DEFAULT_WINDOW_MS, max = DEFAULT_MAX_REQUESTS, scope = "default") {
   if (!ip) return false;
   const now = Date.now();
-  const bucket = rateBuckets.get(ip);
+  sweepRateBuckets(now);
+  const key = `${scope}:${ip}`;
+  const bucket = rateBuckets.get(key);
   if (!bucket || now > bucket.resetAt) {
-    rateBuckets.set(ip, { count: 1, resetAt: now + windowMs });
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
     return false;
   }
   bucket.count += 1;

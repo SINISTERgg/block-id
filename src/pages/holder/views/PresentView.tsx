@@ -229,7 +229,7 @@ const PresentView = ({
     <>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-headline">Present Credentials</h2>
-        <OID4VCIReceiveDialog onCredentialReceived={loadRequests} />
+        <OID4VCIReceiveDialog holderDid={holderDid} onCredentialReceived={loadRequests} />
       </div>
 
       {/* ── AI Verdict Notifications ───────────────────────────────────────── */}

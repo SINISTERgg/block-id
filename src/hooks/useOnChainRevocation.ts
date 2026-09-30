@@ -4,7 +4,13 @@ import {
   getCredentialStatus,
   isContractDeployed,
 } from "@/services/blockchain/registry";
+import {
+  revokeSbt,
+  getSbtForCredential,
+  isSbtConfigured,
+} from "@/services/blockchain/sbt.service";
 import { revokeCredential } from "@/services/api/issuer.service";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AMOY_EXPLORER } from "@/services/blockchain/config";
 
@@ -99,16 +105,82 @@ export function useOnChainRevocation(): UseOnChainRevocationResult {
           }
         }
 
+        // ── Revoke the soulbound badge too ──────────────────────────────
+        // A revoked credential must not leave a badge that the contract still
+        // reports as valid. This is best-effort: the credential revocation
+        // above has already succeeded, so a failure here must not undo it.
+        let sbtHash: string | null = null;
+        let sbtRevoked = false;
+        if (window.ethereum && isSbtConfigured()) {
+          try {
+            const sbt = await getSbtForCredential(credentialHash);
+            if (sbt && !sbt.revoked) {
+              const { BrowserProvider } = await import("ethers");
+              const signer = await new BrowserProvider(window.ethereum).getSigner();
+              sbtHash = await revokeSbt(signer as any, sbt.tokenId);
+              sbtRevoked = true;
+            }
+          } catch (sbtErr: any) {
+            // A user rejection here is meaningful — surface it, but do not
+            // treat the whole revocation as failed.
+            if (sbtErr?.code === 4001 || sbtErr?.message?.includes("user rejected")) {
+              console.warn("[BlockID] Badge revocation rejected in wallet");
+            } else {
+              console.warn(
+                "[BlockID] Badge revocation failed (credential revocation unaffected):",
+                sbtErr?.message,
+              );
+            }
+          }
+        }
+
+        // Record the badge state so the holder portal and verifier reads stop
+        // reporting a revoked credential as badged-and-valid. This goes through
+        // the record-sbt edge function rather than calling record_sbt_state
+        // directly: the RPC is service-role only, because it is SECURITY
+        // DEFINER and must not be reachable with a user JWT.
+        if (sbtRevoked) {
+          try {
+            const { data: session } = await supabase.auth.getSession();
+            const res = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/record-sbt`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${session?.session?.access_token}`,
+                },
+                body: JSON.stringify({
+                  action: "state",
+                  credential_id: credentialId,
+                  status: "revoked",
+                  tx_hash: sbtHash,
+                }),
+              },
+            );
+            if (!res.ok) {
+              console.warn("[BlockID] record-sbt state update failed:", res.status);
+            }
+          } catch (sbtRecordErr: any) {
+            console.warn("[BlockID] record-sbt state update error:", sbtRecordErr?.message);
+          }
+        }
+
         // Update Supabase regardless (Supabase is source of truth for UI)
         await revokeCredential(credentialId, issuerId);
         setTxState("confirmed");
+
+        const chainNotes = [
+          submittedHash ? "Anchored on Ethereum Sepolia" : null,
+          sbtRevoked ? "badge revoked" : null,
+        ].filter(Boolean);
 
         toast({
           title: submittedHash
             ? "Revoked on-chain & database"
             : "Revoked in database",
-          description: submittedHash
-            ? `Anchored on Ethereum Sepolia · ${AMOY_EXPLORER}/tx/${submittedHash}`
+          description: chainNotes.length
+            ? `${chainNotes.join(" · ")} · ${AMOY_EXPLORER}/tx/${submittedHash ?? sbtHash}`
             : "On-chain revocation skipped (credential not anchored or MetaMask unavailable).",
         });
         return true;

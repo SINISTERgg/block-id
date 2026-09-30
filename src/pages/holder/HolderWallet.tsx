@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useWeb3Wallet } from "@/hooks/useWeb3Wallet";
 import { useCredentialNotifications } from "@/hooks/useCredentialNotifications";
+import { useSecurityHealth } from "@/hooks/useSecurityHealth";
 import { computeTrustScore } from "@/lib/ml/trustScore";
 import {
   fetchHolderCredentials,
@@ -94,12 +95,13 @@ const HolderWallet = () => {
     setShareCredId(id); setShareCredName(name); setShareCredFields(fields);
   };
 
-  const securityScore = (() => {
-    let score = 0;
-    if (profile?.did) score += 50;
-    if (credentials.length > 0) score += 50;
-    return score;
-  })();
+  // Single source of truth for the security score shared by Wallet and Security tabs.
+  const securityHealth = useSecurityHealth({
+    userId: user?.id,
+    holderDid: profile?.did ?? undefined,
+    walletAddress: walletAddress ?? undefined,
+    credentials,
+  });
 
   // Phase 6 — explainable ML trust score over the holder's strongest active credential.
   const trustResult = useMemo(() => {
@@ -150,7 +152,7 @@ const HolderWallet = () => {
                   holderDid={profile?.did ?? undefined}
                   holderName={profile?.full_name ?? undefined}
                   onGenerateDid={handleGenerateDid}
-                  securityScore={securityScore}
+                  securityHealth={securityHealth}
                   isWalletConnected={!!walletAddress}
                 />
                 {/* Web3 card stays in wallet view shell */}
@@ -175,6 +177,8 @@ const HolderWallet = () => {
                 holderDid={profile?.did ?? undefined}
                 walletAddress={walletAddress ?? undefined}
                 credentials={credentials}
+                securityHealth={securityHealth}
+                onBiometricChange={securityHealth.refresh}
               />
             )}
             {currentView === "badges" && (

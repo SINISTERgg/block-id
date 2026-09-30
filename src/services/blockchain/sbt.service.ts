@@ -1,73 +1,169 @@
 /**
- * SBT service — Phase 7 (Soulbound Credentials).
+ * SBT service — Soulbound Credentials.
  *
  * Wraps SoulboundCredential.sol:
  *  - mints a non-transferable token when a credential is anchored on-chain
  *  - one SBT per credential hash (duplicate-proof)
  *  - revocation mirrors CredentialRegistry revocations
- *  - ERC-721-compatible reads so wallets/explorers render the badge
+ *  - ERC-721 + EIP-5192 compatible reads so wallets/explorers render the badge
  *
- * Pure helpers (metadata building, calldata encoding, event decoding) are
- * exported separately so flows work offline and are fully unit-testable.
+ * ── Hash format invariant ──────────────────────────────────────────────────
+ * `credentials.credential_hash` is produced by `_shared/vc-hash.ts:sha256Hex`
+ * and is stored as **64 lowercase hex characters with no "0x" prefix**. The
+ * on-chain representation is bytes32, i.e. always "0x"-prefixed. Historically
+ * `normalizeCredentialHash` required the prefix, so every real credential hash
+ * was rejected and the mint threw for every single issuance. The normaliser
+ * below is now deliberately permissive about the prefix and only strict about
+ * the hex digits, so both stored hashes and user-pasted "0x" values work.
+ *
+ * Pure helpers (hash/address normalisation, metadata building, calldata
+ * encoding, event decoding) are exported separately so flows work offline and
+ * are fully unit-testable.
  */
-import { Contract, Interface } from "ethers";
+import { Contract, Interface, getAddress as toChecksumAddress } from "ethers";
 import { getReadProvider } from "./provider";
-import { toBytes32 } from "@/lib/crypto";
-
-const SBT_ADDRESS_ENV = import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS as `0x${string}` | undefined;
-
-export const SOULBOUND_ABI = [
-  // Write
-  "function mint(address to, bytes32 credentialHash) external returns (uint256)",
-  "function revoke(uint256 tokenId) external",
-  "function burn(uint256 tokenId) external",
-  "function setIssuer(address issuer, bool allowed) external",
-  // Read
-  "function ownerOf(uint256 tokenId) external view returns (address)",
-  "function balanceOf(address holder) external view returns (uint256)",
-  "function totalSupply() external view returns (uint256)",
-  "function tokenIdsOf(address holder) external view returns (uint256[])",
-  "function tokenByCredentialHash(bytes32 credentialHash) external view returns (uint256)",
-  "function getCredential(uint256 tokenId) external view returns (bytes32 credentialHash, address holder, uint64 issuedAt, bool revoked)",
-  "function isRevoked(uint256 tokenId) external view returns (bool)",
-  "function isValid(uint256 tokenId) external view returns (bool)",
-  "function tokenURI(uint256 tokenId) external view returns (string)",
-  // Events
-  "event Minted(uint256 indexed tokenId, address indexed holder, bytes32 indexed credentialHash, uint64 issuedAt)",
-  "event Revoked(uint256 indexed tokenId, address indexed issuer)",
-  "event Burned(uint256 indexed tokenId, address indexed burnedBy)",
-] as const;
+import {
+  SBT_ADDRESS,
+  SBT_ADDRESS_ENV_KEY,
+  IS_SBT_DEPLOYED,
+  SOULBOUND_ABI,
+} from "./config";
 
 const SBTS_IFACE = new Interface([...SOULBOUND_ABI]);
 
-/** True when an SBT contract address is configured (env or explicit). */
+/** Re-exported for callers that imported the ABI from this module. */
+export { SOULBOUND_ABI };
+
+/**
+ * True when an SBT contract address is configured.
+ *
+ * Omitting the argument reads the environment; passing `undefined` or `null`
+ * explicitly means "definitely not configured" (distinguished via
+ * `arguments.length`, as callers rely on that to probe an override).
+ */
 export function isSbtConfigured(address?: string | null): boolean {
-  const addr = arguments.length > 0 ? address : (import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS as string | undefined);
-  return !!addr && addr !== "0x0000000000000000000000000000000000000000";
+  const envAddr = import.meta.env[SBT_ADDRESS_ENV_KEY] as string | undefined;
+  const addr = arguments.length > 0 ? address : (envAddr ?? SBT_ADDRESS);
+  return !!addr && addr !== ZERO_ADDRESS;
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+/**
+ * Anchored 20-byte hex address test.
+ *
+ * Deliberately anchored: an unanchored `/0x[a-fA-F0-9]{40}/` also matches a
+ * whole `did:ethr:sepolia:0x…` string, which would let a DID through as an
+ * address and blow up later inside the ABI encoder.
+ */
+const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+
+/**
+ * Resolve the SBT contract address.
+ * @param explicit Overrides configuration (used by tests and the inspector).
+ * @throws when unconfigured or set to the zero address.
+ */
 function sbtAddress(explicit?: string): string {
-  const addr = explicit ?? (import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS as string | undefined);
-  if (!isSbtConfigured(addr)) throw new Error("Soulbound credential contract not configured");
-  return addr!;
+  // Read the env var at call time rather than relying only on the module-level
+  // constant, so a redeploy + restart (or a test toggling the env) is picked up
+  // without a stale captured value.
+  const envAddr = import.meta.env[SBT_ADDRESS_ENV_KEY] as string | undefined;
+  const addr = explicit ?? envAddr ?? SBT_ADDRESS;
+  if (!isSbtConfigured(addr)) {
+    throw new Error(
+      `Soulbound credential contract not configured — set ${SBT_ADDRESS_ENV_KEY} to the deployed SoulboundCredential address.`
+    );
+  }
+  return addr;
 }
 
 /** Configured Soulbound address, or null. For UI links — not for contract calls. */
 export function getSbtAddress(): string | null {
-  return isSbtConfigured() ? sbtAddress() : null;
+  return isSbtConfigured() ? SBT_ADDRESS : null;
 }
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
-/** Accepts any 32-byte-prefixed hex hash and normalises to bytes32 form. */
+/**
+ * Normalise any credential hash into canonical bytes32 form.
+ *
+ * Accepts, and treats as equivalent:
+ *   - `ab…64`                     bare hex, as stored in Postgres (no prefix)
+ *   - `0xab…64`                   the same value, prefixed
+ *   - shorter values              left-padded to 32 bytes
+ *
+ * Rejects empty strings, non-hex characters and anything over 32 bytes — those
+ * are genuine mistakes rather than formatting differences, and the contract
+ * would reject them anyway (`ZeroCredentialHash` / a silently truncated value).
+ *
+ * @throws when the input is not usable as a credential hash.
+ */
 export function normalizeCredentialHash(hash: string): string {
-  if (!hash || !/^0x[0-9a-fA-F]+$/.test(hash)) {
+  if (typeof hash !== "string") {
     throw new Error("credentialHash must be a hex string");
   }
-  if (hash.replace(/^0x/, "").length > 64) {
+  const body = hash.trim().replace(/^0[xX]/, "");
+
+  if (body.length === 0 || !/^[0-9a-fA-F]+$/.test(body)) {
+    throw new Error("credentialHash must be a hex string");
+  }
+  if (body.length > 64) {
     throw new Error("credentialHash exceeds 32 bytes");
   }
-  return toBytes32(hash);
+  return "0x" + body.toLowerCase().padStart(64, "0");
+}
+
+/**
+ * Inverse of {@link normalizeCredentialHash} — the bare 64-char form used in
+ * the `credentials.credential_hash` column. Useful for DB comparisons and for
+ * rendering hashes in the UI.
+ */
+export function toStoredHashFormat(hash: string): string {
+  return normalizeCredentialHash(hash).slice(2);
+}
+
+/** True when two hashes refer to the same credential, prefix-insensitively. */
+export function sameCredentialHash(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    return normalizeCredentialHash(a) === normalizeCredentialHash(b);
+  } catch {
+    return false;
+  }
+}
+
+const DID_ADDRESS = /0x[a-fA-F0-9]{40}/;
+
+/**
+ * Extract the `0x…` address from a `did:ethr:<chain>:0x…` DID.
+ *
+ * Non-ETH DIDs (`did:key`, `did:web`, …) intentionally return null — an SBT can
+ * only be bound to an Ethereum address, so callers must fall back to the
+ * holder's registered wallet address.
+ */
+export function addressFromDid(did: string | null | undefined): string | null {
+  if (!did) return null;
+  const m = did.match(DID_ADDRESS);
+  return m ? m[0] : null;
+}
+
+/**
+ * Decide which address should own an SBT for a given holder.
+ *
+ * Preference order:
+ *   1. the address bound into the holder DID (the credential's own subject)
+ *   2. `fallbackAddress` — the holder's registered `profiles.wallet_address`
+ *
+ * @returns a checksummed address, or null when neither source yields one.
+ */
+export function resolveHolderAddress(
+  holderDid: string | null | undefined,
+  fallbackAddress?: string | null
+): string | null {
+  const fromDid = addressFromDid(holderDid);
+  const raw = (fromDid ?? fallbackAddress ?? null)?.trim() ?? null;
+  if (!raw || !ADDRESS_PATTERN.test(raw)) return null;
+  return toChecksumAddress(raw);
 }
 
 export interface SbtMetadataInput {
@@ -108,56 +204,238 @@ export function buildSbtDataUri(metadata: Record<string, unknown>): string {
 
 /** ABI-encode the mint call (selector + args) without touching the network. */
 export function encodeMintCalldata(holder: string, credentialHash: string): string {
+  if (!ADDRESS_PATTERN.test(holder)) {
+    throw new Error(`holder must be a 0x-prefixed address, got "${holder}"`);
+  }
   return SBTS_IFACE.encodeFunctionData("mint", [holder, normalizeCredentialHash(credentialHash)]);
+}
+
+/** ABI-encode a revoke call without touching the network. */
+export function encodeRevokeCalldata(tokenId: bigint | number): string {
+  return SBTS_IFACE.encodeFunctionData("revoke", [tokenId]);
 }
 
 /**
  * Extract the minted tokenId from transaction receipt logs.
- * Returns null when no Minted event is present (e.g. reverted silently).
+ *
+ * Both `Minted` and the ERC-721 `Transfer(0x0 → holder)` are recognised, so a
+ * tokenId is still recovered if the `Minted` log is absent (for example from a
+ * contract variant that only emits the ERC-721 event).
+ *
+ * @returns null when neither event is present.
  */
 export function decodeMintedTokenId(
   logs: { topics: string[]; data: string }[]
-): { tokenId: bigint; holder: string; credentialHash: string } | null {
-  for (const log of logs) {
-    const parsed = SBTS_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+): { tokenId: bigint; holder: string; credentialHash: string | null } | null {
+  let transfer: { tokenId: bigint; holder: string } | null = null;
+
+  for (const log of logs ?? []) {
+    let parsed;
+    try {
+      parsed = SBTS_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+    } catch {
+      // A log from an unrelated contract in the same receipt — skip it.
+      continue;
+    }
     if (parsed?.name === "Minted") {
       return {
-        tokenId: parsed.args.tokenId,
-        holder: parsed.args.holder,
-        credentialHash: parsed.args.credentialHash,
+        tokenId: parsed.args.tokenId as bigint,
+        holder: parsed.args.holder as string,
+        credentialHash: parsed.args.credentialHash as string,
       };
     }
+    if (parsed?.name === "Transfer" && (parsed.args.from as string) === ZERO_ADDRESS && !transfer) {
+      transfer = { tokenId: parsed.args.tokenId as bigint, holder: parsed.args.to as string };
+    }
   }
-  return null;
+  return transfer ? { ...transfer, credentialHash: null } : null;
 }
 
 // ── Network calls ────────────────────────────────────────────────────────────
 
 export interface MintResult {
   txHash: string;
+  /** Token id from the `Minted` event, or null if the log was undecodable. */
   tokenId: bigint | null;
+  /** Address the token was minted to. */
+  holder: string;
+  /** Bytes32 credential hash committed on-chain. */
+  credentialHash: string;
+}
+
+/** The minimal signer surface `mintSbtForCredential` needs. */
+export interface SbtSigner {
+  getAddress(): Promise<string>;
+  sendTransaction(tx: { to: string; data: string }): Promise<{
+    hash: string;
+    wait(): Promise<{ logs: unknown[] } | null>;
+  }>;
+}
+
+export type MintFailureReason = "rejected" | "not_issuer" | "duplicate" | "insufficient_funds" | "unknown";
+
+/**
+ * keccak256 selectors of the contract's custom errors.
+ *
+ * ethers only names a custom error when the ABI it was called through declares
+ * it; otherwise a caller sees "execution reverted (unknown custom error)" with
+ * no clue what went wrong. Matching the raw selector keeps the actionable
+ * message working no matter which path produced the error.
+ *
+ * Derived from SOULBOUND_ABI rather than hardcoded so they cannot drift.
+ */
+function errorSelector(name: string): string {
+  try {
+    return (SBTS_IFACE.getError(name)?.selector ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+const NOT_ISSUER_SELECTOR = errorSelector("NotIssuer");
+const NOT_ADMIN_SELECTOR = errorSelector("NotAdmin");
+const DUPLICATE_SELECTOR = errorSelector("DuplicateCredential");
+const ZERO_HASH_SELECTOR = errorSelector("ZeroCredentialHash");
+
+export interface MintSbtOptions {
+  /** The address that should receive the badge. Defaults to `holderDid`. */
+  holder?: string;
+  /** The holder's DID — the preferred source for the recipient address. */
+  holderDid?: string;
+  /**
+   * The holder's registered `profiles.wallet_address`, used only when
+   * `holderDid` / `holder` yield no Ethereum address.
+   */
+  fallbackAddress?: string;
+  /** Bare or prefixed credential hash, as stored in `credentials.credential_hash`. */
+  credentialHash: string;
+  /** Contract override (tests / multi-network inspection). */
+  address?: string;
+}
+
+export class SbtMintError extends Error {
+  readonly reason: MintFailureReason;
+  readonly cause?: unknown;
+  constructor(reason: MintFailureReason, message: string, cause?: unknown) {
+    super(message);
+    this.name = "SbtMintError";
+    this.reason = reason;
+    this.cause = cause;
+  }
+}
+
+/** Turn a raw wallet/ethers error into a stable, human-usable reason. */
+function classifyMintError(err: unknown): { reason: MintFailureReason; message: string } {
+  const raw = (err as {
+    shortMessage?: string;
+    message?: string;
+    reason?: string;
+    code?: string;
+    data?: string;
+    revert?: { name?: string };
+    info?: { error?: { data?: string } };
+  }) ?? {};
+  const text = `${raw.shortMessage ?? ""} ${raw.message ?? ""} ${raw.reason ?? ""} ${raw.revert?.name ?? ""}`.trim();
+  const lower = text.toLowerCase();
+
+  // Revert data may arrive as a bare 4-byte selector (ethers only names the
+  // error when the ABI it was called through declares it), so match both.
+  const revertData = `${raw.data ?? ""} ${raw.info?.error?.data ?? ""}`.toLowerCase();
+
+  if (raw.code === "ACTION_REJECTED" || lower.includes("user rejected") || lower.includes("user denied") || lower.includes("rejected the request")) {
+    return { reason: "rejected", message: "You rejected the mint transaction in your wallet." };
+  }
+  if (lower.includes("notissuer") || lower.includes("not issuer") || revertData.includes(NOT_ISSUER_SELECTOR)) {
+    return {
+      reason: "not_issuer",
+      message:
+        "This wallet is not an allow-listed issuer on the soulbound contract, so the mint was rejected. " +
+        "The contract admin must allow-list it first: " +
+        "node scripts/set-issuer.js --issuer <your wallet address>",
+    };
+  }
+  if (lower.includes("notadmin") || lower.includes("not admin") || revertData.includes(NOT_ADMIN_SELECTOR)) {
+    return {
+      reason: "not_issuer",
+      message: "Only the soulbound contract admin can do this. Run: node scripts/set-issuer.js --issuer <your wallet>",
+    };
+  }
+  if (
+    lower.includes("duplicatecredential") ||
+    lower.includes("already minted") ||
+    lower.includes("alreadyexists") ||
+    revertData.includes(DUPLICATE_SELECTOR)
+  ) {
+    return { reason: "duplicate", message: "A badge already exists on-chain for this credential hash." };
+  }
+  if (lower.includes("zerocredentialhash") || revertData.includes(ZERO_HASH_SELECTOR)) {
+    return { reason: "unknown", message: "The credential hash was empty, so the contract rejected the mint." };
+  }
+  if (lower.includes("insufficient funds") || lower.includes("insufficient_funds")) {
+    return { reason: "insufficient_funds", message: "Wallet needs Sepolia ETH to pay the mint gas fee." };
+  }
+  if (lower.includes("unknown custom error") && revertData) {
+    return {
+      reason: "unknown",
+      message: `The soulbound contract rejected the mint (revert data ${revertData.slice(0, 10)}). ` +
+        "Check that the signing wallet is an allow-listed issuer on the contract.",
+    };
+  }
+  return { reason: "unknown", message: text || "SBT mint failed for an unknown reason." };
 }
 
 /**
- * Mint the SBT for an anchored credential. Best-effort: callers should treat
- * failure as non-fatal (anchoring remains the source of truth).
+ * Mint the SBT for an anchored credential.
+ *
+ * The recipient is resolved from `holder` → `holderDid` → `fallbackAddress`.
+ * It deliberately does **not** fall back to the signing wallet: minting a
+ * credential badge to the issuer is always wrong, and silently doing so is how
+ * badges ended up invisible in the holder's portal in the first place.
+ *
+ * @throws {SbtMintError} with a `reason` the UI can branch on.
  */
-export async function mintSbtForCredential(
-  signer: { getAddress(): Promise<string>; sendTransaction(tx: { to: string; data: string }): Promise<{ hash: string; wait(): Promise<{ logs: unknown[] }> }> },
-  options: { holder?: string; credentialHash: string; address?: string }
-): Promise<MintResult> {
-  const to = await (options.holder ? Promise.resolve(options.holder) : signer.getAddress());
-  const data = encodeMintCalldata(to, options.credentialHash);
-  const sent = await signer.sendTransaction({ to: sbtAddress(options.address), data });
-  const receipt = await sent.wait();
-
-  let tokenId: bigint | null = null;
-  try {
-    tokenId = decodeMintedTokenId(receipt?.logs as { topics: string[]; data: string }[])?.tokenId ?? null;
-  } catch {
-    tokenId = null;
+export async function mintSbtForCredential(signer: SbtSigner, options: MintSbtOptions): Promise<MintResult> {
+  const contractAddress = sbtAddress(options.address);
+  const holder = resolveHolderAddress(options.holderDid, options.holder ?? options.fallbackAddress);
+  if (!holder) {
+    throw new SbtMintError(
+      "unknown",
+      "Cannot mint a soulbound badge: no holder Ethereum address. The holder DID must be an " +
+        "Ethereum DID (did:ethr:<chain>:0x…) or the holder must have a wallet address on file."
+    );
   }
-  return { txHash: sent.hash, tokenId };
+
+  const credentialHash = normalizeCredentialHash(options.credentialHash);
+  const data = encodeMintCalldata(holder, credentialHash);
+
+  let sent: { hash: string; wait(): Promise<{ logs: unknown[] } | null> };
+  try {
+    sent = await signer.sendTransaction({ to: contractAddress, data });
+  } catch (err) {
+    const { reason, message } = classifyMintError(err);
+    throw new SbtMintError(reason, message, err);
+  }
+
+  let receipt: { logs: unknown[] } | null = null;
+  try {
+    receipt = await sent.wait();
+  } catch (err) {
+    // The tx was submitted but reverted during mining (e.g. ran out of gas).
+    const { reason, message } = classifyMintError(err);
+    throw new SbtMintError(reason, `Mint transaction reverted: ${message}`, err);
+  }
+
+  if (!receipt) {
+    throw new SbtMintError("unknown", "Mint transaction produced no receipt.");
+  }
+
+  const decoded = decodeMintedTokenId(receipt.logs as { topics: string[]; data: string }[]);
+
+  return {
+    txHash: sent.hash,
+    tokenId: decoded?.tokenId ?? null,
+    holder,
+    credentialHash,
+  };
 }
 
 /** Revoke the SBT when its underlying credential gets revoked. */
@@ -166,8 +444,10 @@ export async function revokeSbt(
   tokenId: bigint | number,
   address?: string
 ): Promise<string> {
-  const data = SBTS_IFACE.encodeFunctionData("revoke", [tokenId]);
-  const sent = await signer.sendTransaction({ to: sbtAddress(address), data });
+  const sent = await signer.sendTransaction({
+    to: sbtAddress(address),
+    data: encodeRevokeCalldata(tokenId),
+  });
   return sent.hash;
 }
 
@@ -186,34 +466,34 @@ export async function getSbtForCredential(credentialHash: string, address?: stri
   const tokenId = (await sbt.tokenByCredentialHash(normalizeCredentialHash(credentialHash))) as bigint;
   if (tokenId === 0n) return null;
 
-  const cred = await sbt.getCredential(tokenId);
-  return {
-    tokenId: Number(tokenId),
-    credentialHash: cred.credentialHash,
-    holder: cred.holder,
-    issuedAt: Number(cred.issuedAt),
-    revoked: cred.revoked,
-  };
+  return readSbtStatus(sbt, tokenId);
 }
 
 /** All SBTs held by a wallet (for the holder wallet UI). */
 export async function listHolderSbts(holder: string, address?: string): Promise<SbtStatus[]> {
+  if (!ADDRESS_PATTERN.test(holder)) {
+    throw new Error(`holder must be a 0x-prefixed address, got "${holder}"`);
+  }
   const provider = await getReadProvider();
   const sbt = new Contract(sbtAddress(address), SOULBOUND_ABI, provider);
   const ids = (await sbt.tokenIdsOf(holder)) as bigint[];
-  const statuses = await Promise.all(
-    ids.map(async (id) => {
-      const cred = await sbt.getCredential(id);
-      return {
-        tokenId: Number(id),
-        credentialHash: cred.credentialHash,
-        holder: cred.holder,
-        issuedAt: Number(cred.issuedAt),
-        revoked: cred.revoked,
-      } satisfies SbtStatus;
-    })
-  );
-  return statuses;
+  return Promise.all(ids.map((id) => readSbtStatus(sbt, id)));
+}
+
+/**
+ * Read one token's record. `getCredential` reverts for burned tokens, which is
+ * the correct signal that the badge no longer exists, so it is mapped to null
+ * rather than aborting the whole listing.
+ */
+async function readSbtStatus(sbt: Contract, tokenId: bigint): Promise<SbtStatus> {
+  const cred = await sbt.getCredential(tokenId);
+  return {
+    tokenId: Number(tokenId),
+    credentialHash: cred.credentialHash as string,
+    holder: cred.holder as string,
+    issuedAt: Number(cred.issuedAt),
+    revoked: Boolean(cred.revoked),
+  };
 }
 
 /** Total number of SBTs ever minted on this deployment. Never throws. */
@@ -251,4 +531,104 @@ export async function getSbtForCredentials(
     })
   );
   return out;
+}
+
+// ── Reconcile DB records against the chain ───────────────────────────────────
+
+/** A badge row as persisted on the `credentials` table. */
+export interface StoredSbtRecord {
+  sbt_token_id: number | string | null;
+  sbt_tx_hash?: string | null;
+  sbt_holder_address?: string | null;
+  sbt_minted_at?: string | null;
+  credential_hash: string;
+}
+
+export interface BadgeReconciliation {
+  /** The token to render, or null when neither source knows about a badge. */
+  status: SbtStatus | null;
+  /** Where the badge knowledge came from. */
+  source: "chain" | "db" | "none";
+  /** True when the chain disagrees with (or has no record of) the stored row. */
+  needsBackfill: boolean;
+  /** True when the stored token id no longer matches the on-chain one. */
+  drifted: boolean;
+}
+
+/**
+ * Merge a persisted badge row with on-chain state.
+ *
+ * The database is the only thing that knows which credentials a holder
+ * *should* have badges for, and the chain is the only thing that knows whether
+ * a badge is actually valid. This reconciles the two so the portal can show
+ * pending, active and revoked badges rather than only the ones that happened
+ * to mint successfully.
+ */
+export async function reconcileBadge(
+  record: StoredSbtRecord,
+  address?: string
+): Promise<BadgeReconciliation> {
+  if (!isSbtConfigured(address)) {
+    const fallback = storedStatus(record);
+    return {
+      status: fallback,
+      source: fallback ? "db" : "none",
+      needsBackfill: Boolean(fallback),
+      drifted: false,
+    };
+  }
+
+  try {
+    const status = await getSbtForCredential(record.credential_hash, address);
+    const storedId = toTokenId(record.sbt_token_id);
+
+    if (!status) {
+      // No badge on-chain for this credential.
+      return { status: null, source: "none", needsBackfill: false, drifted: storedId !== null };
+    }
+    return {
+      status,
+      source: "chain",
+      needsBackfill: storedId === null,
+      drifted: storedId !== null && storedId !== status.tokenId,
+    };
+  } catch {
+    // RPC unavailable — fall back to whatever the database recorded.
+    const fallback = storedStatus(record);
+    return {
+      status: fallback,
+      source: fallback ? "db" : "none",
+      needsBackfill: Boolean(fallback),
+      drifted: false,
+    };
+  }
+}
+
+/** Build an SbtStatus from a DB row, when it recorded a token id. */
+function storedStatus(record: StoredSbtRecord): SbtStatus | null {
+  const tokenId = toTokenId(record.sbt_token_id);
+  if (tokenId === null) return null;
+  return {
+    tokenId,
+    credentialHash: (() => {
+      try {
+        return normalizeCredentialHash(record.credential_hash);
+      } catch {
+        return record.credential_hash;
+      }
+    })(),
+    holder: record.sbt_holder_address ?? ZERO_ADDRESS,
+    issuedAt: record.sbt_minted_at ? Math.floor(new Date(record.sbt_minted_at).getTime() / 1000) : 0,
+    revoked: false,
+  };
+}
+
+/**
+ * Postgres `numeric` is serialised as a JSON number only when it has no
+ * fractional part; otherwise PostgREST sends a string. Accept both.
+ */
+function toTokenId(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
 }

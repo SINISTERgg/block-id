@@ -1,11 +1,24 @@
 // @ts-nocheck
 // Supabase Edge Function: ai-verify-credential
 // Called after a holder accepts a verification request.
-// Runs Gemini AI to auto-verify the credential and updates the request with the verdict.
+//
+// Runs the canonical deterministic trust engine and persists the result on the
+// verification request. The optional LLM layer may only add prose — it has no
+// authority over the verdict, the score or the risk level.
+//
+// This was previously a separate, much weaker rule set with a second
+// hand-maintained weight table, and it let Gemini return the `verdict` that was
+// written straight to `verification_requests.status`. Both are fixed: there is
+// now one engine, and the verdict is computed from signals.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { clientIp, rateLimited, tooManyRequestsResponse, requireUser, sanitizedError, jsonResponse } from "../_shared/security.ts";
+import { analyzeWithNarrative, isCredentialAcceptable } from "../verify-credential/ai-engine.ts";
+import { chargeAiBudget } from "../_shared/aiBudget.ts";
+import { resolveIssuer, daysSince, unverifiedChecks, type CredentialSignals } from "../_shared/credentialEngine.ts";
+import { AI_ANALYSIS_SCHEMA_VERSION } from "../_shared/credentialEngine.ts";
+import { computeCredentialHash } from "../_shared/vc-hash.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +27,61 @@ const corsHeaders = {
 
 const RATE_LIMIT_MAX = 30;
 const MAX_CREDENTIAL_DATA_BYTES = 2_000_000;
+/** Background job — the holder is not waiting on a spinner, so fail fast. */
+const LLM_TIMEOUT_MS = 8_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || undefined;
+
+/**
+ * Legacy flat check list retained for the holder UI, which renders it directly.
+ * Derived from the canonical analysis so it can never disagree with the score.
+ */
+function buildLegacyChecks(analysis: any, subjectFieldCount: number, issuer: unknown, hasTypeMatch: boolean, expectedType: string | null, actualType: string): { label: string; pass: boolean; detail: string }[] {
+  const dim = (key: string) => analysis.dimensions.find((d: any) => d.key === key);
+  const statusOf = (key: string) => {
+    const d = dim(key);
+    if (!d) return "unknown" as const;
+    return d.status;
+  };
+  const pass = (key: string) => statusOf(key) === "pass";
+
+  return [
+    {
+      label: "Expiry",
+      pass: pass("expiration"),
+      detail: dim("expiration")?.detail ?? "Unknown",
+    },
+    {
+      label: "Issuer",
+      pass: !!issuer && issuer !== "unknown",
+      detail: issuer ? `Issued by ${issuer}` : "No issuer found",
+    },
+    {
+      label: "Credential Subject",
+      pass: subjectFieldCount > 0,
+      detail: subjectFieldCount > 0 ? `${subjectFieldCount} field(s) present` : "Empty credential subject",
+    },
+    ...(expectedType
+      ? [{
+          label: "Type Match",
+          pass: hasTypeMatch,
+          detail: hasTypeMatch ? `Credential type matches: ${actualType}` : `Type mismatch: got "${actualType}", expected "${expectedType}"`,
+        }]
+      : []),
+    {
+      label: "Hash Integrity",
+      pass: pass("hashIntegrity"),
+      detail: dim("hashIntegrity")?.detail ?? "Unknown",
+    },
+    {
+      label: "Revocation",
+      pass: pass("revocationStatus"),
+      detail: dim("revocationStatus")?.detail ?? "Unknown",
+    },
+  ];
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -54,7 +121,7 @@ serve(async (req) => {
     // ── Ownership: the request must belong to the calling holder ───────────────
     const { data: request, error: requestError } = await supabase
       .from("verification_requests")
-      .select("id, holder_did")
+      .select("id, holder_did, credential_id")
       .eq("id", request_id)
       .single();
     if (requestError || !request) return jsonResponse({ error: "Request not found" }, 404, corsHeaders);
@@ -69,123 +136,172 @@ serve(async (req) => {
       return jsonResponse({ error: "Forbidden: not the request holder" }, 403, corsHeaders);
     }
 
-    const vc = typeof credential_data === "string" ? JSON.parse(credential_data) : credential_data;
-    const subject = vc?.credentialSubject || {};
-    const issuer = vc?.issuer || "unknown";
-    const issuanceDate = vc?.issuanceDate || null;
-    const expirationDate = vc?.expirationDate || null;
-    const credType = credential_type || (Array.isArray(vc?.type) ? vc.type.join(", ") : "Unknown");
-
-    // ── Rule-based checks (always run, no API needed) ─────────────────────────
-    const checks: { label: string; pass: boolean; detail: string }[] = [];
-
-    const now = new Date();
-
-    // 1. Not expired
-    if (expirationDate) {
-      const expired = new Date(expirationDate) < now;
-      checks.push({ label: "Expiry", pass: !expired, detail: expired ? `Expired on ${expirationDate}` : `Valid until ${expirationDate}` });
-    } else {
-      checks.push({ label: "Expiry", pass: true, detail: "No expiration date set" });
-    }
-
-    // 2. Has issuer
-    checks.push({ label: "Issuer", pass: !!issuer && issuer !== "unknown", detail: issuer ? `Issued by ${issuer}` : "No issuer found" });
-
-    // 3. Has issuance date
-    checks.push({ label: "Issuance Date", pass: !!issuanceDate, detail: issuanceDate ? `Issued on ${issuanceDate}` : "Missing issuance date" });
-
-    // 4. Credential subject present
-    const hasSubject = Object.keys(subject).length > 0;
-    checks.push({ label: "Credential Subject", pass: hasSubject, detail: hasSubject ? `${Object.keys(subject).length} field(s) present` : "Empty credential subject" });
-
-    // 5. Type match (if request specifies a type)
-    if (credential_type) {
-      const typeMatch = credType.toLowerCase().includes(credential_type.toLowerCase());
-      checks.push({ label: "Type Match", pass: typeMatch, detail: typeMatch ? `Credential type matches: ${credType}` : `Type mismatch: got "${credType}", expected "${credential_type}"` });
-    }
-
-    const ruleScore = checks.filter(c => c.pass).length / checks.length;
-
-    // ── Gemini AI enhancement ─────────────────────────────────────────────────
-    let aiSummary = "";
-    let aiConfidence = ruleScore;
-    let aiVerdict: "verified" | "rejected" | "review" = ruleScore >= 0.8 ? "verified" : ruleScore >= 0.5 ? "review" : "rejected";
-    let engine = "rule-based";
-
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (GEMINI_API_KEY) {
+    let vc: Record<string, unknown>;
+    if (typeof credential_data === "string") {
       try {
-        const prompt = `You are a credential verification AI for a decentralized identity system.
+        vc = JSON.parse(credential_data);
+      } catch {
+        return jsonResponse({ error: "credential_data is not valid JSON" }, 400, corsHeaders);
+      }
+    } else {
+      vc = credential_data;
+    }
+    if (!vc || typeof vc !== "object" || Array.isArray(vc)) {
+      return jsonResponse({ error: "credential_data must be a credential object" }, 400, corsHeaders);
+    }
 
-Analyze the following Verifiable Credential and respond with a JSON object.
+    // ── Load the stored row when there is one ─────────────────────────────────
+    // The holder's payload is untrusted. When the request references a stored
+    // credential we score the stored record, so a holder cannot present altered
+    // JSON and have it scored as if it were genuine.
+    let stored: Record<string, unknown> | null = null;
+    if (request.credential_id) {
+      const { data } = await supabase
+        .from("credentials")
+        .select("*, prev_hash, credential_schemas(*)")
+        .eq("id", request.credential_id)
+        .maybeSingle();
+      stored = data ?? null;
+    }
 
-Credential type: ${credType}
-Verifier's purpose: ${request_purpose || "Not specified"}
-Issuer: ${issuer}
-Issuance date: ${issuanceDate || "Not provided"}
-Expiration date: ${expirationDate || "No expiration"}
-Subject fields: ${JSON.stringify(subject, null, 2)}
+    const authoritativeVc = (stored?.credential_data as Record<string, unknown>) ?? vc;
+    const proof = authoritativeVc.proof as Record<string, unknown> | undefined;
+    const hasWalletSignature = proof?.signatureType === "personal_sign" && !!proof?.proofValue;
 
-Rule-based checks:
-${checks.map(c => `- ${c.label}: ${c.pass ? "PASS" : "FAIL"} — ${c.detail}`).join("\n")}
-
-Respond ONLY with this JSON (no markdown, no explanation):
-{
-  "verdict": "verified" | "rejected" | "review",
-  "confidence": <number 0.0-1.0>,
-  "summary": "<one sentence human-readable summary of your decision>",
-  "flags": ["<any concerns>"]
-}`;
-
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-          }
+    // Hash integrity requires a stored digest to compare against, so it is
+    // recomputed with the same shared canonicaliser that issue-credential and
+    // verify-credential use. With no stored row there is nothing to compare
+    // and the engine is told the check did not run, rather than being handed a
+    // pass it did not earn.
+    let hashChecked = false;
+    let hashValid = false;
+    if (stored) {
+      try {
+        const recomputed = await computeCredentialHash(
+          (stored.credential_data as Record<string, unknown>) ?? {},
+          stored.prev_hash || "genesis",
         );
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-          // Strip markdown fences if present
-          const jsonText = rawText.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
-          const parsed = JSON.parse(jsonText);
-          aiVerdict = parsed.verdict ?? aiVerdict;
-          aiConfidence = parsed.confidence ?? aiConfidence;
-          aiSummary = parsed.summary ?? "";
-          engine = "gemini";
-        }
-      } catch (geminiErr) {
-        console.warn("Gemini AI failed, using rule-based result:", geminiErr);
+        hashValid = recomputed === stored.credential_hash;
+        hashChecked = true;
+      } catch (err) {
+        console.warn("ai-verify-credential: hash recomputation failed:", err);
+        hashChecked = false;
+        hashValid = false;
       }
     }
 
-    if (!aiSummary) {
-      const passing = checks.filter(c => c.pass).map(c => c.label);
-      const failing = checks.filter(c => !c.pass).map(c => c.label);
-      aiSummary = aiVerdict === "verified"
-        ? `Credential passes all checks: ${passing.join(", ")}.`
-        : `Credential has issues: ${failing.join(", ")}. ${passing.length > 0 ? `Passing: ${passing.join(", ")}.` : ""}`;
-    }
+    const issuer = resolveIssuer(authoritativeVc) ?? "unknown";
+    const issuanceDate = (authoritativeVc.issuanceDate as string) ?? null;
+    const subject = (authoritativeVc.credentialSubject as Record<string, unknown>) ?? {};
+    const subjectFieldCount = Object.keys(subject).length;
+    const actualType = Array.isArray(authoritativeVc.type) ? (authoritativeVc.type as string[]).join(", ") : "Unknown";
+    const hasTypeMatch = !!credential_type && actualType.toLowerCase().includes(String(credential_type).toLowerCase());
 
-    const aiResult = {
-      verdict: aiVerdict,
-      confidence: aiConfidence,
-      summary: aiSummary,
-      checks,
-      engine,
-      evaluated_at: new Date().toISOString(),
+    const signals: CredentialSignals = {
+      vc: authoritativeVc,
+      hashChecked,
+      hashValid,
+      dbStatus: (stored?.status as string) ?? "active",
+      blockchainVerified: false,
+      onChainRevoked: false,
+      blockchainAnchor: (stored?.blockchain_anchor as string) ?? null,
+      // This pre-check performs no chain calls, so the anchor is unknown here
+      // rather than absent. `verify-credential` is what actually anchors.
+      onChainChecked: false,
+      walletSigned: hasWalletSignature,
+      signatureVerified: hasWalletSignature ? null : false,
+      signerAddress: (stored?.signer_address as string) ?? null,
+      issuedAt: (stored?.issued_at as string) ?? issuanceDate,
+      expiresAt: (stored?.expires_at as string) ?? ((authoritativeVc.expirationDate as string) ?? null),
+      notExpired: expirationDate ? new Date(expirationDate) > new Date() : null,
+      credentialHash: (stored?.credential_hash as string) ?? "",
+      issuerReputation: null,
+      verificationSuccessRate: null,
+      credentialAgeDays: issuanceDate ? daysSince(issuanceDate) : null,
+      zkProofVerified: (authoritativeVc.zkp as Record<string, unknown> | undefined)?.verified ?? null,
+      schemaKnown: stored?.credential_schemas ? true : null,
     };
 
-    // ── Update the verification request in DB ─────────────────────────────────
-    const newStatus = aiVerdict === "verified" ? "verified" : aiVerdict === "rejected" ? "rejected" : "accepted";
+    // The narrative is metered work, so it draws on a per-user budget. Exhausting
+    // it drops the prose and nothing else: the verdict below is derived
+    // entirely from the deterministic signals and must stay identical.
+    const budget = chargeAiBudget(user.id, "ai-verify-credential");
+
+    const outcome = await analyzeWithNarrative(signals, {
+      apiKey: GEMINI_API_KEY,
+      model: GEMINI_MODEL,
+      timeoutMs: LLM_TIMEOUT_MS,
+      surface: "ai-verify-credential",
+      userId: user.id,
+      requestId: request_id,
+      telemetry: supabase,
+      skipLlmReason: budget.allowed ? undefined : "ai_budget_exhausted",
+    });
+    const analysis = outcome.analysis;
+
+    // ── Verdict: derived from the engine, never from model output ─────────────
+    const { valid, reasons } = isCredentialAcceptable(signals);
+    const incomplete = unverifiedChecks(signals);
+
+    // This surface is a *pre*-check: it deliberately performs no chain calls,
+    // because the authoritative chain verification happens later in
+    // `verify-credential`. A missing anchor check is therefore expected here
+    // and does not on its own hold the verdict at "review" — otherwise this
+    // function could never return "verified" and the auto-verify flow would be
+    // dead. A missing hash check or an unverifiable signature does hold it.
+    const substantiveGaps = incomplete.filter((c) => c !== "blockchain_anchor");
+
+    const verdict: "verified" | "rejected" | "review" = !valid
+      ? "rejected"
+      : substantiveGaps.length > 0
+        ? "review"
+        : credential_type && !hasTypeMatch
+          ? "review"
+          : analysis.hard_caps_applied.length > 0
+            ? "review"
+            : "verified";
+
+    const checks = buildLegacyChecks(analysis, subjectFieldCount, issuer, hasTypeMatch, credential_type ?? null, actualType);
+    const summary =
+      analysis.llm?.summary ||
+      (verdict === "verified"
+        ? `Credential passes all checks the engine could perform. Score ${analysis.score}/100, confidence ${analysis.confidence}%.`
+        : verdict === "review"
+          ? `Credential needs review: ${reasons.length ? reasons.join(", ") : credential_type ? "credential type does not match what was requested" : "risk caps were applied"}. Score ${analysis.score}/100.`
+          : `Credential rejected: ${reasons.join(", ")}. Score ${analysis.score}/100.`);
+
+    // One shape on the column. `confidence` is 0-100, matching every other writer.
+    const aiResult = {
+      schema_version: AI_ANALYSIS_SCHEMA_VERSION,
+      engine: analysis.engine,
+      score: analysis.score,
+      raw_score: analysis.raw_score,
+      risk_level: analysis.risk_level,
+      tier: analysis.tier,
+      confidence: analysis.confidence,
+      confidence_factors: analysis.confidence_factors,
+      hard_caps_applied: analysis.hard_caps_applied,
+      dimensions: analysis.dimensions,
+      recommendations: analysis.recommendations,
+      findings: analysis.findings,
+      llm: analysis.llm,
+      // Fields the holder portal reads. Retained for compatibility.
+      verdict,
+      invalid_reasons: reasons,
+      unverified_checks: incomplete,
+      summary,
+      checks,
+      purpose: request_purpose ?? null,
+      evaluated_at: analysis.analyzed_at,
+    };
+
+    const newStatus = verdict === "verified" ? "verified" : verdict === "rejected" ? "rejected" : "accepted";
     await supabase
       .from("verification_requests")
       .update({
         status: newStatus,
+        trust_score: analysis.score,
+        trust_tier: analysis.tier,
         ai_analysis: aiResult,
         verified_at: new Date().toISOString(),
       })

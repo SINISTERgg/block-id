@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import {
-  TrendingUp, Timer, Brain, Layers, Zap, ShieldCheck, ShieldX, Clock, BarChart3,
+  TrendingUp, Timer, Brain, Layers, Zap, ShieldCheck, ShieldX, Clock, BarChart3, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import IntelligenceOverview from "@/components/verifier/IntelligenceOverview";
+import { aiConfidencePercent, normalizeAiAnalysis } from "@/lib/ml/aiAnalysis";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
 interface AnalyticsViewProps {
@@ -117,11 +118,14 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
   }, [records]);
 
   // AI confidence trend
+  // Confidence is normalised onto a single 0-100 scale. Reading the raw field
+  // previously mixed in holder auto-verify rows that stored a 0-1 fraction, so
+  // the trend dipped to near zero whenever those were present.
   const confidenceTrend = useMemo(() => {
     const perDay = new Map<string, { sum: number; n: number }>();
     records.forEach((r) => {
-      const ai = (r.ai_analysis as any)?.confidence;
-      if (typeof ai !== "number") return;
+      const ai = aiConfidencePercent(r.ai_analysis);
+      if (ai === null) return;
       const key = dayKey(r.created_at);
       const b = perDay.get(key) || { sum: 0, n: 0 };
       b.sum += ai;
@@ -136,10 +140,16 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
 
   const avgConfidence = useMemo(() => {
     const confs = records
-      .map((r) => (r.ai_analysis as any)?.confidence)
-      .filter((c): c is number => typeof c === "number");
+      .map((r) => aiConfidencePercent(r.ai_analysis))
+      .filter((c): c is number => c !== null);
     return confs.length > 0 ? Math.round(confs.reduce((s, c) => s + c, 0) / confs.length) : 0;
   }, [records]);
+
+  // Share of rows that could be fully checked, versus those that fell back.
+  const degradedCount = useMemo(
+    () => records.filter((r) => normalizeAiAnalysis(r.ai_analysis).confidence < 70).length,
+    [records],
+  );
 
   const statCards = [
     { icon: Layers, label: "Total Requests", value: stats.total, color: "text-foreground bg-foreground/5" },
@@ -147,6 +157,7 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
     { icon: ShieldCheck, label: "Acceptance Rate", value: `${successRate}%`, color: "text-emerald-600 bg-emerald-500/10" },
     { icon: Timer, label: "Avg Response Time", value: responseTime.avg > 0 ? `${Math.round(responseTime.avg)}m` : "—", color: "text-primary bg-primary/10" },
     { icon: Brain, label: "Avg AI Confidence", value: avgConfidence > 0 ? `${avgConfidence}%` : "—", color: "text-verifier bg-verifier/10" },
+    { icon: AlertTriangle, label: "Low-confidence Results", value: degradedCount, color: "text-amber-500 bg-amber-500/10" },
   ];
 
   return (

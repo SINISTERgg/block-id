@@ -4,52 +4,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { BiometricLockModal, type BiometricAction } from "@/components/wallet/BiometricLockModal";
-import {
-  isPlatformAuthenticatorAvailable,
-  listBiometricCredentials,
-  hasEncryptedKey,
-  type BiometricCredential,
-} from "@/services/webauthnService";
+import { isPlatformAuthenticatorAvailable } from "@/services/webauthnService";
+import { WALLET_KEY_LABEL, type UseSecurityHealthResult } from "@/hooks/useSecurityHealth";
 
 interface SecurityViewProps {
   userId: string | undefined;
   holderDid: string | undefined;
   walletAddress: string | undefined;
   credentials: { status: string }[];
+  /** Shared with WalletView so both tabs always show the same score. */
+  securityHealth: UseSecurityHealthResult;
+  /** Re-runs the biometric probe after a successful modal action. */
+  onBiometricChange: () => Promise<void>;
 }
 
-const KEY_LABEL = "wallet-private-key";
+const KEY_LABEL = WALLET_KEY_LABEL;
 
-const SecurityView = ({ userId, holderDid, walletAddress, credentials }: SecurityViewProps) => {
+const SecurityView = ({ userId, holderDid, walletAddress, securityHealth, onBiometricChange }: SecurityViewProps) => {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [registeredCred, setRegisteredCred] = useState<BiometricCredential | null>(null);
-  const [keyIsProtected, setKeyIsProtected] = useState(false);
   const [biometricModalOpen, setBiometricModalOpen] = useState(false);
   const [biometricAction, setBiometricAction] = useState<BiometricAction>("register");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [showRevealedKey, setShowRevealedKey] = useState(false);
 
+  const { checks, score: securityScore, biometricRegistered: registeredCred, keyIsProtected } = securityHealth;
+
   useEffect(() => {
     isPlatformAuthenticatorAvailable().then(setBiometricAvailable);
   }, []);
-
-  useEffect(() => {
-    if (!userId) return;
-    refreshBiometricState();
-  }, [userId]);
-
-  async function refreshBiometricState() {
-    if (!userId) return;
-    const creds = await listBiometricCredentials(userId);
-    const first = creds[0] ?? null;
-    setRegisteredCred(first);
-    if (first) {
-      const exists = await hasEncryptedKey(first.credentialId, KEY_LABEL);
-      setKeyIsProtected(exists);
-    } else {
-      setKeyIsProtected(false);
-    }
-  }
 
   function openBiometricModal(action: BiometricAction) {
     setBiometricAction(action);
@@ -57,7 +39,7 @@ const SecurityView = ({ userId, holderDid, walletAddress, credentials }: Securit
   }
 
   function handleBiometricSuccess() {
-    refreshBiometricState();
+    onBiometricChange();
   }
 
   function handleDecryptSuccess(privateKey: string) {
@@ -68,18 +50,6 @@ const SecurityView = ({ userId, holderDid, walletAddress, credentials }: Securit
       setShowRevealedKey(false);
     }, 30_000);
   }
-
-  const activeCredCount = credentials.filter((c) => c.status === "active").length;
-
-  // Security checklist items
-  const checks = [
-    { label: "Decentralized Identifier (DID)", ok: !!holderDid, detail: holderDid ? "Generated" : "Not generated — connect wallet" },
-    { label: "Web3 Wallet", ok: !!walletAddress, detail: walletAddress ? `${walletAddress.substring(0, 10)}…` : "Not connected" },
-    { label: "Active Credentials", ok: activeCredCount > 0, detail: activeCredCount > 0 ? `${activeCredCount} active` : "No credentials yet" },
-    { label: "Biometric Key Protection", ok: keyIsProtected, detail: keyIsProtected ? "Private key is biometric-protected" : registeredCred ? "Biometric registered, key not yet protected" : "Not set up" },
-  ];
-
-  const securityScore = Math.round((checks.filter((c) => c.ok).length / checks.length) * 100);
 
   return (
     <>

@@ -34,6 +34,16 @@ export interface SchemaFieldDef {
   required: boolean;
   /** Auto-generated server-side at issuance (e.g. "id" → unique random ID number). Hidden from the issue form. */
   auto?: "id" | string;
+  /** Allowed values. A field carrying a non-empty list renders as a select. */
+  options?: string[];
+  /** Regex source the submitted value must match (emails, employee/roll numbers, …). */
+  pattern?: string;
+  /** Inclusive numeric lower bound. */
+  min?: number;
+  /** Inclusive numeric upper bound. */
+  max?: number;
+  /** Human-readable explanation shown under the input when validation fails. */
+  hint?: string;
 }
 
 /**

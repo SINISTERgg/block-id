@@ -42,6 +42,70 @@ export const IS_CONTRACT_DEPLOYED = CREDENTIAL_REGISTRY_ADDRESS !== null;
 // Contract deployment block on Sepolia — query events from here instead of block 0
 export const CONTRACT_DEPLOYMENT_BLOCK = 6500000;
 
+// ── SoulboundCredential (SBT badges) ─────────────────────────────────────────
+
+const SBT_ADDRESS_RAW = import.meta.env.VITE_SOULBOUND_CREDENTIAL_ADDRESS;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+export const SBT_ADDRESS_ENV_KEY = "VITE_SOULBOUND_CREDENTIAL_ADDRESS";
+
+export const SBT_ADDRESS =
+  SBT_ADDRESS_RAW && SBT_ADDRESS_RAW !== ZERO_ADDRESS ? (SBT_ADDRESS_RAW as `0x${string}`) : null;
+
+export const IS_SBT_DEPLOYED = SBT_ADDRESS !== null;
+
+// Human-readable error for the "contract not deployed" UI state.
+export const SBT_NOT_DEPLOYED_HINT =
+  `Run \`node scripts/deploy-sbt.js --network sepolia\` to deploy SoulboundCredential, ` +
+  `then set ${SBT_ADDRESS_ENV_KEY} in .env and restart the dev server.`;
+
+export const SOULBOUND_ABI = [
+  // Write
+  "function mint(address to, bytes32 credentialHash) external returns (uint256)",
+  "function revoke(uint256 tokenId) external",
+  "function burn(uint256 tokenId) external",
+  "function setIssuer(address issuer, bool allowed) external",
+  // Read — ERC-721
+  "function ownerOf(uint256 tokenId) external view returns (address)",
+  "function balanceOf(address holder) external view returns (uint256)",
+  "function totalSupply() external view returns (uint256)",
+  "function tokenIdsOf(address holder) external view returns (uint256[])",
+  "function tokenByCredentialHash(bytes32 credentialHash) external view returns (uint256)",
+  "function getCredential(uint256 tokenId) external view returns (bytes32 credentialHash, address holder, uint64 issuedAt, bool revoked)",
+  "function isRevoked(uint256 tokenId) external view returns (bool)",
+  "function isValid(uint256 tokenId) external view returns (bool)",
+  "function tokenURI(uint256 tokenId) external view returns (string)",
+  // Read — EIP-5192 soulbound introspection
+  "function locked(uint256 tokenId) external view returns (bool)",
+  "function name() external view returns (string)",
+  "function symbol() external view returns (string)",
+  // Read — authorization (needed to tell "not allowlisted" apart from other reverts)
+  "function admin() external view returns (address)",
+  "function isIssuer(address account) external view returns (bool)",
+  // Custom errors. Without these in the ABI, ethers reports every revert as
+  // "unknown custom error" and the user is left guessing.
+  "error NotAdmin()",
+  "error NotIssuer()",
+  "error ZeroAddress()",
+  "error ZeroCredentialHash()",
+  "error NonTransferable()",
+  "error DuplicateCredential()",
+  "error TokenNotFound()",
+  "error AlreadyRevoked()",
+  "error MaxSupplyReached()",
+  // Events
+  "event Minted(uint256 indexed tokenId, address indexed holder, bytes32 indexed credentialHash, uint64 issuedAt)",
+  "event Revoked(uint256 indexed tokenId, address indexed issuer)",
+  "event Burned(uint256 indexed tokenId, address indexed burnedBy)",
+  // Standard ERC-721 Transfer. The indexed types must be `address`, not
+  // `uint256` — they determine topic0, and a wrong type yields
+  // 0xaf6151f5… instead of 0xddf252ad…, so real logs would never decode.
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+  "event IssuerUpdated(address indexed issuer, bool allowed)",
+  "event Locked(uint256 indexed tokenId)",
+  "event Unlocked(uint256 indexed tokenId)",
+] as const;
+
 // v2 ABI — includes batch functions and timestamps
 export const CREDENTIAL_REGISTRY_ABI = [
   // Write

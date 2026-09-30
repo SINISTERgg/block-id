@@ -34,7 +34,14 @@ export interface HolderCredential {
   blockchain_anchor: string | null;
   status: string;
   issued_at: string;
+  expires_at?: string | null;
   credential_schemas: { name: string; credential_type: string } | null;
+  // Soulbound badge state. `sbt_token_id` is null when no badge was minted.
+  sbt_token_id: number | string | null;
+  sbt_tx_hash?: string | null;
+  sbt_holder_address?: string | null;
+  sbt_minted_at?: string | null;
+  sbt_status?: string | null;
 }
 
 export interface VerificationRequest {
@@ -67,7 +74,7 @@ export async function fetchHolderCredentials(
   const { data, error } = await supabase
     .from("credentials")
     .select(
-      "id, credential_data, credential_hash, blockchain_anchor, status, issued_at, expires_at, credential_schemas(name, credential_type)"
+      "id, credential_data, credential_hash, blockchain_anchor, status, issued_at, expires_at, sbt_token_id, sbt_tx_hash, sbt_holder_address, sbt_minted_at, sbt_status, credential_schemas(name, credential_type)"
     )
     .eq("holder_id", holderId)
     .order("issued_at", { ascending: false });
@@ -80,8 +87,8 @@ export async function fetchHolderCredentials(
   return ((data ?? []) as HolderCredential[]).map((cred) => {
     if (
       cred.status === "active" &&
-      (cred as any).expires_at &&
-      new Date((cred as any).expires_at).getTime() < now
+      cred.expires_at &&
+      new Date(cred.expires_at).getTime() < now
     ) {
       return { ...cred, status: "expired" };
     }
@@ -228,6 +235,94 @@ export async function fetchRequestAiResult(
   return (data?.ai_analysis as unknown as AiVerificationResult) ?? null;
 }
 
+
+/**
+ * Every credential the holder owns, annotated with its soulbound badge state.
+ *
+ * The holder portal used to query the chain only (`tokenIdsOf(wallet)`), which
+ * can never show a badge that is recorded in the database but whose mint
+ * failed, and shows nothing at all when the RPC is down. Reading the database
+ * first and reconciling against the chain covers both directions.
+ *
+ * Falls back to a direct `credentials` select if the RPC has not been
+ * deployed yet, so the Badges tab still works on a stale database.
+ */
+export async function fetchHolderBadges(holderId: string): Promise<HolderBadge[]> {
+  const { data, error } = await supabase.rpc("get_holder_badges", {
+    p_holder_id: holderId,
+  });
+  if (!error && Array.isArray(data)) {
+    return (data as HolderBadge[]).map((row) => ({
+      ...row,
+      sbt_token_id: row.sbt_token_id ?? null,
+      sbt_status: row.sbt_status ?? null,
+    }));
+  }
+
+  if (error) {
+    console.warn(
+      "[BlockID] get_holder_badges RPC unavailable, falling back to a direct select:",
+      error.message
+    );
+  }
+
+  const fallback = await supabase
+    .from("credentials")
+    .select(
+      "id, credential_hash, status, issued_at, expires_at, sbt_requested, sbt_token_id, sbt_tx_hash, sbt_holder_address, sbt_minted_at, sbt_status, credential_schemas(name, credential_type)"
+    )
+    .eq("holder_id", holderId)
+    .is("revoked_at", null)
+    // Mirror the get_holder_badges filter: only credentials that actually have
+    // badge state. Without this every credential the holder owns would be
+    // rendered as a pending badge, which is worse than showing nothing.
+    .or("sbt_requested.eq.true,sbt_token_id.not.is.null,sbt_status.not.is.null")
+    .order("issued_at", { ascending: false });
+
+  if (fallback.error) throw fallback.error;
+
+  // The select returns `id` (not `credential_id`) and nests the schema under
+  // `credential_schemas`, so map it explicitly rather than casting.
+  const rows = (fallback.data ?? []) as unknown as Array<
+    Omit<HolderBadge, "credential_id" | "schema_name" | "credential_type"> & {
+      id: string;
+      credential_schemas: { name: string; credential_type: string } | null;
+    }
+  >;
+
+  return rows.map((row) => ({
+    credential_id: row.id,
+    credential_hash: row.credential_hash,
+    status: row.status,
+    issued_at: row.issued_at,
+    expires_at: row.expires_at,
+    schema_name: row.credential_schemas?.name ?? null,
+    credential_type: row.credential_schemas?.credential_type ?? null,
+    sbt_requested: row.sbt_requested ?? false,
+    sbt_token_id: row.sbt_token_id ?? null,
+    sbt_tx_hash: row.sbt_tx_hash ?? null,
+    sbt_holder_address: row.sbt_holder_address ?? null,
+    sbt_minted_at: row.sbt_minted_at ?? null,
+    sbt_status: row.sbt_status ?? null,
+  }));
+}
+
+/** A credential plus its soulbound badge state, as returned by the badge feed. */
+export interface HolderBadge {
+  credential_id: string;
+  credential_hash: string;
+  status: string;
+  issued_at: string;
+  expires_at: string | null;
+  schema_name: string | null;
+  credential_type: string | null;
+  sbt_requested: boolean;
+  sbt_token_id: number | string | null;
+  sbt_tx_hash: string | null;
+  sbt_holder_address: string | null;
+  sbt_minted_at: string | null;
+  sbt_status: string | null;
+}
 
 /**
  * Subscribe to real-time credential changes for the given holder.

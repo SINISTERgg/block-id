@@ -7,11 +7,13 @@
  */
 import {
   computeTrustScore,
+  analysisToTrustScore,
   scoreToTier,
   type TrustFactors,
   type TrustScoreResult,
   type TrustTier,
 } from "@/lib/ml/trustScore";
+import { aiConfidencePercent, normalizeAiAnalysis } from "@/lib/ml/aiAnalysis";
 import { analyzeAnomalies, haversineKm, type AnomalyEvent, type AnomalyReport } from "@/lib/ml/anomaly";
 import { evaluatePolicy, normalizePolicy, type VerificationPolicy, type VerificationEvidence } from "@/lib/verifier/policy";
 import type { CircuitName } from "@/lib/zkp";
@@ -130,6 +132,12 @@ export interface TrustExtras {
   issuerReputation?: number;
   /** Wallet signature was cryptographically valid. */
   signatureValid?: boolean;
+  /** A stored digest was available to compare against. */
+  hashChecked?: boolean;
+  /** Result of that comparison. */
+  hashValid?: boolean;
+  /** The chain was successfully interrogated for this record. */
+  onChainChecked?: boolean;
 }
 
 /** Build the 10-factor input set for `computeTrustScore` from a record. */
@@ -154,12 +162,20 @@ export function recordToTrustFactors(
     anchoredOnChain: extras.anchoredOnChain ?? !!payload?.blockchainAnchor,
     notRevoked: !isRejected(record),
     notExpired: !expired,
-    issuerReputation: extras.issuerReputation ?? 75,
-    verificationSuccessRate: extras.verificationSuccessRate,
+    // Only use a reputation when the caller actually supplies one. This
+    // previously defaulted to a hardcoded 75, which meant every issuer without
+    // reputation history looked established to the engine.
+    issuerReputation: extras.issuerReputation ?? null,
+    verificationSuccessRate: extras.verificationSuccessRate ?? null,
     zkProofVerified: extras.zkProofVerified ?? !!record.zkp_proof_valid,
     credentialAgeDays: credentialAgeDays(record),
     hasSmartWallet: extras.hasSmartWallet,
     biometricBound: extras.biometricBound ?? !!record.biometric_verified,
+    hashChecked: extras.hashChecked ?? false,
+    hashValid: extras.hashValid ?? false,
+    onChainChecked: extras.onChainChecked ?? !!payload?.blockchainAnchor,
+    issuedAt: payload?.issuanceDate ?? null,
+    expiresAt: expirationDateOf(record) ?? null,
   };
 }
 
@@ -171,12 +187,25 @@ export function computeRecordTrust(
   record: IntelligenceRecord,
   extras: TrustExtras = {}
 ): TrustScoreResult {
+  // Prefer the engine's own analysis when the row carries one: it is the same
+  // computation the verifier saw live, and it brings its factor breakdown with
+  // it so the radar and the ledger agree.
+  const analysis = normalizeAiAnalysis(record.ai_analysis);
+  if (analysis && !analysis.legacy && analysis.dimensions.length > 0) {
+    return analysisToTrustScore(analysis);
+  }
+
   if (typeof record.trust_score === "number" && record.trust_tier) {
     return {
       score: record.trust_score,
       rawScore: record.trust_score,
       tier: record.trust_tier,
       factors: [],
+      hardCaps: [],
+      confidence: aiConfidencePercent(record.ai_analysis) ?? 0,
+      confidenceFactors: [],
+      riskLevel: "medium",
+      dimensions: [],
       criticalFailures: [],
       computedAt: record.created_at,
     };
@@ -273,8 +302,12 @@ export function buildIssuerLeaderboard(
     .map(([issuer, rows]) => {
       const accepted = rows.filter(isAccepted).length;
       const zkp = rows.filter((r) => !!r.zkp_proof_valid).length;
+      // Normalised, not raw. `ai_analysis.confidence` was historically written
+      // on two different scales (0-1 by the holder auto-verify path, 0-100 by
+      // the verifier path) into the same column, so averaging the raw field
+      // silently dragged every holder verification towards zero.
       const confidences = rows
-        .map((r) => (r.ai_analysis as any)?.confidence)
+        .map((r) => aiConfidencePercent(r.ai_analysis))
         .filter((c): c is number => typeof c === "number");
       const trustScores = rows
         .map((r) => computeRecordTrust(r).score)

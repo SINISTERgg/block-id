@@ -53,7 +53,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX)) {
+    // Coarse cap across the whole function. Scoped so it does not share a
+    // counter with the per-action limits below — previously all three hit the
+    // same bucket, so each sign-in consumed two increments and the per-action
+    // limits could never be reached independently.
+    if (rateLimited(clientIp(req), 60_000, RATE_LIMIT_MAX, "siwe-auth:any")) {
       return tooManyRequestsResponse(corsHeaders);
     }
 
@@ -75,7 +79,7 @@ serve(async (req) => {
 
     // ── Step 1: issue challenge ────────────────────────────────────────────
     if (action === "nonce") {
-      if (rateLimited(clientIp(req), 60_000, NONCE_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, NONCE_RATE_LIMIT_MAX, "siwe-auth:nonce")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
@@ -97,7 +101,7 @@ serve(async (req) => {
 
     // ── Step 2: verify signature + bind Supabase identity ──────────────────
     if (action === "verify") {
-      if (rateLimited(clientIp(req), 60_000, VERIFY_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, VERIFY_RATE_LIMIT_MAX, "siwe-auth:verify")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 

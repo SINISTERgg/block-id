@@ -5,7 +5,7 @@ import { Download, FileImage, Printer, Shield, ExternalLink } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-interface CertificateData {
+export interface CertificateData {
   credentialName: string;
   credentialType: string;
   holderName: string;
@@ -82,6 +82,170 @@ function formatFieldLabel(name: string): string {
 }
 
 /**
+ * The certificate artwork on its own, with no dialog chrome.
+ *
+ * Shared by `CertificateRenderer` (full-screen + export actions) and by the
+ * issuer's issuance dialog, which shows a live preview while the issuer types.
+ */
+export const CertificateSvg = ({ certificate, className }: { certificate: CertificateData; className?: string }) => {
+  const verificationUrl = getVerificationUrl(certificate.credentialHash);
+  const displayFields = extractDisplayFields(certificate.credentialData);
+  const issueDate = new Date(certificate.issuedAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const issuerLabel = certificate.issuerName || "BlockID Verified Issuer";
+
+  return (
+    <svg
+      className={`cert-svg-root w-full ${className ?? ""}`}
+      viewBox="0 0 900 600"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}
+    >
+      {/* Background */}
+      <rect width="900" height="600" fill="#0f172a" />
+
+      {/* Outer Border */}
+      <rect x="12" y="12" width="876" height="576" rx="8" ry="8" fill="none" stroke="#6366f1" strokeWidth="2" />
+
+      {/* Inner Border */}
+      <rect x="20" y="20" width="860" height="560" rx="6" ry="6" fill="none" stroke="#1e293b" strokeWidth="1" />
+
+      {/* Top accent bar */}
+      <rect x="20" y="20" width="860" height="4" rx="2" fill="#6366f1" />
+
+      {/* Corner decorations */}
+      <circle cx="35" cy="35" r="3" fill="#6366f1" opacity="0.5" />
+      <circle cx="865" cy="35" r="3" fill="#6366f1" opacity="0.5" />
+      <circle cx="35" cy="565" r="3" fill="#6366f1" opacity="0.5" />
+      <circle cx="865" cy="565" r="3" fill="#6366f1" opacity="0.5" />
+
+      {/* BlockID Header */}
+      <text x="450" y="55" textAnchor="middle" fill="#6366f1" fontSize="11" fontWeight="700" letterSpacing="3">
+        BLOCKID VERIFIED CREDENTIAL
+      </text>
+
+      {/* Main Title */}
+      <text x="450" y="88" textAnchor="middle" fill="#f8fafc" fontSize="30" fontWeight="700" letterSpacing="1">
+        CERTIFICATE OF CREDENTIAL
+      </text>
+
+      {/* Decorative line */}
+      <line x1="320" y1="100" x2="580" y2="100" stroke="#6366f1" strokeWidth="1.5" />
+
+      {/* Credential Name */}
+      <text x="450" y="130" textAnchor="middle" fill="#a5b4fc" fontSize="22" fontWeight="700">
+        {certificate.credentialName.length > 40
+          ? certificate.credentialName.substring(0, 40) + "…"
+          : certificate.credentialName}
+      </text>
+
+      {/* Credential Type */}
+      <text x="450" y="150" textAnchor="middle" fill="#94a3b8" fontSize="12" fontWeight="400">
+        {certificate.credentialType.toUpperCase()}
+      </text>
+
+      {/* "This certifies" */}
+      <text x="450" y="185" textAnchor="middle" fill="#64748b" fontSize="13" fontStyle="italic">
+        This is to certify that
+      </text>
+
+      {/* Holder Name */}
+      <text x="450" y="215" textAnchor="middle" fill="#f8fafc" fontSize="26" fontWeight="700">
+        {(certificate.holderName || "Credential Holder").substring(0, 45)}
+      </text>
+
+      {/* Holder DID (truncated) */}
+      <text x="450" y="235" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">
+        {certificate.holderDid.length > 50
+          ? certificate.holderDid.substring(0, 50) + "…"
+          : certificate.holderDid}
+      </text>
+
+      {/* Credential Data Fields */}
+      {displayFields.slice(0, 6).map(([key, value], i) => {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const x = col === 0 ? 80 : 380;
+        const y = 275 + row * 38;
+        return (
+          <g key={key}>
+            <text x={x} y={y} fill="#64748b" fontSize="10" fontWeight="400">
+              {formatFieldLabel(key)}
+            </text>
+            <text x={x} y={y + 16} fill="#e2e8f0" fontSize="13" fontWeight="600">
+              {String(value).substring(0, 35)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* QR Code Area (right side) */}
+      <rect x="680" y="265" width="170" height="180" rx="8" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+      <text x="765" y="285" textAnchor="middle" fill="#6366f1" fontSize="8" fontWeight="700" letterSpacing="2">
+        SCAN TO VERIFY
+      </text>
+
+      {/* QR Code as a nested SVG (foreignObject breaks standard image exports) */}
+      <svg x="715" y="295" width="100" height="100">
+        <QRCodeSVG
+          value={verificationUrl}
+          size={100}
+          bgColor="#1e293b"
+          fgColor="#a5b4fc"
+          level="M"
+          includeMargin={false}
+        />
+      </svg>
+
+      <text x="765" y="420" textAnchor="middle" fill="#475569" fontSize="7" fontFamily="monospace">
+        {verificationUrl.length > 40 ? verificationUrl.substring(0, 40) + "…" : verificationUrl}
+      </text>
+
+      {/* Shield verification badge */}
+      <circle cx="765" cy="440" r="8" fill="#6366f1" />
+      <text x="765" y="444" textAnchor="middle" fill="white" fontSize="10" fontWeight="700">
+        ✓
+      </text>
+
+      {/* Footer separator */}
+      <line x1="50" y1="480" x2="850" y2="480" stroke="#1e293b" strokeWidth="1" />
+
+      {/* Footer left: metadata */}
+      <text x="60" y="500" fill="#64748b" fontSize="8">
+        Issued: {issueDate}
+      </text>
+      <text x="60" y="514" fill="#64748b" fontSize="8" fontFamily="monospace">
+        Hash: {certificate.credentialHash.substring(0, 50)}…
+      </text>
+      {certificate.blockchainAnchor && (
+        <text x="60" y="528" fill="#64748b" fontSize="8" fontFamily="monospace">
+          Blockchain Tx: {certificate.blockchainAnchor.substring(0, 50)}…
+        </text>
+      )}
+
+      {/* Footer right: status & branding */}
+      <text x="840" y="500" textAnchor="end" fill={certificate.status === "active" ? "#22c55e" : "#ef4444"} fontSize="9" fontWeight="700">
+        STATUS: {certificate.status.toUpperCase()}
+      </text>
+      <text x="840" y="514" textAnchor="end" fill="#6366f1" fontSize="8">
+        Verified by BlockID Platform
+      </text>
+      <text x="840" y="528" textAnchor="end" fill="#475569" fontSize="8">
+        Polygon Blockchain Anchored
+      </text>
+
+      {/* Issuer label */}
+      <text x="450" y="565" textAnchor="middle" fill="#334155" fontSize="8">
+        Issued by: {issuerLabel} · BlockID Self-Sovereign Identity Ecosystem
+      </text>
+    </svg>
+  );
+};
+
+/**
  * CertificateRenderer — Phase II Visual SVG/PDF Certificate with embedded Anti-Counterfeit QR Code.
  *
  * Renders a high-quality visual certificate inside a modal dialog.
@@ -104,7 +268,6 @@ const CertificateRenderer = ({ open, onOpenChange, certificate }: CertificateRen
         day: "numeric",
       })
     : "";
-  const issuerLabel = certificate?.issuerName || "BlockID Verified Issuer";
 
   // ─── PDF Export (with embedded QR) ──────────────────────────────────
   const exportPdf = useCallback(() => {
@@ -307,150 +470,7 @@ const CertificateRenderer = ({ open, onOpenChange, certificate }: CertificateRen
 
         {/* SVG Certificate Rendering */}
         <div ref={svgContainerRef} className="relative rounded-xl overflow-hidden border border-border bg-slate-950">
-          <svg
-            className="cert-svg-root w-full"
-            viewBox="0 0 900 600"
-            xmlns="http://www.w3.org/2000/svg"
-            style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif" }}
-          >
-            {/* Background */}
-            <rect width="900" height="600" fill="#0f172a" />
-
-            {/* Outer Border */}
-            <rect x="12" y="12" width="876" height="576" rx="8" ry="8" fill="none" stroke="#6366f1" strokeWidth="2" />
-
-            {/* Inner Border */}
-            <rect x="20" y="20" width="860" height="560" rx="6" ry="6" fill="none" stroke="#1e293b" strokeWidth="1" />
-
-            {/* Top accent bar */}
-            <rect x="20" y="20" width="860" height="4" rx="2" fill="#6366f1" />
-
-            {/* Corner decorations */}
-            <circle cx="35" cy="35" r="3" fill="#6366f1" opacity="0.5" />
-            <circle cx="865" cy="35" r="3" fill="#6366f1" opacity="0.5" />
-            <circle cx="35" cy="565" r="3" fill="#6366f1" opacity="0.5" />
-            <circle cx="865" cy="565" r="3" fill="#6366f1" opacity="0.5" />
-
-            {/* BlockID Header */}
-            <text x="450" y="55" textAnchor="middle" fill="#6366f1" fontSize="11" fontWeight="700" letterSpacing="3">
-              BLOCKID VERIFIED CREDENTIAL
-            </text>
-
-            {/* Main Title */}
-            <text x="450" y="88" textAnchor="middle" fill="#f8fafc" fontSize="30" fontWeight="700" letterSpacing="1">
-              CERTIFICATE OF CREDENTIAL
-            </text>
-
-            {/* Decorative line */}
-            <line x1="320" y1="100" x2="580" y2="100" stroke="#6366f1" strokeWidth="1.5" />
-
-            {/* Credential Name */}
-            <text x="450" y="130" textAnchor="middle" fill="#a5b4fc" fontSize="22" fontWeight="700">
-              {certificate.credentialName.length > 40
-                ? certificate.credentialName.substring(0, 40) + "…"
-                : certificate.credentialName}
-            </text>
-
-            {/* Credential Type */}
-            <text x="450" y="150" textAnchor="middle" fill="#94a3b8" fontSize="12" fontWeight="400">
-              {certificate.credentialType.toUpperCase()}
-            </text>
-
-            {/* "This certifies" */}
-            <text x="450" y="185" textAnchor="middle" fill="#64748b" fontSize="13" fontStyle="italic">
-              This is to certify that
-            </text>
-
-            {/* Holder Name */}
-            <text x="450" y="215" textAnchor="middle" fill="#f8fafc" fontSize="26" fontWeight="700">
-              {(certificate.holderName || "Credential Holder").substring(0, 45)}
-            </text>
-
-            {/* Holder DID (truncated) */}
-            <text x="450" y="235" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">
-              {certificate.holderDid.length > 50
-                ? certificate.holderDid.substring(0, 50) + "…"
-                : certificate.holderDid}
-            </text>
-
-            {/* Credential Data Fields */}
-            {displayFields.slice(0, 6).map(([key, value], i) => {
-              const col = i % 2;
-              const row = Math.floor(i / 2);
-              const x = col === 0 ? 80 : 380;
-              const y = 275 + row * 38;
-              return (
-                <g key={key}>
-                  <text x={x} y={y} fill="#64748b" fontSize="10" fontWeight="400">
-                    {formatFieldLabel(key)}
-                  </text>
-                  <text x={x} y={y + 16} fill="#e2e8f0" fontSize="13" fontWeight="600">
-                    {String(value).substring(0, 35)}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* QR Code Area (right side) */}
-            <rect x="680" y="265" width="170" height="180" rx="8" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <text x="765" y="285" textAnchor="middle" fill="#6366f1" fontSize="8" fontWeight="700" letterSpacing="2">
-              SCAN TO VERIFY
-            </text>
-
-            {/* QR Code as a nested SVG (foreignObject breaks standard image exports) */}
-            <svg x="715" y="295" width="100" height="100">
-              <QRCodeSVG
-                value={verificationUrl}
-                size={100}
-                bgColor="#1e293b"
-                fgColor="#a5b4fc"
-                level="M"
-                includeMargin={false}
-              />
-            </svg>
-
-            <text x="765" y="420" textAnchor="middle" fill="#475569" fontSize="7" fontFamily="monospace">
-              {verificationUrl.length > 40 ? verificationUrl.substring(0, 40) + "…" : verificationUrl}
-            </text>
-
-            {/* Shield verification badge */}
-            <circle cx="765" cy="440" r="8" fill="#6366f1" />
-            <text x="765" y="444" textAnchor="middle" fill="white" fontSize="10" fontWeight="700">
-              ✓
-            </text>
-
-            {/* Footer separator */}
-            <line x1="50" y1="480" x2="850" y2="480" stroke="#1e293b" strokeWidth="1" />
-
-            {/* Footer left: metadata */}
-            <text x="60" y="500" fill="#64748b" fontSize="8">
-              Issued: {issueDate}
-            </text>
-            <text x="60" y="514" fill="#64748b" fontSize="8" fontFamily="monospace">
-              Hash: {certificate.credentialHash.substring(0, 50)}…
-            </text>
-            {certificate.blockchainAnchor && (
-              <text x="60" y="528" fill="#64748b" fontSize="8" fontFamily="monospace">
-                Blockchain Tx: {certificate.blockchainAnchor.substring(0, 50)}…
-              </text>
-            )}
-
-            {/* Footer right: status & branding */}
-            <text x="840" y="500" textAnchor="end" fill={certificate.status === "active" ? "#22c55e" : "#ef4444"} fontSize="9" fontWeight="700">
-              STATUS: {certificate.status.toUpperCase()}
-            </text>
-            <text x="840" y="514" textAnchor="end" fill="#6366f1" fontSize="8">
-              Verified by BlockID Platform
-            </text>
-            <text x="840" y="528" textAnchor="end" fill="#475569" fontSize="8">
-              Polygon Blockchain Anchored
-            </text>
-
-            {/* Issuer label */}
-            <text x="450" y="565" textAnchor="middle" fill="#334155" fontSize="8">
-              Issued by: {issuerLabel} · BlockID Self-Sovereign Identity Ecosystem
-            </text>
-          </svg>
+          <CertificateSvg certificate={certificate} />
         </div>
 
         {/* Hidden canvas for PDF Export to accurately capture the QR code */}

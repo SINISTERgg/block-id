@@ -174,6 +174,12 @@ export type Database = {
           prev_hash: string | null
           revoked_at: string | null
           schema_id: string | null
+          sbt_holder_address: string | null
+          sbt_minted_at: string | null
+          sbt_requested?: boolean | null
+          sbt_status: string | null
+          sbt_token_id: number | null
+          sbt_tx_hash: string | null
           signer_address: string | null
           status: string
           status_list_id: string | null
@@ -193,6 +199,12 @@ export type Database = {
           prev_hash?: string | null
           revoked_at?: string | null
           schema_id?: string | null
+          sbt_holder_address?: string | null
+          sbt_minted_at?: string | null
+          sbt_requested?: boolean
+          sbt_status?: string | null
+          sbt_token_id?: number | null
+          sbt_tx_hash?: string | null
           signer_address?: string | null
           status?: string
           status_list_id?: string | null
@@ -212,6 +224,12 @@ export type Database = {
           prev_hash?: string | null
           revoked_at?: string | null
           schema_id?: string | null
+          sbt_holder_address?: string | null
+          sbt_minted_at?: string | null
+          sbt_requested?: boolean
+          sbt_status?: string | null
+          sbt_token_id?: number | null
+          sbt_tx_hash?: string | null
           signer_address?: string | null
           status?: string
           status_list_id?: string | null
@@ -676,6 +694,38 @@ export type Database = {
       generate_did: { Args: { _user_id: string }; Returns: string }
       get_my_did: { Args: Record<PropertyKey, never>; Returns: string }
       expire_stale_credentials: { Args: Record<PropertyKey, never>; Returns: undefined }
+      get_holder_badges: {
+        Args: { p_holder_id: string }
+        Returns: {
+          credential_id: string
+          credential_hash: string
+          status: string
+          issued_at: string
+          expires_at: string | null
+          schema_name: string | null
+          credential_type: string | null
+          sbt_token_id: number | null
+          sbt_tx_hash: string | null
+          sbt_holder_address: string | null
+          sbt_minted_at: string | null
+          sbt_requested: boolean
+          sbt_status: string | null
+        }[]
+      }
+      record_sbt_mint: {
+        Args: {
+          p_credential_id: string
+          p_token_id: number | null
+          p_tx_hash: string | null
+          p_holder_address: string | null
+          p_status?: string
+        }
+        Returns: Database["public"]["Tables"]["credentials"]["Row"]
+      }
+      record_sbt_state: {
+        Args: { p_credential_id: string; p_status: string }
+        Returns: Database["public"]["Tables"]["credentials"]["Row"]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

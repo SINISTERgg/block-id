@@ -23,8 +23,15 @@ interface TrustScoreRadarProps {
 }
 
 export default function TrustScoreRadar({ result, expanded = true }: TrustScoreRadarProps) {
-  const capped = result.criticalFailures.length > 0;
+  // A cap is applied whenever a hard-fail cap bound the score, which is not the
+  // same set as `criticalFailures` (a cap can also come from an unanchored or
+  // unexpired-but-undated credential).
+  const caps = result.hardCaps ?? [];
+  const capped = caps.length > 0;
   const lost = result.rawScore - result.score;
+  // Falls back to the engine's dimension count rather than a hardcoded 8, which
+  // went stale the moment a dimension was added.
+  const factorCount = result.factors.length || result.dimensions.length || 8;
 
   return (
     <div className="space-y-4">
@@ -49,8 +56,8 @@ export default function TrustScoreRadar({ result, expanded = true }: TrustScoreR
           </div>
 
           <p className="text-[11px] text-muted-foreground">
-            Weighted across {result.factors.length || 8} factors. Deterministic — the same
-            credential always produces the same score.
+            Weighted across {factorCount} dimensions. Deterministic — the same
+            signals always produce the same score.
           </p>
 
           {capped ? (
@@ -58,22 +65,40 @@ export default function TrustScoreRadar({ result, expanded = true }: TrustScoreR
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />
               <div className="text-[11px]">
                 <div className="font-semibold text-destructive">
-                  Capped at {Math.round(result.score)} — critical failure
-                  {result.criticalFailures.length > 1 ? "s" : ""}:{" "}
-                  {result.criticalFailures.join(", ")}
+                  Capped at {Math.round(result.score)} — {caps.length} hard{" "}
+                  {caps.length > 1 ? "caps" : "cap"} applied
                 </div>
-                <div className="text-muted-foreground mt-0.5">
-                  Raw score was {result.rawScore}. Positive signals cannot mask{" "}
-                  {result.criticalFailures.includes("signature") ? "an invalid signature" : "a revoked credential"}.
-                </div>
+                <ul className="mt-0.5 space-y-0.5 text-muted-foreground">
+                  {caps.map(c => (
+                    <li key={c.key}>
+                      <span className="font-mono text-destructive/80">max {c.cap}</span> — {c.reason}
+                    </li>
+                  ))}
+                </ul>
+                {lost > 0 && (
+                  <div className="text-muted-foreground mt-1">
+                    The signal mix scored {Math.round(result.rawScore)}/100. Positive
+                    signals cannot lift a hard failure.
+                  </div>
+                )}
               </div>
             </div>
           ) : lost > 0 ? (
             <div className="flex items-start gap-2 text-[11px] text-muted-foreground">
               <Info className="h-3.5 w-3.5 shrink-0" />
-              {Math.round(lost)} points were withheld by critical-failure capping.
+              {Math.round(lost)} points were withheld by hard-failure capping.
             </div>
           ) : null}
+
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <ShieldCheck className="h-3 w-3 shrink-0" />
+            Confidence {result.confidence}%
+            {result.confidenceFactors.length > 0 && (
+              <span className="truncate">
+                — reduced by {result.confidenceFactors.map(f => f.label.toLowerCase()).join("; ")}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

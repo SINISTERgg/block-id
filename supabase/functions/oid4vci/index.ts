@@ -21,7 +21,15 @@ const OFFER_RATE_LIMIT_MAX = 30;
 const TOKEN_RATE_LIMIT_MAX = 30;
 const CREDENTIAL_RATE_LIMIT_MAX = 15;
 const ISSUER_ROLES = ["issuer", "org_admin"] as const;
-const SUPPORTED_FORMATS = new Set(["ldp_vc", "jwt_vc_json"]);
+
+/**
+ * Only `ldp_vc` is advertised. The function has no issuer private key — signing
+ * happens client-side in the holder/issuer wallet — so it cannot mint a valid
+ * `jwt_vc_json`. It used to return a JWT whose "signature" was the first 64
+ * hex chars of the credential hash; wallets verify that and reject it, so the
+ * advertised algorithm was a promise the issuer could not keep.
+ */
+const SUPPORTED_FORMATS = new Set(["ldp_vc"]);
 
 async function hashData(data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -42,7 +50,7 @@ serve(async (req) => {
   try {
     // ─── 1. Create Credential Offer (issuer calls this) ───
     if (req.method === "POST" && pathSegment === "offer") {
-      if (rateLimited(clientIp(req), 60_000, OFFER_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, OFFER_RATE_LIMIT_MAX, "oid4vci:offer")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
@@ -108,18 +116,20 @@ serve(async (req) => {
     }
 
     // ─── 2. OpenID Credential Issuer Metadata ───
-    if (req.method === "GET" && (pathSegment === ".well-known" || url.pathname.includes("openid-credential-issuer"))) {
+    //
+    // Wallets probe `<issuer>/.well-known/openid-credential-issuer` and some
+    // probe the issuer root, so both resolve here.
+    if (req.method === "GET" && (url.pathname.includes("openid-credential-issuer") || pathSegment === ".well-known" || pathSegment === "oid4vci")) {
+      const issuerBase = `${supabaseUrl}/functions/v1/oid4vci`;
       const metadata = {
-        credential_issuer: `${supabaseUrl}/functions/v1/oid4vci`,
-        credential_endpoint: `${supabaseUrl}/functions/v1/oid4vci/credential`,
-        token_endpoint: `${supabaseUrl}/functions/v1/oid4vci/token`,
+        credential_issuer: issuerBase,
+        credential_endpoint: `${issuerBase}/credential`,
+        token_endpoint: `${issuerBase}/token`,
+        authorization_servers: [issuerBase],
+        // ldp_vc only. There is no issuer signing key in this function, so no
+        // `jwt_vc_json` — advertising one guarantees a wallet-side signature
+        // failure. See SUPPORTED_FORMATS.
         credentials_supported: [
-          {
-            format: "jwt_vc_json",
-            types: ["VerifiableCredential"],
-            cryptographic_binding_methods_supported: ["did:key", "did:jwk"],
-            credential_signing_alg_values_supported: ["ES256K"],
-          },
           {
             format: "ldp_vc",
             types: ["VerifiableCredential"],
@@ -134,7 +144,7 @@ serve(async (req) => {
 
     // ─── 3. Token Endpoint (pre-authorized code exchange) ───
     if (req.method === "POST" && pathSegment === "token") {
-      if (rateLimited(clientIp(req), 60_000, TOKEN_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, TOKEN_RATE_LIMIT_MAX, "oid4vci:token")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
@@ -147,13 +157,15 @@ serve(async (req) => {
         body = await req.json();
       }
 
-      const grantType = body.grant_type || body["grant_type"];
-      const code = body["pre-authorized_code"] || body.pre_authorized_code;
+      const grantType = body.grant_type;
+      const code = body["pre-authorized_code"];
 
       if (grantType !== "urn:ietf:params:oauth:grant-type:pre-authorized_code") {
-        throw new Error("Unsupported grant_type");
+        return jsonResponse({ error: "Unsupported grant_type" }, 400, corsHeaders);
       }
-      if (!code) throw new Error("pre-authorized_code required");
+      if (!code || typeof code !== "string") {
+        return jsonResponse({ error: "pre-authorized_code required" }, 400, corsHeaders);
+      }
 
       const { data: session } = await supabase
         .from("oid4vc_sessions")
@@ -162,15 +174,19 @@ serve(async (req) => {
         .eq("status", "pending")
         .single();
 
-      if (!session) throw new Error("Invalid or expired pre-authorized code");
-      if (new Date(session.expires_at) < new Date()) throw new Error("Offer expired");
+      if (!session) return jsonResponse({ error: "Invalid or expired pre-authorized code" }, 400, corsHeaders);
+      if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "Offer expired" }, 400, corsHeaders);
 
-      // Generate access token
-      const accessToken = await hashData(`access:${session.id}:${Date.now()}`);
+      // Only the hash of the access token is persisted. The plaintext token is
+      // returned once and never stored, so a database dump cannot be replayed
+      // against the credential endpoint.
+      const accessToken = await hashData(`access:${session.id}:${crypto.randomUUID()}`);
+      const accessTokenHash = await hashData(accessToken);
 
       await supabase.from("oid4vc_sessions").update({
         status: "claimed",
-        metadata: { ...session.metadata, access_token: accessToken },
+        access_token_hash: accessTokenHash,
+        metadata: { ...session.metadata, claimed_at: new Date().toISOString() },
         updated_at: new Date().toISOString(),
       }).eq("id", session.id);
 
@@ -178,30 +194,40 @@ serve(async (req) => {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: 300,
-        c_nonce: await hashData(`nonce:${session.id}:${Date.now()}`),
+        c_nonce: await hashData(`nonce:${session.id}:${crypto.randomUUID()}`),
         c_nonce_expires_in: 300,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ─── 4. Credential Endpoint (issue the VC) ───
     if (req.method === "POST" && pathSegment === "credential") {
-      if (rateLimited(clientIp(req), 60_000, CREDENTIAL_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, CREDENTIAL_RATE_LIMIT_MAX, "oid4vci:credential")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
       const authHeader = req.headers.get("Authorization");
-      if (!authHeader) throw new Error("No access token");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return jsonResponse({ error: "Bearer access token required" }, 401, corsHeaders);
+      }
 
-      const token = authHeader.replace("Bearer ", "");
+      const token = authHeader.replace("Bearer ", "").trim();
+      if (!token) return jsonResponse({ error: "Bearer access token required" }, 401, corsHeaders);
 
-      // Find session by access token
-      const { data: sessions } = await supabase
+      // Look the session up by token hash. This used to select every `claimed`
+      // session and compare the raw token in JS, which was O(all active offers)
+      // per issuance and meant the plaintext token sat in a JSONB column.
+      const tokenHash = await hashData(token);
+      const { data: session } = await supabase
         .from("oid4vc_sessions")
         .select("*")
-        .eq("status", "claimed");
+        .eq("access_token_hash", tokenHash)
+        .eq("status", "claimed")
+        .maybeSingle();
 
-      const session = sessions?.find((s: any) => s.metadata?.access_token === token);
-      if (!session) throw new Error("Invalid access token");
+      if (!session) return jsonResponse({ error: "Invalid access token" }, 401, corsHeaders);
+      if (new Date(session.expires_at) < new Date()) {
+        return jsonResponse({ error: "Offer expired" }, 400, corsHeaders);
+      }
 
       let body: any;
       try {
@@ -211,7 +237,12 @@ serve(async (req) => {
       }
       const format = body.format || "ldp_vc";
       if (!SUPPORTED_FORMATS.has(format)) {
-        return jsonResponse({ error: "Unsupported credential format" }, 400, corsHeaders);
+        // Naming the reason matters: a wallet asking for jwt_vc_json would
+        // otherwise see a bare "unsupported" and have no way to tell a version
+        // mismatch from a missing issuer key.
+        return jsonResponse({
+          error: `Unsupported credential format "${format}". This issuer only offers ldp_vc.`,
+        }, 400, corsHeaders);
       }
 
       // Fetch schema
@@ -274,27 +305,10 @@ serve(async (req) => {
         metadata: { holder_did: holderDid, schema_name: schema.name, format },
       });
 
-      if (format === "jwt_vc_json") {
-        // Return as JWT
-        const header = { alg: "ES256K", typ: "JWT" };
-        const payload = {
-          iss: vc.issuer,
-          sub: holderDid,
-          iat: Math.floor(Date.now() / 1000),
-          jti: `urn:uuid:${credential.id}`,
-          vc,
-        };
-        const jwt = [
-          btoa(JSON.stringify(header)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_"),
-          btoa(JSON.stringify(payload)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_"),
-          credentialHash.substring(0, 64),
-        ].join(".");
-
-        return new Response(JSON.stringify({ format: "jwt_vc_json", credential: jwt }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
+      // Only ldp_vc reaches here (see SUPPORTED_FORMATS). The previous
+      // jwt_vc_json branch built `header.payload.<hash>` and called it a
+      // credential — wallets verify that third segment and reject it, so the
+      // credential was unusable outside our own portal.
       return new Response(JSON.stringify({ format: "ldp_vc", credential: vc }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

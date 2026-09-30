@@ -8,6 +8,8 @@ import {
   sanitizedError,
   tooManyRequestsResponse,
 } from "../_shared/security.ts";
+import { analyzeCredential, isCredentialAcceptable, unverifiedChecks, resolveIssuer, daysSince, type CredentialSignals } from "../_shared/credentialEngine.ts";
+import { recordAiCall } from "../_shared/aiTelemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,7 +39,7 @@ serve(async (req) => {
   try {
     // ─── 1. Create Presentation Request (verifier calls this) ───
     if (req.method === "POST" && pathSegment === "request") {
-      if (rateLimited(clientIp(req), 60_000, REQUEST_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, REQUEST_RATE_LIMIT_MAX, "oid4vp:request")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
@@ -125,7 +127,7 @@ serve(async (req) => {
 
     // ─── 2. Receive Presentation Response (wallet posts VP here) ───
     if (req.method === "POST" && pathSegment === "response") {
-      if (rateLimited(clientIp(req), 60_000, RESPONSE_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, RESPONSE_RATE_LIMIT_MAX, "oid4vp:response")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
@@ -184,19 +186,97 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       }).eq("id", session.id);
 
+      // ── Score the presentation with the canonical engine ────────────────────
+      // This used to write a hardcoded `{confidence: 85, risk_level: "low"}`
+      // and mark the request `status: "verified"` without checking anything.
+      // A protocol receipt is not a verification: this surface performs no
+      // chain or digest checks, so the engine is told those checks did not run
+      // and the resulting low confidence is reported honestly. The full
+      // verification happens in `verify-credential`.
+      const firstVc: Record<string, unknown> = (Array.isArray(vpData?.verifiableCredential)
+        ? vpData.verifiableCredential[0]
+        : vpData?.verifiableCredential) ?? vpData ?? {};
+
+      const signals: CredentialSignals = {
+        vc: firstVc,
+        hashChecked: false,
+        hashValid: false,
+        dbStatus: "active",
+        blockchainVerified: false,
+        onChainRevoked: false,
+        blockchainAnchor: null,
+        onChainChecked: false,
+        walletSigned: !!(firstVc?.proof as Record<string, unknown> | undefined)?.proofValue,
+        signatureVerified: null,
+        signerAddress: ((firstVc?.proof as Record<string, unknown> | undefined)?.signedBy as string) ?? null,
+        issuedAt: (firstVc?.issuanceDate as string) ?? null,
+        expiresAt: (firstVc?.expirationDate as string) ?? null,
+        notExpired: firstVc?.expirationDate ? new Date(firstVc.expirationDate as string) > new Date() : null,
+        credentialHash: "",
+        issuerReputation: null,
+        verificationSuccessRate: null,
+        credentialAgeDays: firstVc?.issuanceDate ? daysSince(firstVc.issuanceDate as string) : null,
+        // `verified` is untyped JSON here, so it arrives as `unknown`. Only a
+        // literal `true` counts as a verified proof; anything else stays null so
+        // the engine reports it as unknown rather than passing a truthy string.
+        zkProofVerified:
+          (firstVc?.zkp as Record<string, unknown> | undefined)?.verified === true
+            ? true
+            : null,
+        schemaKnown: null,
+      };
+
+      const analysis = analyzeCredential(signals);
+      const { valid } = isCredentialAcceptable(signals);
+      const incomplete = unverifiedChecks(signals);
+      // Nothing has been cryptographically checked on this path, so the
+      // request is recorded as `accepted` (presentation received) rather than
+      // `verified` (claims checked). Downstream policy sees the difference.
+      const requestStatus = valid && analysis.hard_caps_applied.length === 0 ? "accepted" : "rejected";
+
+      await recordAiCall(supabase, {
+        surface: "oid4vp",
+        engine: analysis.engine,
+        model: null,
+        llmEnabled: false,
+        degraded: true,
+        error: "deterministic_only",
+        latencyMs: null,
+        totalLatencyMs: null,
+        attempts: 0,
+        promptTokens: null,
+        candidatesTokens: null,
+        schemaVersion: analysis.schema_version,
+        score: analysis.score,
+        riskLevel: analysis.risk_level,
+        confidence: analysis.confidence,
+        hardCapsCount: analysis.hard_caps_applied.length,
+        userId: session.user_id,
+        metadata: { credentials_count: verificationResult.credentials_count, issuer: resolveIssuer(firstVc) },
+      });
+
       // Create verification request record
       await supabase.from("verification_requests").insert({
         verifier_id: session.user_id,
         holder_did: verificationResult.holder,
         credential_type: session.metadata?.credential_types?.[0] || null,
         purpose: session.metadata?.purpose || "OID4VP verification",
-        status: "verified",
+        status: requestStatus,
+        trust_score: analysis.score,
+        trust_tier: analysis.tier,
         verified_at: new Date().toISOString(),
         ai_analysis: {
+          ...analysis,
           source: "oid4vp",
-          confidence: 85,
-          findings: ["Credential presented via OpenID4VP protocol", `${verificationResult.credentials_count} credential(s) received`],
-          risk_level: "low",
+          credentials_count: verificationResult.credentials_count,
+          unverified_checks: incomplete,
+          provisional: true,
+          // Retained so the existing OID4VP audit trail still resolves.
+          findings: [
+            "Credential presented via OpenID4VP protocol",
+            `${verificationResult.credentials_count} credential(s) received`,
+            ...analysis.findings,
+          ],
         },
       });
 
@@ -216,7 +296,7 @@ serve(async (req) => {
 
     // ─── 3. Check session status (polling) ───
     if (req.method === "GET" && pathSegment === "status") {
-      if (rateLimited(clientIp(req), 60_000, STATUS_RATE_LIMIT_MAX)) {
+      if (rateLimited(clientIp(req), 60_000, STATUS_RATE_LIMIT_MAX, "oid4vp:status")) {
         return tooManyRequestsResponse(corsHeaders);
       }
 
