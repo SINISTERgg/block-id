@@ -33,6 +33,18 @@ import { fileURLToPath, pathToFileURL } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
+// ── CLI args ──────────────────────────────────────────────────────────────────
+const argv = process.argv.slice(2);
+const ablateArg = argv.indexOf("--ablate");
+// Accept comma-separated list: --ablate geo_jump,off_hours
+const ABLATE_DETECTORS = ablateArg >= 0
+  ? argv[ablateArg + 1].split(",").map((s) => s.trim())
+  : [];
+
+if (ABLATE_DETECTORS.length > 0) {
+  console.log(`  Ablation mode: excluding detector(s): ${ABLATE_DETECTORS.join(", ")}`);
+}
+
 // ── Load dataset ──────────────────────────────────────────────────────────────
 const datasetPath = path.join(root, "data", "anomaly-dataset.json");
 if (!fs.existsSync(datasetPath)) {
@@ -64,7 +76,10 @@ try {
 // ── Evaluation ────────────────────────────────────────────────────────────────
 
 // Detector name ↔ AnomalyType mapping
-const DETECTOR_TYPES = ["burst", "failure_streak", "geo_jump", "off_hours", "latency_spike"];
+const ALL_DETECTOR_TYPES = ["burst", "failure_streak", "geo_jump", "off_hours", "latency_spike"];
+// Exclude ablated detectors (from --ablate CLI flag)
+const DETECTOR_TYPES = ALL_DETECTOR_TYPES.filter((t) => !ABLATE_DETECTORS.includes(t));
+
 
 // Label sets — events labelled "normal" are negative; anything else is positive
 // for the corresponding detector type.
@@ -195,7 +210,11 @@ console.log(`Overall CM: TP=${overall.TP}  FP=${overall.FP}  TN=${overall.TN}  F
 // ── Write results ─────────────────────────────────────────────────────────────
 
 const outDir = path.join(root, "data");
-const outFile = path.join(outDir, "anomaly-evaluation-results.json");
+// When running ablation, write to a separate file so baseline results are preserved
+const outFileName = ABLATE_DETECTORS.length > 0
+  ? `anomaly-ablation-without-${ABLATE_DETECTORS.join("-")}.json`
+  : "anomaly-evaluation-results.json";
+const outFile = path.join(outDir, outFileName);
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(
   outFile,
@@ -206,7 +225,10 @@ fs.writeFileSync(
         datasetEvents: events.length,
         windowSize: WINDOW,
         alertThreshold: 40,
+        ...(ABLATE_DETECTORS.length > 0 ? { ablatedDetectors: ABLATE_DETECTORS } : {}),
+        activeDetectors: DETECTOR_TYPES,
       },
+
       overall: {
         confusionMatrix: overall,
         precision: round3(overallMet.precision),

@@ -958,9 +958,27 @@ Counts below are taken from `npx vitest run`, not estimated.
 
 ---
 
-## 28. Multi-Phase Roadmap (Phases 0 through 9 Complete)
+## 28. Multi-Phase Roadmap (Phase 1 & Phase 2 Milestone Alignment)
 
-All phases from the Master Implementation Plan have been engineered, tested, and integrated:
+The platform engineering is structured across two primary review phases, bridging academic architecture design with production implementation:
+
+### 🏛️ Academic Phase I: Architecture & Design (100% Completed)
+1. **W3C Standards & DID Identity Engine**: W3C Verifiable Credentials data model, automated Decentralized Identifier (`did:ethr:sepolia` & `did:key`) generation tied to user MetaMask wallets.
+2. **Ethereum Blockchain Anchoring & On-Chain Revocation**: `CredentialRegistry.sol` smart contract on Ethereum Sepolia anchoring SHA-256 hashes for immutability and instant revocation.
+3. **Full-Stack Tri-Portal Architecture**: Dedicated portals for Issuer (single & batch CSV), Holder (non-custodial vault), and Verifier (instant lookup).
+4. **Privacy-Preserving Sharing & Security Infrastructure**: Selective disclosure, dynamic expiration links (1h–30d), QR code verification, and Supabase Row-Level Security (RLS).
+
+### ⚙️ Academic Phase II: Implementation & Advanced Web3 Hardening
+| # | Phase II Deliverable | Goal | Implementation Status | Future / Scale Scope |
+|---|---|---|---|---|
+| **5** | **AI Credential Anomaly Detection** | Automated verification risk scoring during credential generation & audit | ✅ **Done**: 5 statistical detectors (Burst, Failure Streak, Impossible Geo-Jump, Off-Hours, Latency Spike), 8-factor Trust Radar, synthetic benchmark evaluation. | 🔄 On-device client-side Transformers.js / Hugging Face pipeline for unstructured metadata NLP analysis. |
+| **6** | **WebAuthn Biometric Passkeys** | Eliminate seed phrase/password friction for non-crypto users | ✅ **Done**: WebAuthn browser API (FaceID/TouchID/Windows Hello), secure enclave AES-256-GCM key wrapping in IndexedDB, biometric unlock and sharing confirmation, `BiometricProofAnchor.sol`. | 🔄 FIDO cross-device synchronization and external FIDO2 (YubiKey) hardware token support. |
+| **7** | **ERC-4337 Account Abstraction & Paymaster** | Seamless user onboarding with zero crypto gas fees | ✅ **Done**: `SimpleAccount.sol`, `SmartWalletRegistry.sol` on Sepolia, UserOperation builder/packer (`accountAbstraction.ts`), scoped session keys, canonical EntryPoint v0.6 compatibility. | 🔄 Live production bundler/paymaster sponsorship integration (Pimlico / Biconomy) on mainnet. |
+| **8** | **Zero-Knowledge Proofs (ZK-SNARKs / Groth16)** | Maximum user privacy via selective attribute proof generation | ✅ **Done**: Circom 2.0 circuits (`age-verify`, `attribute-range`, `issuer-membership`), in-browser WASM proving via `snarkjs` (<250ms), SHA-256 ‖ Poseidon dual-hash binding, on-chain `ZKPVerifier.sol`. | 🔄 Multi-party trusted setup ceremony (Powers of Tau Phase 2) for production ceremony keys. |
+
+---
+
+### Master Engineering Subsystems Breakdown (Phases 0 through 9)
 
 | Phase | Subsystem | Engineering Delivery | Status |
 |---|---|---|:---:|

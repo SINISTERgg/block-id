@@ -42,6 +42,28 @@ Built strictly on open Web3 standards—including **W3C Verifiable Credentials (
 
 ---
 
+## 🎯 Project Roadmap: Phase 1 & Phase 2 Milestones
+
+BLOCKID is structured across two primary engineering phases, transitioning from foundation architecture to advanced cryptographic and AI-driven hardening:
+
+### 🏛️ Phase I: Architecture & Design (Completed)
+- **1. W3C Standards & DID Identity Engine**: Implemented the W3C Verifiable Credentials data model and automated Decentralized Identifier (`did:ethr:sepolia` & `did:key`) generation tied to user MetaMask wallets.
+- **2. Ethereum Blockchain Anchoring & On-Chain Revocation**: Deployed the `CredentialRegistry.sol` smart contract on Ethereum Sepolia to anchor SHA-256 credential hashes for tamper-proof immutability and instant revocation.
+- **3. Full-Stack Tri-Portal Architecture**: Engineered three dedicated user portals: **Issuer Portal** (single & CSV batch issuance), **Holder Wallet** (non-custodial credential storage), and **Verifier Portal** (instant cryptographic lookup).
+- **4. Privacy-Preserving Sharing & Security Infrastructure**: Integrated Selective Disclosure (sharing specific fields only), dynamic expiration-backed share links (1h–30d), QR code verification, and Supabase Row-Level Security (RLS).
+
+---
+
+### ⚙️ Phase II: Implementation Summary & Advanced Web3 Hardening
+| # | Phase II Deliverable | Goal | Current Status (Done) | Next Steps / Enhancements |
+|---|---|---|---|---|
+| **5** | **AI Credential Anomaly Detection** | Automated verification risk scoring during credential generation & audit | ✅ **Done**: 5-detector real-time statistical anomaly engine (Burst, Failure Streak, Impossible Geo-Jump, Off-Hours, Latency Spike) + 8-Factor Trust Radar + Threat Intelligence Centre. Evaluated with 500-event synthetic dataset. | 🔄 Integrate client-side on-device Transformers.js / Hugging Face pipeline for deep NLP semantic analysis of unstructured metadata fields. |
+| **6** | **WebAuthn Biometric Passkeys** | Eliminate seed phrase/password friction for non-crypto users | ✅ **Done**: WebAuthn browser API integration (Face ID / Touch ID / Windows Hello), secure enclave key storage, AES-256-GCM wrapped keys in IndexedDB, biometric unlock and sharing confirmation, on-chain commitment anchor (`BiometricProofAnchor.sol`). | 🔄 Cross-device sync via WebAuthn PRF extension and hardware security key (YubiKey) fallbacks. |
+| **7** | **ERC-4337 Account Abstraction & Paymaster** | Seamless user onboarding with zero crypto gas fees | ✅ **Done**: Smart Account contracts (`SimpleAccount.sol`, `SmartWalletRegistry.sol` on Sepolia), UserOperation builder/packer (`accountAbstraction.ts`), scoped session keys, canonical EntryPoint v0.6 compatibility. | 🔄 Live production bundler/paymaster sponsorship integration (Pimlico / Biconomy) for sponsored gasless transactions. |
+| **8** | **Zero-Knowledge Proofs (ZK-SNARKs / Groth16)** | Maximum user privacy via selective attribute proof generation | ✅ **Done**: Circom 2.0 circuits (`age-verify`, `attribute-range`, `issuer-membership`), in-browser WASM proving via `snarkjs` (<250ms), SHA-256 ‖ Poseidon dual-hash binding, on-chain `ZKPVerifier.sol` via EVM pairing precompiles, ZKP Studio. | 🔄 Multi-party ceremony (Powers of Tau Phase 2) for production ceremony keys and multi-credential composite proofs. |
+
+---
+
 ## ⛓️ Verified Smart Contract Deployments (Sepolia)
 
 BLOCKID smart contracts are deployed, verified, and active on the **Ethereum Sepolia Testnet (Chain ID: 11155111)**:

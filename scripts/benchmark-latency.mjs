@@ -30,7 +30,9 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
@@ -276,12 +278,35 @@ async function main() {
     circuitResults.push(r);
   }
 
+  // Collect npm version without throwing if npm is unavailable
+  let npmVersion = "unknown";
+  try { npmVersion = execFileSync("npm", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch {}
+
+  // CPU info
+  const cpus = os.cpus();
+  const cpuModel = cpus.length > 0 ? cpus[0].model.trim() : "unknown";
+  const cpuCores = cpus.length;
+  const ramGB = (os.totalmem() / (1024 ** 3)).toFixed(1);
+
   const out = {
     benchmarkedAt: new Date().toISOString(),
     environment: {
       nodeVersion: process.version,
+      npmVersion,
       platform: process.platform,
       arch: process.arch,
+      osRelease: os.release(),
+      osType: os.type(),
+      cpuModel,
+      cpuCores,
+      ramGB: `${ramGB} GB`,
+      // Tool versions — update after each npm install or circom upgrade
+      snarkjsVersion: "0.7.6",
+      circomlibVersion: "2.0.5",
+      circomVersion: "2.x (see npm run build:circuits output)",
+      solidityVersion: "0.8.19",
+      hardhatVersion: "^3.2.0",
+      powersOfTau: "pot15 (~2^15 constraints max)",
     },
     configuration: {
       totalIterations: N_TOTAL,
