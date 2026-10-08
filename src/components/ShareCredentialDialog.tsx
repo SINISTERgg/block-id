@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link2, Copy, Clock, Check, QrCode, Eye, EyeOff } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { SafeQRCode } from "@/components/SafeQRCode";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -162,7 +162,7 @@ const ShareCredentialDialog = ({ credentialId, credentialName, credentialFields 
             <div className="space-y-4">
               <div className="flex justify-center">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-border/50">
-                  <QRCodeSVG value={shareLink} size={180} level="M" />
+                  <SafeQRCode value={shareLink} size={180} level="M" />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">

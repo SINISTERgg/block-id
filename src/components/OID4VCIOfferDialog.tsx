@@ -8,7 +8,7 @@ import SchemaForm from "@/components/SchemaForm";
 import { isValidHolderDid } from "@/lib/schemaValidation";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { QRCodeSVG } from "qrcode.react";
+import { SafeQRCode } from "@/components/SafeQRCode";
 
 interface Schema {
   id: string;
@@ -203,7 +203,7 @@ const OID4VCIOfferDialog = ({ schemas }: OID4VCIOfferDialogProps) => {
                 </div>
 
                 <div className="flex justify-center p-4 bg-muted rounded-lg mb-4">
-                  <QRCodeSVG value={offer.offer_url} size={200} level="M" />
+                  <SafeQRCode value={offer.offer_url} size={200} level="M" />
                 </div>
 
                 <p className="text-sm text-center text-muted-foreground mb-4">

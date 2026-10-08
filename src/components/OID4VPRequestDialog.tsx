@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { QRCodeSVG } from "qrcode.react";
+import { SafeQRCode } from "@/components/SafeQRCode";
 
 const OID4VPRequestDialog = () => {
   const [open, setOpen] = useState(false);
@@ -235,7 +235,7 @@ const OID4VPRequestDialog = () => {
             ) : (
               <>
                 <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                  <QRCodeSVG value={request.request_url} size={200} level="M" />
+                  <SafeQRCode value={request.request_url} size={200} level="M" />
                 </div>
 
                 <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">

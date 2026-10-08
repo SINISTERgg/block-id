@@ -66,24 +66,26 @@ function base64urlEncodeObj(obj: unknown): string {
 }
 
 /**
- * Strip or truncate fields that would make the QR payload too large for
- * most QR scanners (practical limit ~2 KB for high-density codes).
+ * Build a compact QR payload from the minimal fields needed for a verifier
+ * to locate and look up the credential. The full VP-JWT is kept in the JWT
+ * tab only; putting it in a QR exceeds the ~2 KB QR code data limit for any
+ * real credential and causes the qrcode library to throw "Data too long".
  */
-function sanitizeForQR(credData: Record<string, unknown>): Record<string, unknown> {
-  const clone = { ...credData };
-  // Remove large embedded proof blobs that are not needed in the VP QR code
-  if (clone.proof && typeof clone.proof === "object") {
-    const p = clone.proof as Record<string, unknown>;
-    if (typeof p.jws === "string" && p.jws.length > 200) p.jws = p.jws.slice(0, 200) + "…";
-    if (typeof p.proofValue === "string" && p.proofValue.length > 200) p.proofValue = p.proofValue.slice(0, 200) + "…";
-  }
-  // Drop any top-level key whose value is a very long string (> 500 chars)
-  for (const key of Object.keys(clone)) {
-    if (typeof clone[key] === "string" && (clone[key] as string).length > 500) {
-      clone[key] = (clone[key] as string).slice(0, 500) + "…";
-    }
-  }
-  return clone;
+function buildQrPayload(
+  credentialHash: string,
+  holderDid: string,
+  blockchainAnchor: string | null,
+  credentialType?: unknown
+): string {
+  const payload: Record<string, unknown> = {
+    v: 1,
+    type: "blockid-vc-ref",
+    hash: credentialHash,
+    holder: holderDid,
+  };
+  if (blockchainAnchor) payload.anchor = blockchainAnchor;
+  if (credentialType && typeof credentialType === "string") payload.ctype = credentialType;
+  return JSON.stringify(payload);
 }
 
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
@@ -163,34 +165,27 @@ export async function generateVP(input: VPInput): Promise<VPExportResult> {
   // Header
   const header = base64urlEncodeObj({ alg: "ETH-personal-sign", typ: "JWT" });
 
-  // Sanitize credential data for the QR/JWT payload — strip large binary
-  // blobs (embedded JWS/proofValue) so the JWT stays within QR scanner limits
-  // (~2 KB). The full un-sanitized credential is preserved in vpJson below.
-  const credentialDataForJwt = sanitizeForQR(credentialData as Record<string, unknown>);
-  const vpUnsignedForJwt = { ...vpUnsigned, verifiableCredential: [credentialDataForJwt] };
-
-  // Payload (W3C VP-JWT spec §6.3)
+  // Payload (W3C VP-JWT spec §6.3) — the full credential is included here;
+  // this JWT is only shown in the JWT tab, not encoded in the QR code.
   const payload = base64urlEncodeObj({
-    iss: holderAddress,        // issuer = holder's wallet address
+    iss: holderAddress,
     sub: holderDid,
     iat: Math.floor(Date.now() / 1000),
     jti: presentationId,
-    vp: vpUnsignedForJwt,
-    // Extra claim: on-chain anchor for independent verification
+    vp: vpUnsigned,
     blockchainAnchor: blockchainAnchor ?? undefined,
     credentialHash,
   });
 
-  // Signature — if signed successfully embed just the last 87 chars (r+s bytes)
-  // to keep the JWT compact; use the full hex sig as metadata in vpJson.proof.
-  const sigPart = signedSuccessfully
-    ? base64urlEncode(proofValue)   // full hex sig encoded as base64url
-    : base64urlEncode(proofValue);
-
+  const sigPart = base64urlEncode(proofValue);
   const vpJwt = `${header}.${payload}.${sigPart}`;
 
-  // ── 5. QR payload = the compact JWT ──────────────────────────────────────
-  const qrPayload = vpJwt;
+  // ── 5. QR payload — MINIMAL reference, not the full JWT ──────────────────
+  // The qrcode library throws "Data too long" when the data exceeds ~2 KB.
+  // Real credentials easily exceed that limit, so we encode only the fields
+  // a verifier needs to look up the credential (hash + holder + anchor).
+  const credType = (credentialData as any)?.type?.find?.((t: string) => t !== "VerifiableCredential");
+  const qrPayload = buildQrPayload(credentialHash, holderDid, blockchainAnchor, credType);
 
   // ── 6. Etherscan URL ──────────────────────────────────────────────────────
   const etherscanUrl = buildEtherscanUrl(blockchainAnchor);

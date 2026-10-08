@@ -1,4 +1,4 @@
-import { QRCodeSVG } from "qrcode.react";
+import { SafeQRCode } from "@/components/SafeQRCode";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExternalLink, Copy, Check } from "lucide-react";
 import { useState } from "react";
@@ -48,7 +48,7 @@ const QRCodeDisplay = ({ value, title, open, onOpenChange }: QRCodeDisplayProps)
         </DialogHeader>
         <div className="flex flex-col items-center gap-4 py-2">
           <div className="bg-white p-4 rounded-xl shadow-sm border border-border/30">
-            <QRCodeSVG value={qrValue} size={200} level="M" includeMargin={false} />
+            <SafeQRCode value={qrValue} size={200} level="M" includeMargin={false} />
           </div>
 
           <div className="w-full bg-muted rounded-lg px-3 py-2 flex items-center gap-2">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { SafeQRCode } from "@/components/SafeQRCode";
 import {
   Copy, Download, ExternalLink, QrCode, FileJson, Key, Link2, Loader2, ShieldCheck
 } from "lucide-react";
@@ -91,15 +91,15 @@ const VPExportPanel = ({ vpInput }: VPExportPanelProps) => {
         <TabsContent value="qr" className="mt-3">
           <div className="flex flex-col items-center gap-3">
             <div className="p-3 bg-white rounded-xl border border-border shadow-sm">
-              <QRCodeSVG
+              <SafeQRCode
                 value={result.qrPayload}
                 size={180}
-                level="M"
+                level="L"
                 includeMargin={false}
               />
             </div>
             <p className="text-[10px] text-muted-foreground text-center max-w-xs">
-              Verifier scans this QR to receive the VP-JWT. Works offline — no server needed.
+              Compact credential reference (hash + holder + anchor). Verifier uses this to look up the credential. For the full signed token, use the JWT tab.
             </p>
             <Button
               size="sm" variant="outline" className="gap-1 text-xs"

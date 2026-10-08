@@ -114,9 +114,10 @@ const MembersList = ({ members, onRefresh }: MembersListProps) => {
   const handleRoleChange = async (member: OrgMember, newRole: OrgRole) => {
     // Direct writes to user_roles are blocked by RLS — route through the
     // org_admin-gated SECURITY DEFINER RPC instead.
+    const fromRole = (member.role as OrgRole) || "holder";
     const { error: revokeError } = await supabase.rpc("admin_manage_role", {
       p_user_id: member.user_id,
-      p_role: member.role,
+      p_role: fromRole,
       p_action: "revoke",
     });
     if (revokeError) {
@@ -152,10 +153,11 @@ const MembersList = ({ members, onRefresh }: MembersListProps) => {
     try {
       // Downgrade to "holder" instead of deleting the row — Issue #6
       // (direct writes are RLS-blocked; use the org_admin-gated RPC)
-      if (memberToRemove.role !== "holder") {
+      const prevRole = (memberToRemove.role as OrgRole) || "holder";
+      if (prevRole !== "holder") {
         const { error } = await supabase.rpc("admin_manage_role", {
           p_user_id: memberToRemove.user_id,
-          p_role: memberToRemove.role,
+          p_role: prevRole,
           p_action: "revoke",
         });
         if (error) throw error;

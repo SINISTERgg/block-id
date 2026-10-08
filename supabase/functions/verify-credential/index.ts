@@ -212,13 +212,40 @@ serve(async (req) => {
       } catch {
         return jsonResponse({ error: "vp_json is not valid JSON" }, 400, corsHeaders);
       }
-      const credId = vp?.verifiableCredential?.id || vp?.credential_id;
-      if (credId) {
+
+      let targetId: string | null = null;
+      let targetHash: string | null = null;
+
+      const rawId = vp?.credential_id || vp?.id ||
+        (Array.isArray(vp?.verifiableCredential) ? vp.verifiableCredential[0]?.id : vp?.verifiableCredential?.id);
+      if (typeof rawId === "string") {
+        const cleanId = rawId.replace(/^urn:uuid:/, "");
+        if (UUID_PATTERN.test(cleanId)) {
+          targetId = cleanId;
+        }
+      }
+
+      const rawHash = vp?.hash || vp?.credential_hash || vp?.credentialHash ||
+        (Array.isArray(vp?.verifiableCredential) ? vp.verifiableCredential[0]?.credential_hash : vp?.verifiableCredential?.credential_hash);
+      if (typeof rawHash === "string" && rawHash.trim()) {
+        targetHash = rawHash.trim();
+      }
+
+      if (targetId) {
         const { data } = await supabase
           .from("credentials")
           .select("*, prev_hash, credential_schemas(*)")
-          .eq("id", credId)
-          .single();
+          .eq("id", targetId)
+          .maybeSingle();
+        credential = data;
+      }
+
+      if (!credential && targetHash) {
+        const { data } = await supabase
+          .from("credentials")
+          .select("*, prev_hash, credential_schemas(*)")
+          .eq("credential_hash", targetHash)
+          .maybeSingle();
         credential = data;
       }
     }

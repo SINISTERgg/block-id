@@ -1,10 +1,29 @@
 import { supabase } from "@/integrations/supabase/client";
 
-/**
- * Fire-and-forget: call the AI verification edge function in the background
- * after the holder accepts a request. Updates the verification_request row
- * with the AI verdict (verified / rejected / review).
- */
+/** Keep only the fields the AI engine needs; drop large binary blobs. */
+function sanitizeForAi(data: Record<string, unknown>): Record<string, unknown> {
+  const MAX = 500;
+  const truncate = (v: unknown): unknown => {
+    if (typeof v === "string" && v.length > MAX) return v.slice(0, MAX) + "…";
+    return v;
+  };
+  const subject = data.credentialSubject as Record<string, unknown> | undefined;
+  return {
+    type: data.type,
+    issuer: truncate(data.issuer),
+    issuanceDate: data.issuanceDate,
+    expirationDate: data.expirationDate,
+    credentialSubject: subject
+      ? Object.fromEntries(Object.entries(subject).map(([k, v]) => [k, truncate(v)]))
+      : undefined,
+    hasProof: !!(data.proof),
+    blockchainAnchor: truncate(data.blockchainAnchor),
+    credentialHash: truncate(data.credentialHash),
+    schemaName: truncate(data.schemaName),
+    schemaType: truncate(data.schemaType),
+  };
+}
+
 async function triggerAiVerification(
   requestId: string,
   credentialData: Record<string, unknown>,
@@ -15,7 +34,7 @@ async function triggerAiVerification(
     const { error } = await supabase.functions.invoke("ai-verify-credential", {
       body: {
         request_id: requestId,
-        credential_data: credentialData,
+        credential_data: sanitizeForAi(credentialData),
         request_purpose: requestPurpose,
         credential_type: credentialType,
       },

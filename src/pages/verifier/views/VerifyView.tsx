@@ -161,11 +161,15 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
     lastVerifyTime.current = now;
 
     const body = verifyMode === "id"
-      ? { credential_id: credentialId.trim() }
+      ? { credential_id: credentialId.trim().replace(/^urn:uuid:/, "") }
       : (() => {
           try {
             const parsed = JSON.parse(vpJson);
-            return parsed.credential_id ? { credential_id: parsed.credential_id } : { vp_json: parsed };
+            if (parsed.credential_id && typeof parsed.credential_id === "string") {
+              const cleanId = parsed.credential_id.replace(/^urn:uuid:/, "");
+              return { credential_id: cleanId, vp_json: parsed };
+            }
+            return { vp_json: parsed };
           } catch {
             return { vp_json: vpJson };
           }
