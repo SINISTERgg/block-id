@@ -12,22 +12,36 @@ import {
   Info,
   Copy,
   CheckCircle2,
+  Link2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   listHolderSbts,
   isSbtConfigured,
   getSbtAddress,
   toStoredHashFormat,
+  resolveHolderAddress,
   type SbtStatus,
 } from "@/services/blockchain/sbt.service";
 import { fetchHolderBadges, subscribeToHolderCredentials, type HolderBadge } from "@/services/api/holder.service";
-import { SBT_NOT_DEPLOYED_HINT, SEPOLIA_EXPLORER } from "@/services/blockchain/config";
+import {
+  SBT_NOT_DEPLOYED_HINT,
+  SEPOLIA_CHAIN_ID_HEX,
+  SEPOLIA_EXPLORER,
+  SEPOLIA_NETWORK,
+} from "@/services/blockchain/config";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { SbtBadgeSvg } from "@/components/holder/SbtBadgeSvg";
+import { SbtBadgeSvg, buildBadgeSvgDataUri } from "@/components/holder/SbtBadgeSvg";
 
 interface BadgesViewProps {
   walletAddress: string | undefined;
@@ -54,6 +68,12 @@ interface BadgeRow {
    */
   state: "minted" | "revoked" | "pending" | "failed" | "unknown";
   txHash: string | null;
+  /**
+   * Address the badge was minted to (case-preserved). null for credentials
+   * whose badge was never minted — those belong to the signed-in holder no
+   * matter which wallet is connected, so they are never filtered out.
+   */
+  holderAddress: string | null;
 }
 
 const STATE_STYLES: Record<BadgeRow["state"], { label: string; chip: string; border: string; glow: string }> = {
@@ -91,13 +111,26 @@ const STATE_STYLES: Record<BadgeRow["state"], { label: string; chip: string; bor
 
 const BadgesView = ({ walletAddress }: BadgesViewProps) => {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [rows, setRows] = useState<BadgeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [chainError, setChainError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
+  const [scope, setScope] = useState<"account" | "all">("account");
+  const [exportBadge, setExportBadge] = useState<BadgeRow | null>(null);
+  const [watchResult, setWatchResult] = useState<"added" | "failed" | "skipped">("skipped");
   const sbtReady = isSbtConfigured();
+
+  /**
+   * The address the current account is "acting as": the connected wallet, or
+   * failing that the address bound into the holder's DID. null when neither
+   * exists — in that case there is nothing to scope badges against.
+   */
+  const activeAddress = useMemo(() => {
+    const resolved = walletAddress ?? resolveHolderAddress(profile?.did, null);
+    return resolved ? resolved.toLowerCase() : null;
+  }, [walletAddress, profile?.did]);
 
   /**
    * Badges come from two independent sources and neither is sufficient alone:
@@ -145,11 +178,14 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
           revoked: b.sbt_status === "revoked" || b.status === "revoked",
           state: stateFromDb(b),
           txHash: b.sbt_tx_hash,
+          holderAddress: b.sbt_holder_address,
         });
       }
 
       // 2. Overlay on-chain truth. A chain token with no DB row (minted before
-      //    this was persisted, or issued by another issuer) still shows up.
+      //    this was persisted, or issued by another issuer) still shows up —
+      //    it was read from the contract for `walletAddress`, so it is by
+      //    definition owned by the active account.
       for (const s of chainSbts) {
         const hashKey = toStoredHashFormat(s.credentialHash);
         const existing = merged.get(hashKey);
@@ -163,6 +199,7 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
           revoked: s.revoked,
           state: s.revoked ? "revoked" : "minted",
           txHash: existing?.txHash ?? null,
+          holderAddress: existing?.holderAddress ?? walletAddress ?? null,
         });
       }
 
@@ -192,9 +229,85 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
     return subscribeToHolderCredentials(user.id, loadBadges);
   }, [user, loadBadges]);
 
-  /** Add the SBT to MetaMask as a watched NFT asset */
+  /**
+   * Scope filter. The DB feed (`get_holder_badges`) is scoped to the
+   * signed-in *user*, not to the connected wallet, so a holder who has used
+   * more than one account/wallet sees every badge they have ever collected.
+   * Default scope is the active account:
+   *   - rows minted to a different address are hidden
+   *   - rows never minted (`sbt_holder_address` null) stay — they still belong
+   *     to this holder regardless of which wallet is connected
+   * "all" restores the full feed. Without a resolvable address there is
+   * nothing to scope against, so the toggle collapses to "all".
+   */
+  const effectiveScope: "account" | "all" = activeAddress ? scope : "all";
+
+  const visibleRows = useMemo(() => {
+    if (effectiveScope === "all" || !activeAddress) return rows;
+    return rows.filter((r) => !r.holderAddress || r.holderAddress.toLowerCase() === activeAddress);
+  }, [rows, effectiveScope, activeAddress]);
+
+  const hiddenCount = rows.length - visibleRows.length;
+
+  /** Ask MetaMask to move to Sepolia first — the SBT only exists there. */
+  const ensureSepolia = async (): Promise<boolean> => {
+    if (!window.ethereum) return false;
+    try {
+      const current = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      if (current === SEPOLIA_CHAIN_ID_HEX) return true;
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: SEPOLIA_CHAIN_ID_HEX }],
+      });
+      const after = String(await window.ethereum.request({ method: "eth_chainId" })).toLowerCase();
+      if (after === SEPOLIA_CHAIN_ID_HEX) return true;
+      toast({
+        title: "Switch to Sepolia",
+        description: `This badge lives on ${SEPOLIA_NETWORK.chainName}.`,
+        variant: "destructive",
+      });
+      return false;
+    } catch (err: any) {
+      // 4902 = chain not added to the wallet; anything else = user rejected.
+      toast({
+        title: "Sepolia required",
+        description: err?.message?.slice(0, 160) ?? "Approve the network switch in MetaMask to import this badge.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  /**
+   * Add the SBT to MetaMask as a watched NFT asset.
+   *
+   * `wallet_watchAsset` for ERC721 only accepts `address` + `tokenId`, and on
+   * testnets MetaMask frequently shows an empty tile because its NFT service
+   * has not indexed the contract (or the wallet is on the wrong chain). So:
+   * guard the chain first, then always fall through to the import dialog which
+   * carries the preview, contract address, token id, an Etherscan link and the
+   * manual "Import NFT" instructions.
+   */
   const exportToMetaMask = async (badge: BadgeRow) => {
-    if (!window.ethereum || !SBT_CONTRACT || badge.tokenId === null) return;
+    if (badge.tokenId === null || !SBT_CONTRACT) {
+      setExportBadge(badge);
+      setWatchResult("skipped");
+      return;
+    }
+
+    if (!window.ethereum) {
+      setExportBadge(badge);
+      setWatchResult("skipped");
+      return;
+    }
+
+    const onSepolia = await ensureSepolia();
+    if (!onSepolia) {
+      setExportBadge(badge);
+      setWatchResult("skipped");
+      return;
+    }
+
     try {
       await window.ethereum.request({
         method: "wallet_watchAsset",
@@ -206,10 +319,13 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
           },
         } as any,
       });
-      toast({ title: "Badge added to MetaMask ✓" });
-    } catch (err: any) {
-      toast({ title: "MetaMask error", description: err.message, variant: "destructive" });
+      setWatchResult("added");
+    } catch {
+      // Rejected, unsupported, or the wallet could not render the token —
+      // the dialog below covers every one of those cases.
+      setWatchResult("failed");
     }
+    setExportBadge(badge);
   };
 
   const copyHash = (hash: string) => {
@@ -220,11 +336,11 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
-      valid: rows.filter((r) => r.state === "minted").length,
-      pending: rows.filter((r) => r.state === "pending" || r.state === "failed").length,
+      total: visibleRows.length,
+      valid: visibleRows.filter((r) => r.state === "minted").length,
+      pending: visibleRows.filter((r) => r.state === "pending" || r.state === "failed").length,
     }),
-    [rows]
+    [visibleRows]
   );
 
   const formatDate = (timestamp: number | null) =>
@@ -248,19 +364,59 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
         transition={{ duration: 0.3 }}
         className="mb-8"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-headline mb-2">My Badges</h2>
             <p className="text-muted-foreground">
               Soulbound tokens — non-transferable proof of your verified credentials on Ethereum.
             </p>
+            {activeAddress && (
+              <p className="mt-1 text-xs font-mono text-muted-foreground/80 flex items-center gap-1.5">
+                <Link2 className="h-3 w-3" />
+                Active account {shortAddr(activeAddress)}
+                {effectiveScope === "account" && (
+                  <span className="text-muted-foreground/60">
+                    · {stats.total} badge{stats.total === 1 ? "" : "s"}
+                    {hiddenCount > 0 ? ` · ${hiddenCount} on other wallets` : ""}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
-          {loaded && (
-            <Button variant="outline" size="sm" onClick={loadBadges} disabled={loading} className="gap-1.5">
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {activeAddress && (
+              <div className="flex rounded-lg border border-border/60 bg-muted/40 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setScope("account")}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${
+                    effectiveScope === "account"
+                      ? "bg-background text-foreground shadow-sm font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Current Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope("all")}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${
+                    effectiveScope === "all"
+                      ? "bg-background text-foreground shadow-sm font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  All My Badges
+                </button>
+              </div>
+            )}
+            {loaded && (
+              <Button variant="outline" size="sm" onClick={loadBadges} disabled={loading} className="gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -366,7 +522,7 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
               </div>
             </CardContent>
           </Card>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <Card className="solid-card">
             <CardContent className="py-16">
               <div className="flex flex-col items-center justify-center text-center gap-4">
@@ -379,16 +535,39 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
                   />
                 </div>
                 <div className="max-w-md">
-                  <p className="font-semibold text-foreground">No badges yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    When an issuer issues you a credential with the badge option enabled, a
-                    non-transferable soulbound token is minted to your wallet on Ethereum Sepolia and
-                    appears here.
-                  </p>
-                  {!walletAddress && (
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Connect a wallet from the Wallet tab so on-chain badges can be located.
-                    </p>
+                  {rows.length > 0 ? (
+                    <>
+                      <p className="font-semibold text-foreground">
+                        No badges on this account
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Your other {rows.length} badge{rows.length === 1 ? "" : "s"} were minted to a
+                        different wallet. Switch to “All My Badges” to see them.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 gap-1.5"
+                        onClick={() => setScope("all")}
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                        Show all my badges
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-foreground">No badges yet</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        When an issuer issues you a credential with the badge option enabled, a
+                        non-transferable soulbound token is minted to your wallet on Ethereum Sepolia and
+                        appears here.
+                      </p>
+                      {!walletAddress && (
+                        <p className="text-xs text-muted-foreground mt-3">
+                          Connect a wallet from the Wallet tab so on-chain badges can be located.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -402,7 +581,7 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
                   <Award className="h-4 w-4 text-primary" />
                   Earned Badges
                   <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
-                    {rows.length}
+                    {visibleRows.length}
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -411,7 +590,7 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
             {/* Badge cards grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <AnimatePresence>
-                {rows.map((badge, index) => {
+                {visibleRows.map((badge, index) => {
                   const style = STATE_STYLES[badge.state];
                   return (
                     <motion.div
@@ -523,26 +702,28 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
                           {/* Action buttons */}
                           {badge.state === "minted" && SBT_CONTRACT && badge.tokenId !== null && (
                             <div className="flex flex-wrap gap-2">
-                              {window.ethereum && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs gap-1 flex-1"
-                                  onClick={() => exportToMetaMask(badge)}
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  Add to MetaMask
-                                </Button>
-                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1 flex-1"
+                                onClick={() => exportToMetaMask(badge)}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                {window.ethereum ? "Add to MetaMask" : "Export badge"}
+                              </Button>
                               <a
-                                href={`${SEPOLIA_EXPLORER}/nft/${SBT_CONTRACT}/${badge.tokenId}`}
+                                href={
+                                  badge.txHash
+                                    ? `${SEPOLIA_EXPLORER}/tx/${badge.txHash}`
+                                    : `${SEPOLIA_EXPLORER}/nft/${SBT_CONTRACT}/${badge.tokenId}`
+                                }
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex-1"
                               >
                                 <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 w-full">
                                   <ExternalLink className="h-3 w-3" />
-                                  Etherscan
+                                  {badge.txHash ? "View Tx on Chain" : "Etherscan"}
                                 </Button>
                               </a>
                             </div>
@@ -588,6 +769,147 @@ const BadgesView = ({ walletAddress }: BadgesViewProps) => {
           </p>
         </div>
       </motion.div>
+      {/* ── Export / import dialog ── */}
+      <Dialog open={exportBadge !== null} onOpenChange={(open) => { if (!open) setExportBadge(null); }}>
+        <DialogContent className="max-w-md">
+          {exportBadge && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-primary" />
+                  Add badge to wallet
+                </DialogTitle>
+                <DialogDescription>
+                  {watchResult === "added"
+                    ? "Sent to MetaMask. If the tile looks empty, use the manual import below."
+                    : watchResult === "failed"
+                      ? "MetaMask did not accept the automatic import — use the manual steps below."
+                      : "Confirm your wallet is on Ethereum Sepolia, or import the NFT manually."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex items-start gap-4">
+                <img
+                  src={buildBadgeSvgDataUri(
+                    exportBadge.credentialType,
+                    exportBadge.schemaName,
+                    exportBadge.tokenId
+                  )}
+                  alt="Badge preview"
+                  width={96}
+                  height={96}
+                  className="w-24 h-24 rounded-xl shrink-0 border border-border/60"
+                />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="font-semibold text-foreground text-sm leading-snug truncate">
+                    {exportBadge.schemaName ??
+                      (exportBadge.tokenId !== null ? `Badge #${exportBadge.tokenId}` : "Credential badge")}
+                  </p>
+                  {exportBadge.credentialType && (
+                    <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-primary/8 text-primary/70 font-mono">
+                      {exportBadge.credentialType}
+                    </span>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {exportBadge.issuedAt ? `Issued ${formatDate(exportBadge.issuedAt)}` : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Contract / token / network */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2">
+                  <Hash className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Contract</p>
+                    <p className="font-mono truncate" title={SBT_CONTRACT}>{SBT_CONTRACT}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyHash(SBT_CONTRACT)}
+                    className="shrink-0 hover:text-foreground transition-colors"
+                    title="Copy contract address"
+                  >
+                    {copiedHash === SBT_CONTRACT ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2">
+                  <Hash className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Token ID</p>
+                    <p className="font-mono truncate">{String(exportBadge.tokenId)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyHash(String(exportBadge.tokenId))}
+                    className="shrink-0 hover:text-foreground transition-colors"
+                    title="Copy token ID"
+                  >
+                    {copiedHash === String(exportBadge.tokenId) ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2">
+                  <Wallet className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground text-[10px] uppercase tracking-wide">Network</p>
+                    <p className="font-mono truncate">
+                      {SEPOLIA_NETWORK.chainName} · chain ID {SEPOLIA_NETWORK.chainId}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual import fallback */}
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Manual import in MetaMask</p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>Open MetaMask and switch to <span className="text-foreground">Ethereum Sepolia</span></li>
+                  <li>Go to the <span className="text-foreground">NFTs</span> tab → <span className="text-foreground">Import NFT</span></li>
+                  <li>Paste the contract address and token ID above</li>
+                </ol>
+                <p className="text-[11px] pt-1">
+                  Testnet NFTs often render as an empty tile until MetaMask&apos;s indexer picks them up —
+                  the badge itself is already on chain.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <a
+                  href={`${SEPOLIA_EXPLORER}/nft/${SBT_CONTRACT}/${exportBadge.tokenId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1"
+                >
+                  <Button variant="outline" size="sm" className="w-full gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View on Etherscan
+                  </Button>
+                </a>
+                {window.ethereum && exportBadge.tokenId !== null && (
+                  <Button
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => exportToMetaMask(exportBadge)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry auto-import
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

@@ -10,6 +10,7 @@ import { fetchLatestVerificationRecords } from "@/services/api/verifier.service"
 import type { VerificationRecord } from "@/services/api/verifier.service";
 import VerifierDashboardView from "./views/VerifierDashboardView";
 import VerifyView from "./views/VerifyView";
+import ReceivedPresentationsView from "./views/ReceivedPresentationsView";
 import HistoryView from "./views/HistoryView";
 import AnalyticsView from "./views/AnalyticsView";
 import ZKPStudioView from "./views/ZKPStudioView";
@@ -17,6 +18,7 @@ import SBTInspectorView from "./views/SBTInspectorView";
 import PolicyView from "./views/PolicyView";
 import ThreatIntelView from "./views/ThreatIntelView";
 import ComplianceView from "./views/ComplianceView";
+import { isAwaitingVerification } from "@/lib/verifier/intelligence";
 import { MOTION } from "@/lib/motion";
 
 /**
@@ -27,6 +29,7 @@ import { MOTION } from "@/lib/motion";
 const VIEWS = {
   dashboard: "/verifier",
   verify: "/verifier/verify",
+  presentations: "/verifier/presentations",
   history: "/verifier/history",
   analytics: "/verifier/analytics",
   zkp: "/verifier/zkp",
@@ -38,9 +41,10 @@ const VIEWS = {
 
 type ViewKey = keyof typeof VIEWS;
 
-const navItems = [
+const baseNavItems = [
   { label: "Dashboard", path: VIEWS.dashboard },
   { label: "Verify", path: VIEWS.verify },
+  { label: "Inbox", path: VIEWS.presentations },
   { label: "History", path: VIEWS.history },
   { label: "Analytics", path: VIEWS.analytics },
   { label: "ZKP Studio", path: VIEWS.zkp },
@@ -59,7 +63,9 @@ function viewForPath(pathname: string): ViewKey {
 }
 
 /** Views that need the verifier's record history before they can render. */
-const RECORD_DEPENDENT: ViewKey[] = ["dashboard", "verify", "history", "analytics", "threat", "compliance"];
+const RECORD_DEPENDENT: ViewKey[] = [
+  "dashboard", "verify", "presentations", "history", "analytics", "threat", "compliance",
+];
 
 const VerifierDashboard = () => {
   const location = useLocation();
@@ -70,6 +76,18 @@ const VerifierDashboard = () => {
   const [refreshSignal, setRefreshSignal] = useState(0);
 
   const { user } = useAuth();
+
+  // Unread badge on the Inbox nav item — presentations waiting on us.
+  const inboxCount = useMemo(() => records.filter(isAwaitingVerification).length, [records]);
+
+  const navItems = useMemo(
+    () =>
+      baseNavItems.map((item) => ({
+        ...item,
+        badge: item.path === VIEWS.presentations ? inboxCount : undefined,
+      })),
+    [inboxCount]
+  );
 
   const loadRecords = useCallback(async () => {
     if (!user) return;
@@ -125,6 +143,13 @@ const VerifierDashboard = () => {
           <>
             {currentView === "dashboard" && <VerifierDashboardView records={records} />}
             {currentView === "verify" && <VerifyView verifierId={user!.id} onRecordsRefresh={loadRecords} />}
+            {currentView === "presentations" && (
+              <ReceivedPresentationsView
+                verifierId={user!.id}
+                records={records}
+                onRecordsRefresh={loadRecords}
+              />
+            )}
             {currentView === "history" && <HistoryView verifierId={user!.id} refreshSignal={refreshSignal} />}
             {currentView === "analytics" && <AnalyticsView records={records} />}
             {currentView === "zkp" && <ZKPStudioView />}

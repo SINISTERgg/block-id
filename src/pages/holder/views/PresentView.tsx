@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   QrCode, ExternalLink, Inbox, CheckCircle2, XCircle, Loader2, Clock,
-  FileCheck, ShieldCheck, Lock, Smartphone, Eye, Bot, AlertCircle, RefreshCw
+  FileCheck, ShieldCheck, Lock, Smartphone, Eye, AlertCircle, RefreshCw
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,8 @@ import {
   fetchPendingRequests,
   respondToRequest,
   subscribeToVerificationRequests,
-  fetchRequestAiResult,
   type HolderCredential,
   type VerificationRequest,
-  type AiVerificationResult,
 } from "@/services/api/holder.service";
 
 interface PresentViewProps {
@@ -47,31 +45,6 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-// ── AI Verdict Badge ──────────────────────────────────────────────────────────
-
-function AiBadge({ verdict, confidence }: { verdict: AiVerificationResult["verdict"]; confidence: number }) {
-  const pct = Math.round(confidence * 100);
-  if (verdict === "verified") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
-        <Bot className="h-3 w-3" /> AI Verified · {pct}%
-      </span>
-    );
-  }
-  if (verdict === "rejected") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 font-medium">
-        <Bot className="h-3 w-3" /> AI Rejected · {pct}%
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
-      <Bot className="h-3 w-3" /> AI Review · {pct}%
-    </span>
-  );
-}
-
 // ── Main Component ────────────────────────────────────────────────────────────
 
 const PresentView = ({
@@ -83,9 +56,6 @@ const PresentView = ({
   const [requests, setRequests] = useState<VerificationRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
-
-  // AI verdict state: requestId → result (polled after accept)
-  const [aiResults, setAiResults] = useState<Record<string, AiVerificationResult | "pending">>({});
 
   // Credential picker dialog
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -113,27 +83,6 @@ const PresentView = ({
     const unsub = subscribeToVerificationRequests(holderDid, loadRequests);
     return unsub;
   }, [holderDid, loadRequests]);
-
-  // Poll AI result for a request (up to 10 attempts, every 2s)
-  const pollAiResult = useCallback(async (requestId: string) => {
-    setAiResults((prev) => ({ ...prev, [requestId]: "pending" }));
-    for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      try {
-        const result = await fetchRequestAiResult(requestId);
-        if (result?.verdict) {
-          setAiResults((prev) => ({ ...prev, [requestId]: result }));
-          return;
-        }
-      } catch { /* ignore */ }
-    }
-    // Give up after 20s — remove pending indicator
-    setAiResults((prev) => {
-      const next = { ...prev };
-      delete next[requestId];
-      return next;
-    });
-  }, []);
 
   const matchingCredentials = activeCredentials.filter((c) => {
     if (!pickerRequest?.credential_type) return true;
@@ -168,6 +117,9 @@ const PresentView = ({
         issuanceDate: (credData as any)?.issuanceDate || null,
         expirationDate: (credData as any)?.expirationDate || null,
         proof: (credData as any)?.proof || null,
+        // Forwarded so the verifier's inbox can show the proof commitment
+        // alongside the payload when the credential actually carries a ZKP.
+        zkp: (credData as any)?.zkp || null,
         blockchain: (credData as any)?.blockchain || null,
         schemaName: selectedCred.credential_schemas?.name || "Credential",
         schemaType: selectedCred.credential_schemas?.credential_type || "",
@@ -179,21 +131,16 @@ const PresentView = ({
         credentialId: selectedCred.id,
         sharedData,
         storageConsent,
-        purpose: pickerRequest.purpose,
-        credentialType: pickerRequest.credential_type,
       });
 
       toast({
         title: "Credential shared ✓",
         description: storageConsent
-          ? "Verifier can store this credential. AI is verifying in the background…"
-          : "Verifier has 4-hour access. AI is verifying in the background…",
+          ? "The verifier can now review and verify your presentation."
+          : "The verifier has 4-hour access to review and verify your presentation.",
       });
 
       setRequests((prev) => prev.filter((r) => r.id !== pickerRequest.id));
-
-      // Background AI polling — no await
-      pollAiResult(pickerRequest.id);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -231,50 +178,6 @@ const PresentView = ({
         <h2 className="text-headline">Present Credentials</h2>
         <OID4VCIReceiveDialog holderDid={holderDid} onCredentialReceived={loadRequests} />
       </div>
-
-      {/* ── AI Verdict Notifications ───────────────────────────────────────── */}
-      {Object.entries(aiResults).map(([reqId, res]) => (
-        res !== "pending" ? (
-          <div
-            key={reqId}
-            className={`mb-4 flex items-start gap-3 p-3 rounded-lg border text-sm ${
-              res.verdict === "verified"
-                ? "border-green-500/30 bg-green-500/5"
-                : res.verdict === "rejected"
-                ? "border-red-500/30 bg-red-500/5"
-                : "border-amber-500/30 bg-amber-500/5"
-            }`}
-          >
-            <Bot className={`h-4 w-4 mt-0.5 shrink-0 ${
-              res.verdict === "verified" ? "text-green-500"
-                : res.verdict === "rejected" ? "text-red-500"
-                : "text-amber-500"
-            }`} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="font-medium text-foreground">
-                  AI {res.verdict === "verified" ? "Verified" : res.verdict === "rejected" ? "Rejected" : "Needs Review"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {Math.round(res.confidence * 100)}% confidence · {res.engine}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">{res.summary}</p>
-            </div>
-            <button
-              onClick={() => setAiResults((p) => { const n = {...p}; delete n[reqId]; return n; })}
-              className="text-muted-foreground hover:text-foreground text-xs shrink-0"
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <div key={reqId} className="mb-4 flex items-center gap-2 p-3 rounded-lg border border-border/60 bg-muted/20 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            AI is verifying the shared credential in the background…
-          </div>
-        )
-      ))}
 
       {/* ── Incoming Requests ─────────────────────────────────────────────── */}
       <Card className="solid-card mb-6">
@@ -460,10 +363,10 @@ const PresentView = ({
               <Switch checked={storageConsent} onCheckedChange={setStorageConsent} className="shrink-0" />
             </div>
 
-            {/* AI notice */}
+            {/* Review notice */}
             <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-              <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
-              <span>AI will automatically verify this credential in the background after sharing.</span>
+              <Eye className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span>Your presentation goes straight to the verifier's inbox for review. Nothing is verified or scored until the verifier runs it.</span>
             </div>
           </div>
 

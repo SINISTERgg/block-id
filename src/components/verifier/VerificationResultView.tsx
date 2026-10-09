@@ -137,17 +137,32 @@ export const VerificationResultView = ({
   // or v1 payload still renders correctly instead of half-populating the panel.
   const analysis = useMemo(() => normalizeAiAnalysis(result?.ai_analysis), [result?.ai_analysis]);
 
+  /**
+   * `normalizeAiAnalysis(null)` returns a synthetic zeroed analysis so the
+   * panels always have a structurally valid object to render. That placeholder
+   * carries eight `unknown` dimensions, which is enough to fool a naive
+   * `dimensions.length > 0` test — and it did: the result view kept reading it
+   * as a real engine run and hard-coded 0 / UNTRUSTED instead of falling back
+   * to the live trust engine. A recorded analysis is one where the row actually
+   * carried `ai_analysis` *and* it normalised onto concrete results.
+   */
+  const hasRecordedAnalysis =
+    !!result?.ai_analysis &&
+    (analysis.score > 0 ||
+      analysis.confidence > 0 ||
+      analysis.dimensions.some((d) => d.status !== "unknown"));
+
   const trustResult = useMemo(() => {
     // Prefer the engine's own analysis: it carries the full factor breakdown,
     // so the radar and the trust panel are guaranteed to show the same number.
-    if (analysis && (analysis.dimensions.length > 0 || !analysis.legacy)) {
+    if (hasRecordedAnalysis) {
       return analysisToTrustScore(analysis);
     }
 
     // Next best: a score persisted at verification time. The breakdown was not
     // retained for this row, so the factor list stays empty and the radar
     // renders its "not recorded" state.
-    if (typeof stored?.trust_score === "number" && stored.trust_tier) {
+    if (typeof stored?.trust_score === "number" && stored.trust_tier && stored.trust_score > 0) {
       return {
         score: stored.trust_score,
         rawScore: stored.trust_score,
@@ -188,7 +203,38 @@ export const VerificationResultView = ({
       credentialAgeDays: typeof result?.age_in_days === "number" ? result.age_in_days : null,
     };
     return computeTrustScore(factors);
-  }, [analysis, stored, result, onChain, zkpProofValid]);
+  }, [hasRecordedAnalysis, analysis, stored, result, onChain, zkpProofValid]);
+
+  /**
+   * What the AI assistant renders.
+   *
+   * When the engine actually ran, that is the analysis. When it did not but
+   * the trust engine could still score the presentation, the breakdown is
+   * projected off that live result — so the verifier sees eight real dimension
+   * bars rather than a synthetic "legacy record" placeholder describing data
+   * that was never written.
+   */
+  const displayAnalysis = useMemo(() => {
+    if (hasRecordedAnalysis) return analysis;
+    if (trustResult.dimensions.length > 0) {
+      return {
+        ...analysis,
+        score: trustResult.score,
+        raw_score: trustResult.rawScore,
+        tier: trustResult.tier,
+        risk_level: trustResult.riskLevel,
+        confidence: trustResult.confidence,
+        hard_caps_applied: trustResult.hardCaps,
+        legacy: false,
+        findings: trustResult.factors
+          .filter((f) => !!f.detail)
+          .map((f) => `${f.label}: ${f.detail}`)
+          .slice(0, 8),
+        dimensions: trustResult.dimensions,
+      };
+    }
+    return analysis;
+  }, [analysis, hasRecordedAnalysis, trustResult]);
 
   const policyEvaluation = useMemo(() => {
     if (!policy) return null;
@@ -216,9 +262,11 @@ export const VerificationResultView = ({
         key: "hash",
         label: "Hash integrity",
         detail: result?.hash_integrity
-          ? "Credential bytes hash to the value the registry committed."
+          ? (typeof result?.hash_integrity_note === "string" && result.hash_integrity_note
+              ? result.hash_integrity_note
+              : "Credential bytes hash to the value the registry committed.")
           : "Recomputed hash does not match the registry commitment.",
-        state: result?.hash_integrity ? "pass" : "fail",
+        state: result?.hash_integrity ? "pass" : result?.hash_integrity === false ? "fail" : "unknown",
         at: result?.verified_at ?? null,
       },
       {
@@ -500,11 +548,11 @@ export const VerificationResultView = ({
         </div>
       )}
 
-      {analysis.dimensions.length > 0 && (
+      {displayAnalysis.dimensions.length > 0 && (
         <CredentialAIAssistant
-          analysis={analysis}
+          analysis={displayAnalysis}
           verificationContext={{
-            ai_analysis: analysis,
+            ai_analysis: displayAnalysis,
             valid: result.valid,
             hash_integrity: result.hash_integrity,
             hash_checked: result.hash_integrity !== undefined && result.hash_integrity !== null,

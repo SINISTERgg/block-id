@@ -11,7 +11,7 @@ const corsHeaders = {
 };
 
 const RATE_LIMIT_MAX = 30;
-const ISSURER_ROLES = ["issuer", "org_admin"];
+const ISSUER_ROLES = ["issuer", "org_admin"];
 const MAX_BATCH_SIZE = 500;
 const DID_PATTERN = /^did:[a-z0-9]+:.+$/i;
 

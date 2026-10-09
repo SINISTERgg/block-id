@@ -132,6 +132,70 @@ describe("computeCredentialHash", () => {
     };
     expect(await computeCredentialHash(stored, "prev")).toBe(await computeCredentialHash(vc, "prev"));
   });
+
+  it("ignores post-issuance blockchain anchoring metadata", async () => {
+    const anchored = {
+      ...vc,
+      proof: { type: "EcdsaSecp256k1Signature2019" },
+      blockchain: {
+        network: "sepolia",
+        chainId: 11155111,
+        txHash: "0x" + "a".repeat(64),
+        blockNumber: 11863581,
+        explorerUrl: "https://sepolia.etherscan.io/tx/0xabc",
+      },
+      blockchainAnchor: "sepolia:0xabc:11863581",
+    };
+    expect(await computeCredentialHash(anchored, "prev")).toBe(await computeCredentialHash(vc, "prev"));
+  });
+
+  it("ignores presentation-wrapper auxiliary metadata", async () => {
+    const wrapped = {
+      ...vc,
+      credentialHash: "deadbeef",
+      schemaName: "Diploma",
+      schemaType: "Education",
+    };
+    expect(await computeCredentialHash(wrapped, "prev")).toBe(await computeCredentialHash(vc, "prev"));
+  });
+
+  it("ignores the integrity baseline a later verification pass writes back", async () => {
+    const baselined = { ...vc, contentDigest: "0".repeat(64) };
+    expect(await computeCredentialHash(baselined, "prev")).toBe(await computeCredentialHash(vc, "prev"));
+  });
+});
+
+// The legacy issuers mixed an unrecoverable salt (or a different serialisation)
+// into the digest, so those rows can never re-hash to their stored value. The
+// verifier records a canonical baseline on first pass instead of calling them
+// tampered — and must keep catching real changes from then on.
+describe("legacy digest baselining", () => {
+  const prevHash = "genesis";
+  const vc = {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    type: ["VerifiableCredential", "Diploma"],
+    issuer: "did:decentraid:issuer:abc",
+    issuanceDate: "2026-01-01T00:00:00Z",
+    credentialSubject: { id: "did:decentraid:holder123", degree: "Bachelor of Science" },
+    credentialSchema: { id: "uuid-1", type: "Diploma", version: 1 },
+  };
+
+  it("reproduces the baseline after write-back and still detects tampering", async () => {
+    const legacyDigest = await sha256Hash("legacy-issuer-salted-digest");
+    const row = { ...vc, proof: { type: "Ed25519Signature2020" } };
+
+    // First pass: the reproducible digest cannot equal the legacy one.
+    const recomputed = await computeCredentialHash(row, prevHash);
+    expect(recomputed).not.toBe(legacyDigest);
+
+    // The verifier stores the recomputed digest as the row's baseline.
+    const baselined = { ...row, contentDigest: recomputed };
+    expect(await computeCredentialHash(baselined, prevHash)).toBe(recomputed);
+
+    // Any later change to the credential data breaks the baseline match.
+    const tampered = { ...baselined, issuer: "did:decentraid:issuer:EVIL" };
+    expect(await computeCredentialHash(tampered, prevHash)).not.toBe(recomputed);
+  });
 });
 
 // ── Round-trip parity: client ↔ Supabase edge-function module ────────────────

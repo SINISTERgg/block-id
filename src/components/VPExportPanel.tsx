@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { generateVP, type VPInput, type VPExportResult } from "@/lib/vpUtils";
+import { generateVP, buildEtherscanUrl, type VPInput, type VPExportResult } from "@/lib/vpUtils";
 
 interface VPExportPanelProps {
   vpInput: VPInput;
@@ -68,6 +68,19 @@ const VPExportPanel = ({ vpInput }: VPExportPanelProps) => {
   }
 
   const jsonStr = JSON.stringify(result.vpJson, null, 2);
+
+  // The Chain tab must never claim "no anchor" for a credential that carries
+  // one. The anchor can arrive as the compact `sepolia:<tx>:<block>` column
+  // value, as nested `credentialData.blockchain` metadata, or both — so the
+  // URL is resolved from every available source before the empty state is
+  // allowed to render.
+  const etherscanLink =
+    result.etherscanUrl ||
+    buildEtherscanUrl(vpInput.blockchainAnchor, vpInput.credentialData);
+  const blockchainMeta = (vpInput.credentialData as { blockchain?: unknown } | undefined)
+    ?.blockchain;
+  const isAnchored =
+    !!etherscanLink || !!vpInput.blockchainAnchor || !!blockchainMeta;
 
   return (
     <div className="space-y-3">
@@ -152,30 +165,42 @@ const VPExportPanel = ({ vpInput }: VPExportPanelProps) => {
 
         {/* ── Chain Tab ── */}
         <TabsContent value="chain" className="mt-3 space-y-3">
-          {result.etherscanUrl ? (
+          {isAnchored ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/5 border border-green-500/20">
                 <ShieldCheck className="h-4 w-4 text-green-500 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-foreground">Anchored on Sepolia</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{vpInput.blockchainAnchor}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {vpInput.blockchainAnchor || "Blockchain metadata attached to this credential"}
+                  </p>
                 </div>
               </div>
               <p className="text-[10px] text-muted-foreground">
                 Verifier can independently check this credential on the blockchain — no data sharing required.
               </p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" asChild>
-                  <a href={result.etherscanUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-3 w-3" /> View on Etherscan
-                  </a>
-                </Button>
-                <Button size="sm" variant="outline" className="gap-1 text-xs flex-1"
-                  onClick={() => copyText(result.etherscanUrl!, "Etherscan link")}
-                >
-                  <Copy className="h-3 w-3" /> Copy link
-                </Button>
-              </div>
+              {etherscanLink ? (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" asChild>
+                    <a href={etherscanLink} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3 w-3" /> View on Etherscan
+                    </a>
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs flex-1"
+                    onClick={() => copyText(etherscanLink, "Etherscan link")}
+                  >
+                    <Copy className="h-3 w-3" /> Copy link
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="gap-1 text-xs flex-1"
+                    onClick={() => copyText(vpInput.blockchainAnchor ?? "", "Anchor reference")}
+                  >
+                    <Copy className="h-3 w-3" /> Copy anchor
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">

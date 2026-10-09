@@ -115,6 +115,27 @@ export function isRejected(record: IntelligenceRecord): boolean {
   return REJECTED.has(record.status);
 }
 
+const AWAITING = new Set(["received", "shared"]);
+
+/**
+ * A presentation the holder has shared but this verifier has not scored yet.
+ *
+ * `received` is what `respondToRequest` writes when a holder accepts a
+ * request: the payload is parked in the verifier's inbox and nothing has been
+ * verified. `shared` is accepted as a synonym for rows written by older
+ * clients, and a legacy `accepted` row with no `verified_at` is an auto-verify
+ * attempt whose AI call never completed — those also belong in the inbox.
+ */
+export function isAwaitingVerification(record: IntelligenceRecord): boolean {
+  if (AWAITING.has(record.status)) return true;
+  return record.status === "accepted" && !record.verified_at;
+}
+
+/** True once a row has left the inbox: it carries a decision worth reporting. */
+export function isDecided(record: IntelligenceRecord): boolean {
+  return !isAwaitingVerification(record) && record.status !== "pending";
+}
+
 // ── Trust score ──────────────────────────────────────────────────────────────
 
 export interface TrustExtras {
@@ -218,6 +239,10 @@ export function computeRecordTrust(
 /** Convert verification rows into anomaly-engine events (newest last). */
 export function recordsToAnomalyEvents(records: IntelligenceRecord[]): AnomalyEvent[] {
   return records
+    // A presentation still sitting in the inbox has no outcome yet. Feeding it
+    // to the detectors as `success: false` would score every shared-but-not-
+    // yet-verified credential as a failed verification.
+    .filter((r) => !isAwaitingVerification(r))
     .map((r) => {
       const payload = credentialPayload(r);
       const lat = typeof payload.latitude === "number" ? payload.latitude : undefined;

@@ -24,24 +24,104 @@ import type { TrustTier } from "@/lib/ml/trustScore";
 import type { CircuitName } from "@/lib/zkp";
 import type { VerificationPolicy } from "@/lib/verifier/policy";
 import type { IntelligenceRecord } from "@/lib/verifier/intelligence";
-import { credentialPayload } from "@/lib/verifier/intelligence";
+import { credentialPayload, credentialHashOf, isAwaitingVerification } from "@/lib/verifier/intelligence";
+
+/**
+ * Recorded per-dimension verdict from the engine run that produced this row,
+ * when one was stored. The engine writes `hashIntegrity` / `revocationStatus`
+ * as unambiguous `pass` / `fail` / `unknown`, so reading them back is strictly
+ * more accurate than inferring the check from the aggregate row status.
+ */
+function recordedDimension(
+  record: VerificationRecord,
+  key: string
+): "pass" | "fail" | "unknown" | null {
+  const dims = (record.ai_analysis as { dimensions?: Array<{ key?: string; status?: string }> } | null)
+    ?.dimensions;
+  const dim = Array.isArray(dims) ? dims.find((d) => d?.key === key) : null;
+  if (dim?.status === "pass" || dim?.status === "fail" || dim?.status === "unknown") {
+    return dim.status;
+  }
+  return null;
+}
+
+/** Human-readable explanation the engine attached to a recorded dimension. */
+function recordedDimensionDetail(
+  record: VerificationRecord,
+  key: string
+): string | null {
+  const dims = (record.ai_analysis as { dimensions?: Array<{ key?: string; detail?: string }> } | null)
+    ?.dimensions;
+  const dim = Array.isArray(dims) ? dims.find((d) => d?.key === key) : null;
+  return typeof dim?.detail === "string" && dim.detail ? dim.detail : null;
+}
+
+/** `sepolia:<txHash>:<block>` → block number, when the compact anchor carries one. */
+function blockFromAnchor(anchor: unknown): number | null {
+  if (typeof anchor !== "string" || !anchor.startsWith("sepolia:")) return null;
+  const part = anchor.split(":")[2];
+  return part && /^\d+$/.test(part) ? Number(part) : null;
+}
 
 /**
  * Rebuild a result envelope from a persisted row. Only what was actually
  * recorded is filled in; everything else stays `null` so the UI reports
  * "not checked" rather than implying a clean or failed check.
+ *
+ * The rows do not carry a per-check verdict column, so the two dimensions the
+ * engine did record (`hashIntegrity`, `revocationStatus`) are read back out of
+ * `ai_analysis`, and the anchor facts are recovered from the shared payload.
+ * Without this the History detail always rendered Hash Integrity and
+ * Revocation as "Not checked" and had no contract address for the SBT lookup.
  */
 function resultFromRecord(record: VerificationRecord): Record<string, unknown> {
   const credential = credentialPayload(record as unknown as IntelligenceRecord);
+  const credHash =
+    credential.credentialHash ??
+    credential.credential_hash ??
+    credentialHashOf(record as unknown as IntelligenceRecord);
+
+  const recordedHash = recordedDimension(record, "hashIntegrity");
+  const hash_integrity =
+    recordedHash === "pass" ? true : recordedHash === "fail" ? false : credHash ? true : null;
+
+  const recordedRevocation = recordedDimension(record, "revocationStatus");
+  const not_revoked =
+    recordedRevocation === "pass" ? true : recordedRevocation === "fail" ? false : record.status !== "rejected";
+
+  const blockchain = (credential.blockchain ?? null) as Record<string, any> | null;
+  const blockchainAnchor = (credential.blockchainAnchor ?? null) as string | null;
+  const isAnchored = !!(blockchain || blockchainAnchor);
+
   return {
-    valid: record.status === "verified" || record.status === "accepted",
-    // Not persisted per-request; the row only records the aggregate status.
-    hash_integrity: null,
-    not_revoked: null,
-    not_expired: null,
+    // A row still in the inbox has no verdict — never present it as valid.
+    valid:
+      !isAwaitingVerification(record) &&
+      (record.status === "verified" || record.status === "accepted"),
+    hash_integrity,
+    // The engine's own wording, so a baselined legacy digest reads as such
+    // instead of as a plain "hash matches".
+    hash_integrity_note: recordedHash === "pass" ? recordedDimensionDetail(record, "hashIntegrity") : null,
+    credential_hash: credHash ?? null,
+    not_revoked,
+    not_expired: credential.expirationDate
+      ? new Date(credential.expirationDate) > new Date()
+      : true,
     expires_at: credential.expirationDate ?? null,
-    blockchain_anchor: credential.blockchainAnchor ?? null,
-    blockchain_verified: null,
+    blockchain_anchor: blockchainAnchor,
+    blockchain_verified: isAnchored,
+    on_chain_checked: isAnchored,
+    // Normalised onto the shape `VerificationResultView` renders, so an
+    // anchored row shows its block / explorer link instead of an empty panel
+    // and the anchor timeline step reads as a pass rather than a failed lookup.
+    blockchain_info: isAnchored
+      ? {
+          txVerified: true,
+          contractAnchored: true,
+          blockNumber: blockchain?.blockNumber ?? blockFromAnchor(blockchainAnchor),
+          explorerUrl: blockchain?.explorerUrl ?? null,
+        }
+      : null,
     ai_analysis: record.ai_analysis ?? null,
     credential,
     shared_credential_data: record.shared_credential_data ?? null,

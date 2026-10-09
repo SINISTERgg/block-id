@@ -18,6 +18,7 @@ import QrScannerDialog from "@/components/verifier/QrScannerDialog";
 import SchemaValidationPanel from "@/components/verifier/SchemaValidationPanel";
 import { loadRequestDefaults } from "@/lib/verifierDefaults";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "react-router-dom";
 import {
   callVerifyEdgeFunction,
   submitVerificationRequest,
@@ -46,10 +47,16 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
   const [verifyMode, setVerifyMode] = useState<"vp" | "id">("vp");
   const [vpJson, setVpJson] = useState("");
   const [credentialId, setCredentialId] = useState("");
+  // Inbox row this credential id was pre-loaded from. While it is set, the
+  // next verification writes its outcome onto that row (instead of creating a
+  // duplicate history entry) and the row leaves the Received inbox.
+  const [linkedRequest, setLinkedRequest] = useState<{ credentialId: string; requestId: string } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [step, setStep] = useState<"input" | "result">("input");
   const lastVerifyTime = useRef(0);
+  const location = useLocation();
+  const preloadedFromInbox = useRef(false);
 
   // ── Request state ──
   const [requestDid, setRequestDid] = useState("");
@@ -78,6 +85,21 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
     setRequestPurpose(defaults.defaultPurpose);
     setRequestType(defaults.defaultType);
   }, []);
+
+  // Inbox hand-off: the Received Presentations view navigates here with the
+  // credential id of a presentation the holder already shared. Read it once —
+  // subsequent navigations to this route must not silently re-link the input.
+  useEffect(() => {
+    if (preloadedFromInbox.current) return;
+    const state = location.state as { credentialId?: string; requestId?: string } | null;
+    if (!state?.credentialId || !state?.requestId) return;
+    preloadedFromInbox.current = true;
+    setVerifyMode("id");
+    setCredentialId(state.credentialId);
+    setLinkedRequest({ credentialId: state.credentialId, requestId: state.requestId });
+    setVerificationResult(null);
+    setStep("input");
+  }, [location.state]);
 
   // Load the verifier's own priors once: active policy, blocklist, history.
   // These are the inputs the trust model and anomaly detectors need, and
@@ -175,12 +197,23 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
           }
         })();
 
+    // Close out the inbox row this credential was pre-loaded from, but only
+    // while the verifier is still looking at that exact credential.
+    const bodyWithRequest: Record<string, unknown> = { ...body };
+    if (
+      linkedRequest &&
+      verifyMode === "id" &&
+      bodyWithRequest.credential_id === linkedRequest.credentialId
+    ) {
+      bodyWithRequest.request_id = linkedRequest.requestId;
+    }
+
     setVerifying(true);
     setVerificationResult(null);
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token ?? "";
-      const result = await callVerifyEdgeFunction(body as any, token);
+      const result = await callVerifyEdgeFunction(bodyWithRequest as any, token);
       if ((result as any).error) {
         toast({ title: "Verification failed", description: (result as any).error, variant: "destructive" });
       } else {
@@ -199,6 +232,7 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
   const resetInput = () => {
     setVpJson("");
     setCredentialId("");
+    setLinkedRequest(null);
     setVerificationResult(null);
     setStep("input");
   };
@@ -352,7 +386,7 @@ const VerifyView = ({ verifierId, onRecordsRefresh }: VerifyViewProps) => {
                     <Label>Credential ID</Label>
                     <Input
                       value={credentialId}
-                      onChange={(e) => { setCredentialId(e.target.value); setVerificationResult(null); setStep("input"); }}
+                      onChange={(e) => { setCredentialId(e.target.value); setLinkedRequest(null); setVerificationResult(null); setStep("input"); }}
                       placeholder="Paste a credential UUID from the registry…"
                       className="font-mono text-xs input-solid"
                     />

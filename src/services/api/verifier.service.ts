@@ -134,9 +134,13 @@ export async function submitVerificationRequest(
 /**
  * Call the verify-credential Supabase Edge Function.
  * Accepts either a credential_id (UUID) or a raw VP JSON object.
+ *
+ * `request_id` is optional: when present the edge function writes its result
+ * onto that existing row instead of inserting a new one, so verifying a
+ * presentation out of the inbox does not create a duplicate history entry.
  */
 export async function callVerifyEdgeFunction(
-  body: { credential_id: string } | { vp_json: unknown },
+  body: ({ credential_id: string } | { vp_json: unknown }) & { request_id?: string },
   accessToken: string
 ): Promise<Record<string, unknown>> {
   const res = await fetch(
@@ -428,5 +432,37 @@ export async function saveVerificationIntelligence(
     .from("verification_requests")
     .update(patch as Record<string, unknown>)
     .eq("id", requestId);
+  if (error) throw error;
+}
+
+/**
+ * Close out an inbox row with the outcome of a `verify-credential` run.
+ *
+ * The edge function normally writes this itself when it is given `request_id`,
+ * but this client-side write is the guarantee that a presentation always
+ * leaves the inbox — including against a deployed function that predates
+ * `request_id` support. Writing the same values twice is harmless.
+ *
+ * Scoped by `verifier_id` so one verifier can never decide another's row.
+ */
+export async function applyVerificationToRequest(
+  requestId: string,
+  verifierId: string,
+  result: Record<string, unknown>
+): Promise<void> {
+  const ai = (result.ai_analysis ?? null) as
+    | { score?: unknown; tier?: unknown }
+    | null;
+  const { error } = await supabase
+    .from("verification_requests")
+    .update({
+      status: result.valid === true ? "verified" : "rejected",
+      verified_at: new Date().toISOString(),
+      trust_score: typeof ai?.score === "number" ? ai.score : null,
+      trust_tier: typeof ai?.tier === "string" ? ai.tier : null,
+      ai_analysis: (result.ai_analysis ?? null) as Json,
+    })
+    .eq("id", requestId)
+    .eq("verifier_id", verifierId);
   if (error) throw error;
 }

@@ -148,6 +148,12 @@ export interface CredentialSignals {
   hashChecked: boolean;
   /** SHA-256 of canonical JSON matches the stored digest. Only read when `hashChecked`. */
   hashValid: boolean;
+  /**
+   * Optional explanation attached to a hash pass — e.g. that this row's digest
+   * was baselined on first verification because it was issued under a scheme
+   * the platform can no longer reproduce.
+   */
+  hashNote?: string | null;
   /** DB status field. */
   dbStatus: string;
   /** CredentialRegistry contract confirms the anchor. */
@@ -335,7 +341,7 @@ function scoreHashIntegrity(s: CredentialSignals): DimensionScore {
     return make("hashIntegrity", "unknown", UNKNOWN_SCORE, "No stored digest was available to compare against in this pass, so hash integrity is unconfirmed. Run a full verification to establish it.", true);
   }
   return s.hashValid
-    ? make("hashIntegrity", "pass", 100, "SHA-256 hash matches the stored digest. No tampering detected.", true)
+    ? make("hashIntegrity", "pass", 100, s.hashNote ?? "SHA-256 hash matches the stored digest. No tampering detected.", true)
     : make("hashIntegrity", "fail", 0, "Hash mismatch — the credential data no longer matches the digest recorded at issuance. Treat as tampered or corrupt.", true);
 }
 

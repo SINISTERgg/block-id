@@ -3,6 +3,7 @@ import {
   Brain, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText,
   Lock, ShieldCheck, Timer, User, Building2, Calendar, Link2, Hash,
   Filter, Download, FileJson, Loader2, Search, RefreshCw, FileUp, ScanSearch,
+  Inbox,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import {
   type VerificationRecord,
 } from "@/services/api/verifier.service";
 import HistoryDetailModal from "@/components/verifier/HistoryDetailModal";
+import { isAwaitingVerification } from "@/lib/verifier/intelligence";
 import {
   fetchPolicies, fetchBlocklist, addToBlocklist, removeFromBlocklist,
   type BlocklistEntry, type VerificationPolicyRow,
@@ -31,7 +33,7 @@ interface HistoryViewProps {
 }
 
 const PAGE_SIZES = [10, 25, 50];
-const STATUS_OPTIONS = ["pending", "verified", "accepted", "rejected"];
+const STATUS_OPTIONS = ["received", "pending", "verified", "accepted", "rejected"];
 
 // ── Countdown timer component ──
 const CountdownBadge = ({ expiresAt }: { expiresAt: string }) => {
@@ -168,6 +170,13 @@ const CredentialDocumentViewer = ({ data }: { data: Record<string, unknown> }) =
 
 // ── Status helpers ──
 function getStatusBadge(status: string) {
+  if (status === "received" || status === "shared") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-verifier/10 text-verifier">
+        <Inbox className="h-3 w-3" /> {status}
+      </span>
+    );
+  }
   if (status === "accepted" || status === "verified") {
     return (
       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent text-accent-foreground">
@@ -433,7 +442,9 @@ const HistoryView = ({ verifierId, refreshSignal }: HistoryViewProps) => {
                   const accessible = isAccessible(r);
                   const hasData = !!r.shared_credential_data;
                   const isExpanded = expandedId === r.id;
-                  const isAccepted = r.status === "accepted" || r.status === "verified";
+                  // A legacy `accepted` row with no `verified_at` was never
+                  // scored — it is still waiting, so it gets no countdown yet.
+                  const isAccepted = !isAwaitingVerification(r) && (r.status === "accepted" || r.status === "verified");
 
                   return (
                     <div key={r.id} className="rounded-lg border border-border/50 overflow-hidden transition-all hover:border-border">

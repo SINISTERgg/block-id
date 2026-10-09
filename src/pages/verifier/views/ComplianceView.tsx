@@ -35,6 +35,8 @@ import {
   credentialTypeOf,
   evaluatePolicyForRecord,
   isAccepted,
+  isAwaitingVerification,
+  isRejected,
   issuerOf,
   riskLevel,
   RISK_LEVEL_LABEL,
@@ -109,9 +111,14 @@ export function buildComplianceReport(input: {
 }): ComplianceReport {
   const { verifierId, organisationName, records, from, to } = input;
 
-  const accepted = records.filter(isAccepted);
-  const rejected = records.filter((r) => !isAccepted(r) && r.status !== "pending");
-  const pending = records.filter((r) => r.status === "pending");
+  // Mutually exclusive buckets. Anything still waiting on a decision — a
+  // pending request, a presentation parked in the inbox, or a legacy
+  // auto-verify row that never got scored — is pending, never rejected.
+  const isPendingRow = (r: IntelligenceRecord) =>
+    r.status === "pending" || isAwaitingVerification(r);
+  const pending = records.filter(isPendingRow);
+  const accepted = records.filter((r) => !isPendingRow(r) && isAccepted(r));
+  const rejected = records.filter((r) => !isPendingRow(r) && isRejected(r));
 
   const zkpVerified = records.filter((r) => r.zkp_proof_valid === true).length;
   const onChain = records.filter((r) => r.zkp_on_chain_valid === true).length;

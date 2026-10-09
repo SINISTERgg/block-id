@@ -90,16 +90,66 @@ function buildQrPayload(
 
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
 
-function buildEtherscanUrl(anchor: string | null): string | null {
+/**
+ * Resolve the best Etherscan URL for a credential's on-chain anchor.
+ *
+ * The anchor can reach us in several shapes, and every one of them is in use
+ * somewhere in the platform:
+ *
+ *   • `credentialData.blockchain.explorerUrl` — written by `anchor-credential`
+ *     alongside the tx hash; always the most direct answer.
+ *   • `credentialData.blockchain.txHash`      — raw 32-byte tx hash.
+ *   • `sepolia:<txHash>:<block>`              — the compact `blockchain_anchor`
+ *     column format. The tx segment may be a truncated prefix.
+ *   • `sepolia:<address>`                     — address-only anchor.
+ *   • a bare 66-char tx hash or 42-char address.
+ *
+ * Returning `null` means "we genuinely have nothing linkable", which is the
+ * only case the Chain tab may render its "no anchor" state for.
+ */
+export function buildEtherscanUrl(
+  anchor: string | null,
+  credentialData?: Record<string, unknown>
+): string | null {
+  // 1. Direct explorer URL / tx hash on the anchored credential payload.
+  const bc = (credentialData as { blockchain?: Record<string, unknown> } | undefined)?.blockchain;
+  if (bc?.explorerUrl && typeof bc.explorerUrl === "string") {
+    return bc.explorerUrl;
+  }
+  if (bc?.txHash && typeof bc.txHash === "string" && bc.txHash.startsWith("0x")) {
+    if (bc.txHash.length === 66) return `${SEPOLIA_EXPLORER}/tx/${bc.txHash}`;
+    if (bc.txHash.length === 42) return `${SEPOLIA_EXPLORER}/address/${bc.txHash}`;
+  }
+
   if (!anchor) return null;
+
+  // 2. Compact format: "sepolia:<txOrAddress>:<block>"
+  if (anchor.startsWith("sepolia:")) {
+    const parts = anchor.split(":");
+    const txPart = parts[1];
+    if (txPart && txPart.startsWith("0x")) {
+      if (txPart.length === 66) return `${SEPOLIA_EXPLORER}/tx/${txPart}`;
+      if (txPart.length === 42) return `${SEPOLIA_EXPLORER}/address/${txPart}`;
+    }
+    const blockPart = parts[2];
+    if (blockPart && /^\d+$/.test(blockPart)) {
+      return `${SEPOLIA_EXPLORER}/block/${blockPart}`;
+    }
+    // Truncated tx prefix with no block: point at the registry contract so the
+    // verifier still lands somewhere meaningful instead of a blank page.
+    const registry = import.meta.env.VITE_CREDENTIAL_REGISTRY_ADDRESS;
+    if (registry) return `${SEPOLIA_EXPLORER}/address/${registry}`;
+    return null;
+  }
+
+  // 3. Raw 66-char tx hash or 42-char address
   if (anchor.startsWith("0x") && anchor.length === 66) {
-    // It's a tx hash
     return `${SEPOLIA_EXPLORER}/tx/${anchor}`;
   }
   if (anchor.startsWith("0x") && anchor.length === 42) {
-    // It's a contract address
     return `${SEPOLIA_EXPLORER}/address/${anchor}`;
   }
+
   return null;
 }
 
@@ -188,7 +238,7 @@ export async function generateVP(input: VPInput): Promise<VPExportResult> {
   const qrPayload = buildQrPayload(credentialHash, holderDid, blockchainAnchor, credType);
 
   // ── 6. Etherscan URL ──────────────────────────────────────────────────────
-  const etherscanUrl = buildEtherscanUrl(blockchainAnchor);
+  const etherscanUrl = buildEtherscanUrl(blockchainAnchor, credentialData);
 
   return { vpJson, vpJwt, qrPayload, etherscanUrl };
 }

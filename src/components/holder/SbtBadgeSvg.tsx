@@ -103,6 +103,142 @@ function iconForType(type: string | null | undefined): BadgeTheme {
   };
 }
 
+// ── Canonical schema names ──────────────────────────────────────────────────
+// Raw schema titles ("B.TECH IN COMPUTER SCIENCE", "mark sheet 2024") are far
+// too long for a 100x100 badge. Map any schema name — and, failing that, the
+// credential type — onto one clean canonical label so every badge reads as a
+// recognisable document class instead of a truncated string.
+const CANONICAL_LABEL_RULES: Array<{ canonical: string; pattern: RegExp }> = [
+  { canonical: "Transcript", pattern: /transcript|mark\s?sheet|marksheet|grade\s?sheet|grade\s?report|academic\s?record/ },
+  { canonical: "Diploma", pattern: /diploma/ },
+  { canonical: "Digital Identity Card", pattern: /identity|kyc|passport|national\s?id|id\s?card|aadhaar|citizen|government\s?id/ },
+  { canonical: "Certificate", pattern: /certificate|certification|licen[cs]e|accreditation/ },
+  { canonical: "Employment", pattern: /employment|employee|job|work\s?experience|professional|career|staff/ },
+  { canonical: "Membership", pattern: /membership|club|association|union/ },
+  { canonical: "Health Card", pattern: /health|medical|hospital|clinic|patient/ },
+  { canonical: "Degree", pattern: /degree|bachelor|master|btech|b\s?tech|mtech|m\s?tech|phd|graduate|academic|university|college|education|school|student/ },
+];
+
+/** Collapse punctuation so "B.TECH-IN CS" matches the same way "b tech in cs" does. */
+function normalizeForMatch(raw: string | null | undefined): string {
+  return (raw ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function canonicalFrom(rules: Array<{ canonical: string; pattern: RegExp }>, raw: string | null | undefined): string | null {
+  const haystack = normalizeForMatch(raw);
+  if (!haystack) return null;
+  for (const rule of rules) {
+    if (rule.pattern.test(haystack)) return rule.canonical;
+  }
+  return null;
+}
+
+/**
+ * Clean, canonical badge label. Preference order:
+ *   1. a canonical match on the schema name
+ *   2. a canonical match on the credential type
+ *   3. the schema name as-is (trimmed)
+ *   4. the theme's generic label
+ */
+export function canonicalBadgeLabel(
+  schemaName: string | null | undefined,
+  credentialType: string | null | undefined,
+  fallback = "Credential"
+): string {
+  return (
+    canonicalFrom(CANONICAL_LABEL_RULES, schemaName) ??
+    canonicalFrom(CANONICAL_LABEL_RULES, credentialType) ??
+    (schemaName?.trim() || credentialType?.trim() || fallback)
+  );
+}
+
+// ── Label text fitting ──────────────────────────────────────────────────────
+// The badge is a 100x100 viewBox: the icon sits in the upper half, the token
+// chip is pinned at y=78, so the label has ~12 units of vertical room — enough
+// for up to three lines. Rather than truncating ("B.TECH IN COM…"), wrap at
+// word boundaries and step the font size down until the text fits.
+export interface LabelLayout {
+  lines: string[];
+  fontSize: number;
+}
+
+const LABEL_TIERS = [
+  { maxChars: 14, fontSize: 8 },
+  { maxChars: 17, fontSize: 7 },
+  { maxChars: 20, fontSize: 6 },
+];
+
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  const push = () => {
+    if (current) lines.push(current);
+    current = "";
+  };
+
+  for (const word of words) {
+    if (!current) {
+      current = word;
+    } else if (current.length + 1 + word.length <= maxChars) {
+      current += ` ${word}`;
+    } else {
+      push();
+      current = word;
+    }
+    // A single word longer than the line: hard-split it.
+    while (current.length > maxChars) {
+      lines.push(current.slice(0, maxChars));
+      current = current.slice(maxChars);
+    }
+  }
+  push();
+  return lines;
+}
+
+export function layoutLabel(raw: string): LabelLayout {
+  const text = (raw ?? "").trim();
+  if (!text) return { lines: [], fontSize: 8 };
+
+  for (const tier of LABEL_TIERS) {
+    const lines = wrapText(text, tier.maxChars);
+    if (lines.length <= 3) return { lines, fontSize: tier.fontSize };
+  }
+
+  // Pathological: three tiers still overflow — fit to three lines with an ellipsis.
+  const lines = wrapText(text, LABEL_TIERS[LABEL_TIERS.length - 1].maxChars);
+  const fitted = lines.slice(0, 3);
+  const kept = fitted.slice(0, 2).join(" ");
+  const last = fitted[2] ?? "";
+  const budget = LABEL_TIERS[LABEL_TIERS.length - 1].maxChars - 1;
+  const room = Math.max(4, budget - kept.length - (kept ? 1 : 0));
+  fitted[2] = last.length > room ? `${last.slice(0, room - 1)}…` : last;
+  return { lines: fitted.filter(Boolean), fontSize: LABEL_TIERS[LABEL_TIERS.length - 1].fontSize };
+}
+
+/** Baseline `y` for each label line, keyed by how many lines are rendered. */
+function labelLineY(count: number): number[] {
+  if (count <= 1) return [72];
+  if (count === 2) return [66, 73.5];
+  return [63, 69.5, 76];
+}
+
+/** The icon shrinks as the label grows so the two never collide. */
+function iconTransform(count: number): string {
+  if (count <= 1) return "translate(29, 25) scale(1.75)";
+  if (count === 2) return "translate(32, 22) scale(1.5)";
+  return "translate(33.5, 20) scale(1.35)";
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface SbtBadgeSvgProps {
@@ -126,9 +262,9 @@ export function SbtBadgeSvg({
   className = "",
 }: SbtBadgeSvgProps) {
   const theme = iconForType(credentialType);
-  const label = schemaName ?? theme.label;
-  // Truncate long labels for SVG rendering
-  const displayLabel = label.length > 14 ? label.slice(0, 13) + "…" : label;
+  const label = canonicalBadgeLabel(schemaName, credentialType, theme.label);
+  const layout = layoutLabel(label);
+  const ys = labelLineY(layout.lines.length);
   const tokenLabel = tokenId !== null ? `#${tokenId}` : "SBT";
 
   return (
@@ -176,25 +312,28 @@ export function SbtBadgeSvg({
       {/* Inner thin ring */}
       <circle cx="50" cy="50" r="38" stroke={theme.accent} strokeWidth="0.8" strokeOpacity="0.2" fill="none" />
 
-      {/* Icon — centred at (50,50), scaled from 24x24 Material icon path */}
-      <g transform="translate(29, 25) scale(1.75)" opacity={revoked ? 0.4 : 1}>
+      {/* Icon — centred in the upper half, scaled down as the label grows */}
+      <g transform={iconTransform(layout.lines.length)} opacity={revoked ? 0.4 : 1}>
         <path d={theme.icon} fill={theme.accent} />
       </g>
 
-      {/* Label */}
-      <text
-        x="50"
-        y="72"
-        textAnchor="middle"
-        fill={theme.accent}
-        fontSize="8"
-        fontWeight="600"
-        fontFamily="system-ui, -apple-system, sans-serif"
-        opacity={revoked ? 0.5 : 0.95}
-        letterSpacing="0.3"
-      >
-        {displayLabel.toUpperCase()}
-      </text>
+      {/* Label — wrapped, canonical, never truncated mid-word */}
+      {layout.lines.map((line, i) => (
+        <text
+          key={`${line}-${i}`}
+          x="50"
+          y={ys[i]}
+          textAnchor="middle"
+          fill={theme.accent}
+          fontSize={layout.fontSize}
+          fontWeight="600"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          opacity={revoked ? 0.5 : 0.95}
+          letterSpacing="0.3"
+        >
+          {line.toUpperCase()}
+        </text>
+      ))}
 
       {/* Token ID chip */}
       <rect x="35" y="78" width="30" height="11" rx="5.5" fill={theme.accent} fillOpacity="0.18" />
@@ -242,10 +381,17 @@ export function buildBadgeSvgDataUri(
   tokenId: number | null
 ): string {
   const theme = iconForType(credentialType);
-  const label = schemaName ?? theme.label;
-  const displayLabel = (label.length > 14 ? label.slice(0, 13) + "…" : label).toUpperCase();
+  const label = canonicalBadgeLabel(schemaName, credentialType, theme.label);
+  const layout = layoutLabel(label);
+  const ys = labelLineY(layout.lines.length);
   const tokenLabel = tokenId !== null ? `#${tokenId}` : "SBT";
   const tid = tokenId ?? 0;
+  const labelMarkup = layout.lines
+    .map(
+      (line, i) =>
+        `  <text x="50" y="${ys[i]}" text-anchor="middle" fill="${theme.accent}" font-size="${layout.fontSize}" font-weight="600" font-family="system-ui, sans-serif" letter-spacing="0.3">${escapeXml(line.toUpperCase())}</text>`
+    )
+    .join("\n");
 
   const svg = `<svg width="500" height="500" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -267,10 +413,10 @@ export function buildBadgeSvgDataUri(
   <circle cx="50" cy="50" r="44" fill="url(#glow-${tid})"/>
   <circle cx="50" cy="50" r="44" stroke="${theme.accent}" stroke-width="1.5" stroke-opacity="0.35" fill="none"/>
   <circle cx="50" cy="50" r="38" stroke="${theme.accent}" stroke-width="0.8" stroke-opacity="0.2" fill="none"/>
-  <g transform="translate(29, 25) scale(1.75)">
+  <g transform="${iconTransform(layout.lines.length)}">
     <path d="${theme.icon}" fill="${theme.accent}"/>
   </g>
-  <text x="50" y="72" text-anchor="middle" fill="${theme.accent}" font-size="8" font-weight="600" font-family="system-ui, sans-serif" letter-spacing="0.3">${displayLabel}</text>
+${labelMarkup}
   <rect x="35" y="78" width="30" height="11" rx="5.5" fill="${theme.accent}" fill-opacity="0.18"/>
   <text x="50" y="86.5" text-anchor="middle" fill="${theme.accent}" font-size="6.5" font-family="monospace" font-weight="700">${tokenLabel}</text>
   <g transform="translate(72, 72)">

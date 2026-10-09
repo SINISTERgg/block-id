@@ -1,50 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 
-/** Keep only the fields the AI engine needs; drop large binary blobs. */
-function sanitizeForAi(data: Record<string, unknown>): Record<string, unknown> {
-  const MAX = 500;
-  const truncate = (v: unknown): unknown => {
-    if (typeof v === "string" && v.length > MAX) return v.slice(0, MAX) + "…";
-    return v;
-  };
-  const subject = data.credentialSubject as Record<string, unknown> | undefined;
-  return {
-    type: data.type,
-    issuer: truncate(data.issuer),
-    issuanceDate: data.issuanceDate,
-    expirationDate: data.expirationDate,
-    credentialSubject: subject
-      ? Object.fromEntries(Object.entries(subject).map(([k, v]) => [k, truncate(v)]))
-      : undefined,
-    hasProof: !!(data.proof),
-    blockchainAnchor: truncate(data.blockchainAnchor),
-    credentialHash: truncate(data.credentialHash),
-    schemaName: truncate(data.schemaName),
-    schemaType: truncate(data.schemaType),
-  };
-}
-
-async function triggerAiVerification(
-  requestId: string,
-  credentialData: Record<string, unknown>,
-  requestPurpose: string | null,
-  credentialType: string | null
-): Promise<void> {
-  try {
-    const { error } = await supabase.functions.invoke("ai-verify-credential", {
-      body: {
-        request_id: requestId,
-        credential_data: sanitizeForAi(credentialData),
-        request_purpose: requestPurpose,
-        credential_type: credentialType,
-      },
-    });
-    if (error) console.warn("[BlockID] AI verification non-fatal error:", error);
-  } catch (err) {
-    console.warn("[BlockID] AI verification call failed (non-fatal):", err);
-  }
-}
-
 
 export interface HolderCredential {
   id: string;
@@ -136,6 +91,13 @@ export async function fetchPendingRequests(
 /**
  * Respond to a verification request (accept or decline).
  *
+ * Accepting a request does NOT run any verification. It only hands the
+ * presentation over: the row is flipped to `received` (awaiting verifier
+ * action) together with the shared payload. Verification is triggered by the
+ * verifier from their Received Presentations inbox, so the verifier — not the
+ * holder — owns the scoring decision and no billed AI work happens without
+ * the verifier asking for it.
+ *
  * The holder's RLS policy (added in migration 20260812000005) allows
  * UPDATE on rows where holder_did matches the holder's own DID.
  *
@@ -183,14 +145,14 @@ export async function respondToRequest(
     credentialId?: string;
     sharedData?: Record<string, unknown>;
     storageConsent?: boolean;
-    purpose?: string | null;
-    credentialType?: string | null;
   }
 ): Promise<void> {
   const now = new Date();
 
   const payload: Record<string, unknown> = {
-    status: action,
+    // "accepted" is the holder's intent; the row status that the rest of the
+    // verifier UI reads is `received` — presentation parked, not yet verified.
+    status: action === "accepted" ? "received" : "rejected",
     responded_at: now.toISOString(),
   };
 
@@ -220,38 +182,6 @@ export async function respondToRequest(
       "or your DID does not match the request's holder. Please refresh and try again."
     );
   }
-
-  // ── Background AI verification (fire-and-forget) ──────────────────────────
-  if (action === "accepted" && options?.sharedData) {
-    triggerAiVerification(
-      requestId,
-      options.sharedData,
-      options.purpose ?? null,
-      options.credentialType ?? null,
-    );
-  }
-}
-
-
-export interface AiVerificationResult {
-  verdict: "verified" | "rejected" | "review";
-  confidence: number;
-  summary: string;
-  checks: { label: string; pass: boolean; detail: string }[];
-  engine: string;
-  evaluated_at: string;
-}
-
-/** Fetch the AI analysis result for a given verification request (null if not yet evaluated). */
-export async function fetchRequestAiResult(
-  requestId: string
-): Promise<AiVerificationResult | null> {
-  const { data } = await supabase
-    .from("verification_requests")
-    .select("ai_analysis")
-    .eq("id", requestId)
-    .single();
-  return (data?.ai_analysis as unknown as AiVerificationResult) ?? null;
 }
 
 

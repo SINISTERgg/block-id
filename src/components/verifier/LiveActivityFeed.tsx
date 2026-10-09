@@ -27,6 +27,8 @@ const ACTIONS: Record<string, { icon: React.ElementType; label: string; cls: str
   accepted: { icon: CheckCircle2, label: "Presentation accepted", cls: "text-emerald-500 bg-emerald-500/10" },
   rejected: { icon: XCircle, label: "Credential rejected", cls: "text-destructive bg-destructive/10" },
   pending: { icon: Clock, label: "Request pending", cls: "text-amber-500 bg-amber-500/10" },
+  received: { icon: Share2, label: "Presentation received", cls: "text-verifier bg-verifier/10" },
+  shared: { icon: Share2, label: "Presentation received", cls: "text-verifier bg-verifier/10" },
 };
 
 const LiveActivityFeed = ({ records }: LiveActivityFeedProps) => {
@@ -44,7 +46,10 @@ const LiveActivityFeed = ({ records }: LiveActivityFeedProps) => {
   }, [records]);
 
   const liveCount = useMemo(
-    () => events.filter((e) => e.record.status === "pending" || e.isNew).length,
+    () =>
+      events.filter(
+        (e) => e.record.status === "pending" || e.record.status === "received" || e.isNew
+      ).length,
     [events]
   );
 

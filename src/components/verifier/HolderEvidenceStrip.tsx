@@ -28,6 +28,7 @@ import {
 } from "@/services/blockchain/smartWallet.service";
 import {
   getSbtForCredential,
+  getSbtAddress,
   isSbtConfigured,
   normalizeCredentialHash,
 } from "@/services/blockchain/sbt.service";
@@ -203,12 +204,22 @@ export default function HolderEvidenceStrip({
             set("sbt", { state: "unknown", detail: "No soulbound token minted for this credential." });
             return;
           }
+          // Etherscan's `/token/` route expects a *contract address*. Passing
+          // the bare token id resolves the address 0x…0001 and renders the
+          // "N/A (NFT)" page with zero records. The NFT route needs both the
+          // contract and the token id.
+          const sbtContract = getSbtAddress();
+          const explorerHref = sbtContract
+            ? sbt.tokenId !== null && sbt.tokenId !== undefined
+              ? `https://sepolia.etherscan.io/nft/${sbtContract}/${sbt.tokenId}`
+              : `https://sepolia.etherscan.io/address/${sbtContract}`
+            : null;
           set("sbt", {
             state: sbt.revoked ? "fail" : "pass",
             detail: sbt.revoked
               ? `Token #${sbt.tokenId} was revoked.`
               : `Token #${sbt.tokenId} active, non-transferable.`,
-            href: `https://sepolia.etherscan.io/token/${sbt.tokenId}`,
+            href: explorerHref,
           });
         })
         .catch(() => {

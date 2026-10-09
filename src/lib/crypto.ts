@@ -32,6 +32,35 @@ export async function sha256Hash(data: string): Promise<string> {
 }
 
 /**
+ * Return the hashable view of a VC: the credential WITHOUT the top-level
+ * signature `proof` and WITHOUT post-issuance runtime metadata.
+ *
+ * Anchoring writes a `blockchain` object back into `credential_data`, and the
+ * presentation wrapper carries `credentialHash` / `schemaName` / `schemaType`.
+ * None of those exist at issuance time, so they must be stripped or an anchored
+ * credential would hash differently from its issuance digest and be reported as
+ * tampered.
+ *
+ * Mirrors `hashableCredential()` in supabase/functions/_shared/vc-hash.ts.
+ */
+export function hashableCredential(vc: Record<string, unknown>): Record<string, unknown> {
+  const hashable: Record<string, unknown> = { ...vc };
+  // Signature proof — appended after hashing.
+  delete hashable.proof;
+  // Post-issuance blockchain anchoring metadata.
+  delete hashable.blockchain;
+  delete hashable.blockchainAnchor;
+  // Presentation-wrapper auxiliary metadata.
+  delete hashable.credentialHash;
+  delete hashable.schemaName;
+  delete hashable.schemaType;
+  // Integrity baseline written by verify-credential after issuance — never an
+  // input to the digest it records.
+  delete hashable.contentDigest;
+  return hashable;
+}
+
+/**
  * Compute the canonical hash for a Verifiable Credential.
  *
  * Matches the edge-function algorithm exactly (see
@@ -46,9 +75,7 @@ export async function computeCredentialHash(
   vc: Record<string, unknown>,
   prevHash = ""
 ): Promise<string> {
-  const hashable: Record<string, unknown> = { ...vc };
-  delete hashable.proof;
-  const payload = canonicalJson({ vc: hashable, prevHash });
+  const payload = canonicalJson({ vc: hashableCredential(vc), prevHash });
   return sha256Hash(payload);
 }
 

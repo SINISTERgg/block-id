@@ -1,6 +1,8 @@
 // @ts-nocheck
 // Supabase Edge Function: ai-verify-credential
-// Called after a holder accepts a verification request.
+// Scores an existing verification request. Only the verifier who created the
+// request may call it — accepting a request no longer auto-verifies, and a
+// holder must never be able to grade their own presentation.
 //
 // Runs the canonical deterministic trust engine and persists the result on the
 // verification request. The optional LLM layer may only add prose — it has no
@@ -30,6 +32,16 @@ const MAX_CREDENTIAL_DATA_BYTES = 2_000_000;
 /** Background job — the holder is not waiting on a spinner, so fail fast. */
 const LLM_TIMEOUT_MS = 8_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Instant the reproducible (salt-free) credential digest shipped. Rows issued
+ * before it carry an issuance-era digest that can never be recomputed, so their
+ * first pass records a baseline rather than reporting tampering. Mirrors the
+ * constant in `verify-credential`.
+ */
+const LEGACY_DIGEST_CUTOFF = Date.parse(
+  Deno.env.get("LEGACY_DIGEST_CUTOFF") || "2026-10-08T09:10:00.000Z"
+);
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || undefined;
@@ -114,39 +126,45 @@ serve(async (req) => {
     if (typeof request_id !== "string" || !UUID_PATTERN.test(request_id)) {
       return jsonResponse({ error: "request_id must be a valid UUID" }, 400, corsHeaders);
     }
-    if (!credential_data || (typeof credential_data !== "object" && typeof credential_data !== "string")) {
-      return jsonResponse({ error: "credential_data is required" }, 400, corsHeaders);
+    if (
+      credential_data !== undefined &&
+      credential_data !== null &&
+      typeof credential_data !== "object" &&
+      typeof credential_data !== "string"
+    ) {
+      return jsonResponse({ error: "credential_data must be a credential object" }, 400, corsHeaders);
     }
 
-    // ── Ownership: the request must belong to the calling holder ───────────────
+    // ── Authorization: only the verifier who raised the request ───────────────
+    // The holder supplies the presentation; they do not attest to it. Scoring
+    // is the verifier's decision, so a caller who is not `verifier_id` is
+    // refused regardless of whether they also hold the credential.
     const { data: request, error: requestError } = await supabase
       .from("verification_requests")
-      .select("id, holder_did, credential_id")
+      .select("id, verifier_id, holder_did, credential_id")
       .eq("id", request_id)
       .single();
     if (requestError || !request) return jsonResponse({ error: "Request not found" }, 404, corsHeaders);
 
-    const { data: ownProfile } = await supabase
-      .from("profiles")
-      .select("did")
-      .eq("user_id", user.id)
-      .single();
-    const callerDid = ownProfile?.did || "";
-    if (!callerDid || callerDid !== request.holder_did) {
-      return jsonResponse({ error: "Forbidden: not the request holder" }, 403, corsHeaders);
+    if (request.verifier_id !== user.id) {
+      return jsonResponse(
+        { error: "Forbidden: only the verifier who created this request may run it" },
+        403,
+        corsHeaders
+      );
     }
 
-    let vc: Record<string, unknown>;
+    let vc: Record<string, unknown> | null = null;
     if (typeof credential_data === "string") {
       try {
         vc = JSON.parse(credential_data);
       } catch {
         return jsonResponse({ error: "credential_data is not valid JSON" }, 400, corsHeaders);
       }
-    } else {
+    } else if (credential_data) {
       vc = credential_data;
     }
-    if (!vc || typeof vc !== "object" || Array.isArray(vc)) {
+    if (vc && (typeof vc !== "object" || Array.isArray(vc))) {
       return jsonResponse({ error: "credential_data must be a credential object" }, 400, corsHeaders);
     }
 
@@ -164,7 +182,14 @@ serve(async (req) => {
       stored = data ?? null;
     }
 
-    const authoritativeVc = (stored?.credential_data as Record<string, unknown>) ?? vc;
+    if (!stored && !vc) {
+      return jsonResponse(
+        { error: "credential_data is required when the request has no stored credential" },
+        400,
+        corsHeaders
+      );
+    }
+    const authoritativeVc = ((stored?.credential_data as Record<string, unknown>) ?? vc!) as Record<string, unknown>;
     const proof = authoritativeVc.proof as Record<string, unknown> | undefined;
     const hasWalletSignature = proof?.signatureType === "personal_sign" && !!proof?.proofValue;
 
@@ -173,16 +198,46 @@ serve(async (req) => {
     // verify-credential use. With no stored row there is nothing to compare
     // and the engine is told the check did not run, rather than being handed a
     // pass it did not earn.
+    //
+    // Rows issued before the reproducible digest shipped carry an issuance-era
+    // digest the platform cannot recompute, so their first pass records a
+    // content-digest baseline instead of accusing them of tampering. Every
+    // later pass compares against that baseline.
     let hashChecked = false;
     let hashValid = false;
+    let hashNote: string | null = null;
     if (stored) {
       try {
+        const storedVc = (stored.credential_data as Record<string, unknown>) ?? {};
         const recomputed = await computeCredentialHash(
-          (stored.credential_data as Record<string, unknown>) ?? {},
+          storedVc,
           stored.prev_hash || "genesis",
         );
-        hashValid = recomputed === stored.credential_hash;
         hashChecked = true;
+
+        const rawBaseline = (storedVc as { contentDigest?: unknown }).contentDigest;
+        const contentDigest = typeof rawBaseline === "string" && rawBaseline ? rawBaseline : null;
+        const issuedAtMs = Date.parse((stored.issued_at as string) ?? "");
+        const isLegacyRow = Number.isFinite(issuedAtMs) && issuedAtMs < LEGACY_DIGEST_CUTOFF;
+
+        if (recomputed === stored.credential_hash) {
+          hashValid = true;
+        } else if (contentDigest && recomputed === contentDigest) {
+          hashValid = true;
+        } else if (!contentDigest && isLegacyRow) {
+          hashValid = true;
+          hashNote =
+            "Integrity baselined on first verification: this credential was issued under a legacy digest scheme the platform can no longer reproduce. Later changes to the credential data will fail this check.";
+          const { error: baselineError } = await supabase
+            .from("credentials")
+            .update({ credential_data: { ...storedVc, contentDigest: recomputed } })
+            .eq("id", stored.id);
+          if (baselineError) {
+            console.warn("ai-verify-credential: could not persist contentDigest baseline:", baselineError);
+          }
+        } else {
+          hashValid = false;
+        }
       } catch (err) {
         console.warn("ai-verify-credential: hash recomputation failed:", err);
         hashChecked = false;
@@ -192,6 +247,11 @@ serve(async (req) => {
 
     const issuer = resolveIssuer(authoritativeVc) ?? "unknown";
     const issuanceDate = (authoritativeVc.issuanceDate as string) ?? null;
+    // Declared once and reused below. Referencing an undeclared identifier here
+    // threw a ReferenceError that Deno surfaced as HTTP 500, so `ai_analysis`
+    // was never written and every history row fell back to a legacy score.
+    const expirationDate =
+      (stored?.expires_at as string) ?? ((authoritativeVc.expirationDate as string) ?? null);
     const subject = (authoritativeVc.credentialSubject as Record<string, unknown>) ?? {};
     const subjectFieldCount = Object.keys(subject).length;
     const actualType = Array.isArray(authoritativeVc.type) ? (authoritativeVc.type as string[]).join(", ") : "Unknown";
@@ -201,6 +261,7 @@ serve(async (req) => {
       vc: authoritativeVc,
       hashChecked,
       hashValid,
+      hashNote,
       dbStatus: (stored?.status as string) ?? "active",
       blockchainVerified: false,
       onChainRevoked: false,
@@ -212,7 +273,7 @@ serve(async (req) => {
       signatureVerified: hasWalletSignature ? null : false,
       signerAddress: (stored?.signer_address as string) ?? null,
       issuedAt: (stored?.issued_at as string) ?? issuanceDate,
-      expiresAt: (stored?.expires_at as string) ?? ((authoritativeVc.expirationDate as string) ?? null),
+      expiresAt: expirationDate,
       notExpired: expirationDate ? new Date(expirationDate) > new Date() : null,
       credentialHash: (stored?.credential_hash as string) ?? "",
       issuerReputation: null,

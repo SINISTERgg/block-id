@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { MOTION } from "@/lib/motion";
 import { useNavigate } from "react-router-dom";
 import { aiConfidencePercent } from "@/lib/ml/aiAnalysis";
+import { isAccepted, isAwaitingVerification } from "@/lib/verifier/intelligence";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
 const stats = [
@@ -30,8 +31,12 @@ interface VerifierDashboardViewProps {
 
 const VerifierDashboardView = ({ records }: VerifierDashboardViewProps) => {
   const navigate = useNavigate();
-  const verified = records.filter((r) => r.status === "verified" || r.status === "accepted").length;
-  const pending = records.filter((r) => r.status === "pending").length;
+  // A presentation parked in the inbox has no outcome yet, so it counts as
+  // pending rather than verified — even when its status string says `accepted`
+  // (a legacy auto-verify row whose AI call never completed).
+  const awaiting = (r: VerificationRecord) => r.status === "pending" || isAwaitingVerification(r);
+  const verified = records.filter((r) => !awaiting(r) && isAccepted(r)).length;
+  const pending = records.filter(awaiting).length;
   const rejected = records.filter((r) => r.status === "rejected").length;
   const aiAnalyzedCount = records.filter((r) => r.ai_analysis).length;
   const docsLive = records.filter((r) => {

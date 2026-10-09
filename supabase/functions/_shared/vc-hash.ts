@@ -46,12 +46,33 @@ export async function sha256Hex(data: string): Promise<string> {
 
 /**
  * Return the hashable view of a VC: the credential WITHOUT the top-level
- * signature `proof`. Producers pass the pre-proof object; verifiers can pass
- * the full `credential_data` and this strips the proof out for them.
+ * signature `proof` and WITHOUT post-issuance runtime metadata.
+ *
+ * `anchor-credential` writes a `blockchain` object back into
+ * `credential_data`, and the presentation wrapper carries
+ * `credentialHash` / `schemaName` / `schemaType`. None of those exist at
+ * issuance time, so they are stripped here — otherwise an anchored
+ * credential would hash differently from its issuance digest and every
+ * verifier would report it as tampered.
+ *
+ * Producers pass the pre-proof object; verifiers can pass the full
+ * `credential_data` and this strips the non-hashable fields out for them.
  */
 export function hashableCredential(vc: Record<string, unknown>): Record<string, unknown> {
   const copy: Record<string, unknown> = { ...vc };
+  // Signature proof — appended after hashing.
   delete copy.proof;
+  // Post-issuance blockchain anchoring metadata.
+  delete copy.blockchain;
+  delete copy.blockchainAnchor;
+  // Presentation-wrapper auxiliary metadata.
+  delete copy.credentialHash;
+  delete copy.schemaName;
+  delete copy.schemaType;
+  // Integrity baseline recorded by verify-credential for credentials whose
+  // issuance-era digest was unsalted-but-unrepeatable. It is written AFTER the
+  // digest is computed, so it must never be part of the input.
+  delete copy.contentDigest;
   return copy;
 }
 

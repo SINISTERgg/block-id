@@ -39,12 +39,27 @@ describe("isBiometricAnchorConfigured", () => {
     expect(isBiometricAnchorConfigured("0x8888888888888888888888888888888888888888")).toBe(true);
   });
 
-  it.each([null, undefined, "", "0x0000000000000000000000000000000000000000"])(
+  it.each([null, "", "0x0000000000000000000000000000000000000000"])(
     "rejects unset/zero address %s",
     (bad) => {
       expect(isBiometricAnchorConfigured(bad as string | null | undefined)).toBe(false);
     }
   );
+
+  // An omitted argument is not "no address" — it falls back to the
+  // env-configured one. `.env` carries the deployed contract addresses, so
+  // this has to hold whether or not VITE_BIOMETRIC_ANCHOR_ADDRESS is present,
+  // while an explicit null must still be rejected either way.
+  it("falls back to the env address when called with no argument", () => {
+    const envAddress = import.meta.env.VITE_BIOMETRIC_ANCHOR_ADDRESS as string | undefined;
+    const envConfigured =
+      typeof envAddress === "string" &&
+      /^0x[0-9a-f]{40}$/i.test(envAddress) &&
+      !/^0x0{40}$/i.test(envAddress);
+
+    expect(isBiometricAnchorConfigured()).toBe(envConfigured);
+    expect(isBiometricAnchorConfigured(null)).toBe(false);
+  });
 });
 
 describe("normalizeProofHash", () => {

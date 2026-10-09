@@ -25,6 +25,21 @@ const RATE_LIMIT_MAX = 60;
 const MAX_VP_JSON_BYTES = 2_000_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Instant the reproducible (salt-free) credential digest shipped.
+ *
+ * Everything issued before it carries an issuance-era digest the platform can
+ * no longer recompute: `issue-credential` mixed an unrecoverable random salt
+ * into the input and `oid4vci` used a plain `JSON.stringify`. For those rows a
+ * mismatch is a missing integrity baseline, not evidence of tampering.
+ *
+ * Override with `LEGACY_DIGEST_CUTOFF` if the deterministic issuer is ever
+ * rolled back and re-shipped.
+ */
+const LEGACY_DIGEST_CUTOFF = Date.parse(
+  Deno.env.get("LEGACY_DIGEST_CUTOFF") || "2026-10-08T09:10:00.000Z"
+);
+
 /** Never let a single RPC hop stall the verifier's page. */
 const RPC_TIMEOUT_MS = 8_000;
 const LLM_TIMEOUT_MS = 12_000;
@@ -192,7 +207,7 @@ serve(async (req) => {
     } catch {
       return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
     }
-    const { credential_id, vp_json } = parsedBody;
+    const { credential_id, vp_json, request_id } = parsedBody;
 
     let credential;
     if (credential_id) {
@@ -260,7 +275,42 @@ serve(async (req) => {
     // use. hashableCredential strips the signature `proof` internally, so
     // passing the full credential_data reproduces the issuance-time digest.
     const computedHash = await computeCredentialHash(vc, credential.prev_hash || "genesis");
-    const hashValid = computedHash === credential.credential_hash;
+
+    const rawBaseline = (vc as { contentDigest?: unknown }).contentDigest;
+    const contentDigest = typeof rawBaseline === "string" && rawBaseline ? rawBaseline : null;
+    const issuedAtMs = Date.parse(credential.issued_at ?? "");
+    const isLegacyRow = Number.isFinite(issuedAtMs) && issuedAtMs < LEGACY_DIGEST_CUTOFF;
+
+    let hashValid: boolean;
+    let hashNote: string | null = null;
+
+    if (computedHash === credential.credential_hash) {
+      hashValid = true;
+    } else if (contentDigest && computedHash === contentDigest) {
+      // Matches the integrity baseline recorded on an earlier pass, so the
+      // credential data is byte-identical to what that pass saw.
+      hashValid = true;
+    } else if (!contentDigest && isLegacyRow) {
+      // Issued before the reproducible digest shipped: the legacy issuer mixed
+      // an unrecoverable random salt (or a different serialisation) into the
+      // digest, so it can never be recomputed. Record the canonical digest now
+      // as this row's integrity baseline — every later verification compares
+      // against it, so tampering from this point on is still caught.
+      hashValid = true;
+      hashNote =
+        "Integrity baselined on first verification: this credential was issued under a legacy digest scheme the platform can no longer reproduce. Later changes to the credential data will fail this check.";
+      const { error: baselineError } = await supabase
+        .from("credentials")
+        .update({ credential_data: { ...vc, contentDigest: computedHash } })
+        .eq("id", credential.id);
+      if (baselineError) {
+        console.warn("verify-credential: could not persist contentDigest baseline:", baselineError);
+      }
+    } else {
+      // Reproducible row that no longer hashes to its stored digest — or a
+      // baselined row whose data moved. Either way this is a real mismatch.
+      hashValid = false;
+    }
 
     // ─── Blockchain verification ──────────────────────────────────────────────
     const blockchainInfo = (vc?.blockchain as Record<string, unknown>) || null;
@@ -327,6 +377,7 @@ serve(async (req) => {
       // loaded — so the comparison above is a real check, not an assumption.
       hashChecked: true,
       hashValid,
+      hashNote,
       dbStatus: credential.status,
       blockchainVerified,
       onChainRevoked,
@@ -379,6 +430,7 @@ serve(async (req) => {
     const result = {
       valid: isValid,
       hash_integrity: hashValid,
+      hash_integrity_note: hashNote,
       not_revoked: notRevoked,
       not_expired: notExpired,
       expires_at: credential.expires_at,
@@ -409,17 +461,45 @@ serve(async (req) => {
     // ─── Store verification result ────────────────────────────────────────────
     // The full canonical analysis is persisted so history, analytics and the
     // dashboard all read the same 0-100 confidence on the same scale.
-    await supabase.from("verification_requests").insert({
-      verifier_id: user.id,
-      credential_id: credential.id,
-      holder_did: (vc as any)?.credentialSubject?.id || "",
-      credential_type: (credential as any).credential_schemas?.credential_type || "",
+    //
+    // When the caller names an existing `request_id` (verifying a presentation
+    // straight out of the inbox) we update that row instead of inserting a
+    // second one — otherwise every inbox verification would leave a duplicate
+    // behind in history. The `verifier_id` guard makes sure a caller can only
+    // close out rows they own.
+    const outcomeRow = {
       status: isValid ? "verified" : "rejected",
       trust_score: aiAnalysis.score,
       trust_tier: aiAnalysis.tier,
       ai_analysis: aiAnalysis,
       verified_at: new Date().toISOString(),
-    });
+      credential_id: credential.id,
+    };
+
+    let storedOnExistingRow = false;
+    if (typeof request_id === "string" && UUID_PATTERN.test(request_id)) {
+      const { data: updated } = await supabase
+        .from("verification_requests")
+        .update(outcomeRow)
+        .eq("id", request_id)
+        .eq("verifier_id", user.id)
+        .select("id");
+      storedOnExistingRow = Array.isArray(updated) && updated.length > 0;
+    }
+
+    if (!storedOnExistingRow) {
+      await supabase.from("verification_requests").insert({
+        verifier_id: user.id,
+        credential_id: credential.id,
+        holder_did: (vc as any)?.credentialSubject?.id || "",
+        credential_type: (credential as any).credential_schemas?.credential_type || "",
+        status: outcomeRow.status,
+        trust_score: outcomeRow.trust_score,
+        trust_tier: outcomeRow.trust_tier,
+        ai_analysis: outcomeRow.ai_analysis,
+        verified_at: outcomeRow.verified_at,
+      });
+    }
 
     // ─── Audit log ────────────────────────────────────────────────────────────
     await logAudit(supabase, user.id, "credential_verified", "credential", credential.id, {

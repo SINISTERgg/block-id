@@ -12,7 +12,7 @@ interface PortalLayoutProps {
   title: string;
   portalType: "issuer" | "holder" | "verifier";
   icon: ReactNode;
-  navItems: { label: string; path: string }[];
+  navItems: { label: string; path: string; badge?: number }[];
 }
 
 const PORTAL_COLORS = {
@@ -125,6 +125,11 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                     >
                       {isActive && <span className={`mr-1.5 ${colors.accent}`}>/</span>}
                       {item.label}
+                      {!!item.badge && item.badge > 0 && (
+                        <span className="ml-1.5 inline-flex min-w-[16px] justify-center rounded-full bg-primary px-1 font-sans text-[9px] font-bold leading-4 text-primary-foreground">
+                          {item.badge > 99 ? "99+" : item.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -202,6 +207,11 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                       <span className="font-mono text-sm font-semibold uppercase tracking-[0.12em]">
                         {item.label}
                       </span>
+                      {!!item.badge && item.badge > 0 && (
+                        <span className="ml-auto inline-flex min-w-[18px] justify-center rounded-full bg-primary px-1.5 py-0.5 font-sans text-[10px] font-bold text-primary-foreground">
+                          {item.badge > 99 ? "99+" : item.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -251,7 +261,12 @@ const PortalLayout = ({ children, title, portalType, icon, navItems }: PortalLay
                   }`}>
                     {item.label}
                   </span>
-                  {isActive && <span className={`ml-auto h-1.5 w-1.5 ${colors.bg}`} />}
+                  {!!item.badge && item.badge > 0 && (
+                    <span className="ml-auto inline-flex min-w-[18px] justify-center rounded-full bg-primary px-1.5 py-0.5 font-sans text-[10px] font-bold text-primary-foreground">
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  )}
+                  {isActive && !item.badge && <span className={`ml-auto h-1.5 w-1.5 ${colors.bg}`} />}
                 </button>
               );
             })}

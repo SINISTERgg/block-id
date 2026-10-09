@@ -9,6 +9,7 @@ import {
 import { motion } from "framer-motion";
 import IntelligenceOverview from "@/components/verifier/IntelligenceOverview";
 import { aiConfidencePercent, normalizeAiAnalysis } from "@/lib/ml/aiAnalysis";
+import { isAccepted, isAwaitingVerification } from "@/lib/verifier/intelligence";
 import type { VerificationRecord } from "@/services/api/verifier.service";
 
 interface AnalyticsViewProps {
@@ -36,9 +37,12 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
   const stats = useMemo(() => {
     const total = records.length;
     const responded = records.filter((r) => r.responded_at).length;
-    const verified = records.filter((r) => r.status === "verified" || r.status === "accepted").length;
+    // A legacy `accepted` row with no `verified_at` was never actually scored,
+    // so it belongs in the awaiting bucket rather than the verified one.
+    const awaiting = (r: VerificationRecord) => r.status === "pending" || isAwaitingVerification(r);
+    const verified = records.filter((r) => !awaiting(r) && isAccepted(r)).length;
     const rejected = records.filter((r) => r.status === "rejected").length;
-    const pending = records.filter((r) => r.status === "pending").length;
+    const pending = records.filter(awaiting).length;
     return { total, responded, verified, rejected, pending };
   }, [records]);
 
@@ -70,7 +74,7 @@ const AnalyticsView = ({ records }: AnalyticsViewProps) => {
       const bucket = days.get(key);
       if (!bucket) return;
       bucket.count += 1;
-      if (r.status === "verified" || r.status === "accepted") bucket.verified += 1;
+      if (!isAwaitingVerification(r) && isAccepted(r)) bucket.verified += 1;
       if (r.status === "rejected") bucket.rejected += 1;
     });
     return Array.from(days.values());
